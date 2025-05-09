@@ -1,83 +1,115 @@
+
 # 📊 StockScope
 
-**StockScope** is a Python-based sentiment analysis tool that gives you a deeper look into what the internet is saying about your favorite stocks. By combining real-time financial news and Reddit discussions, it surfaces public sentiment and trends that could influence the market.
+**StockScope** is an interactive stock sentiment analyzer that fetches Reddit discussions in real time and runs natural language processing to detect market sentiment. Built with Python, VADER NLP, and Streamlit, this app helps you visualize public sentiment around any stock ticker — instantly.
 
 ---
 
-## 🔍 Features
+## 🧠 Key Features
 
-- 🔎 Pulls posts from Reddit (r/stocks, r/wallstreetbets) and financial news headlines  
-- 💬 Performs sentiment analysis using VADER NLP  
-- 📈 Visualizes sentiment trends over time  
-- 🧩 Modular design for easy expansion (e.g., Twitter, stock price overlays, dashboards)
+- 🔎 Pulls live Reddit posts from r/stocks and r/wallstreetbets
+- 💬 Performs sentiment analysis using VADER
+- 📊 Displays interactive sentiment charts (pie + timeline)
+- 🧵 Dynamic ticker input — type in any stock symbol (e.g., TSLA, AAPL)
+- ⚡ One-click scraping + analysis via Streamlit UI
+- 🧩 Modular backend (can expand to news, Twitter, etc.)
 
 ---
 
-## 🚀 Getting Started
+## 🚀 How It Works
 
-### 1. Clone the Repository
+1. Type a stock ticker (e.g., `TSLA`) in the input box
+2. Click **"Fetch + Analyze"**
+3. StockScope will:
+   - Scrape Reddit for recent posts
+   - Analyze each post’s sentiment
+   - Save data to JSON
+   - Render interactive charts and post breakdowns
+
+---
+
+## 🧰 Tech Stack
+
+- **Python 3.9+**
+- **Streamlit** for frontend dashboard
+- **PRAW** for Reddit API access
+- **VADER Sentiment** for NLP
+- **Plotly** for interactive visualizations
+- (Optional: JSON, SQLite, or MongoDB for data storage)
+
+---
+
+## 🛠️ Setup Instructions
+
+### 1. Clone the Repo
 
 ```bash
-git clone https://github.com/yourusername/StockScope.git
+git clone https://github.com/TahmidChowdhury/StockScope.git
 cd StockScope
 ```
-### 2. Create a Virtual Environment
-```bash
-python -m venv venv
-source venv/bin/activate  # Windows: .\venv\Scripts\activate
-```
-### 3. Install Dependencies
+
+### 2. Install Dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
-### 4. Run the Application
+
+You may also need to install:
+
 ```bash
-python main.py
+pip install streamlit plotly praw vaderSentiment python-dotenv
 ```
-🧱 Project Structure
+
+### 3. Set Up Reddit API Keys
+
+Create a `.env` file in your project root:
+
+```
+REDDIT_CLIENT_ID=your_id
+REDDIT_CLIENT_SECRET=your_secret
+REDDIT_USERNAME=your_username
+REDDIT_PASSWORD=your_password
+REDDIT_USER_AGENT=StockScopeSentiment/0.1
+```
+
+---
+
+## 🖥️ Run the App
+
 ```bash
-StockScope/
-├── data/                  # Raw/cached data
-├── sentiment/             # Sentiment analysis logic
-│   └── analyzer.py
-├── scraping/              # Web scraping and API logic
-│   ├── reddit_scraper.py
-│   └── news_scraper.py
-├── visualizations/        # Graph generation
-│   └── plot_sentiment.py
-├── main.py                # Entry point
-├── requirements.txt       # Dependencies
-└── README.md              # This file
+streamlit run streamlit_app.py
 ```
-📦 Dependencies
 
-    vaderSentiment
+Then go to `http://localhost:8501` in your browser.
 
-    requests
+---
 
-    beautifulsoup4
+## 🧪 Example Screenshots
 
-    praw
+*Coming soon...*
 
-    matplotlib
+---
 
-🛣️ Future Plans
+## 🛣️ Roadmap
 
-    Correlate sentiment with stock price movement
+- [ ] Add news sentiment scraping
+- [ ] Combine Reddit + news views
+- [ ] Support Twitter/X and forums
+- [ ] Add price overlays
+- [ ] Deploy on Streamlit Cloud
+- [ ] Save data to database (SQLite or MongoDB)
+- [ ] User login + watchlist
 
-    Integrate Twitter/X scraping or APIs
+---
 
-    Streamlit or Flask dashboard interface
-
-    User-configurable sentiment alerts
-
-📄 License
+## 📄 License
 
 MIT License
-👨‍💻 Author
 
-[Tahmid Chowdhury](https://github.com/tahmidchowdhury)
+---
 
-[Portfolio Website](https://tahmidchowdhury.github.io/)
+## 👨‍💻 Author
 
-Built with 🧠, 📊, and a little caffeine.
+**[Tahmid Chowdhury](https://github.com/TahmidChowdhury)**  
+[Portfolio](https://tahmidchowdhury.github.io/)  
+Built with 🧠, 📊, and ☕️

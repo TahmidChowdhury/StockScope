@@ -1,11 +1,20 @@
 #main.py
+import sys
 from scraping.reddit_scraper import fetch_reddit_posts
 from sentiment.analyzer import analyze_sentiment
+from visualizations.plot_sentiment import plot_sentiment_distribution
 from datetime import datetime
 import json
 import os
 
 import pprint
+
+if len(sys.argv) < 2:
+    print("❌ Please provide a stock ticker symbol.")
+    print("Usage: python main.py AAPL")
+    sys.exit(1)
+
+ticker = sys.argv[1].upper()
 
 def classify_sentiment(compound):
     if compound >= 0.05:
@@ -16,7 +25,7 @@ def classify_sentiment(compound):
         return "neutral"
 
 if __name__ == "__main__":
-    posts = fetch_reddit_posts("AAPL", limit=10)
+    posts = fetch_reddit_posts(ticker, limit=10)
     enriched_posts = []
 
     for post in posts:
@@ -35,5 +44,7 @@ if __name__ == "__main__":
         json.dump(enriched_posts, f, indent=2)
 
     print(f"\n✅ Saved {len(enriched_posts)} posts to {output_path}")
+    # Plot the sentiment distribution
+    plot_sentiment_distribution(output_path)
 
     

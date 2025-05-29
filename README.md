@@ -328,7 +328,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **[Tahmid Chowdhury](https://github.com/TahmidChowdhury)**  
 🌐 Portfolio: [https://tahmidchowdhury.github.io/](https://tahmidchowdhury.github.io/)  
-💼 LinkedIn: [Your LinkedIn Profile]
 
 ---
 

@@ -9,7 +9,15 @@ from datetime import datetime, timedelta
 from main import run_pipeline, run_full_pipeline
 from scraping.news_scraper import fetch_news_sentiment
 from scraping.twitter_scraper import fetch_twitter_sentiment
-from visualizations.plot_sentiment import generate_wordcloud_for_streamlit
+from visualizations.plot_sentiment import (
+    generate_wordcloud_for_streamlit,
+    create_sentiment_heatmap,
+    create_engagement_vs_sentiment_scatter,
+    create_sentiment_gauge,
+    create_trending_topics_bar,
+    create_sentiment_timeline_advanced,
+    create_source_comparison_radar
+)
 
 # Initialize an empty DataFrame for `df`
 df = pd.DataFrame()
@@ -213,23 +221,94 @@ with st.sidebar:
         st.markdown("---")
     
     # === STEP 4: QUICK ACTIONS ===
-    st.subheader("🚀 Quick Actions")
+    st.subheader("⚡ Quick Actions")
     
-    # Fetch popular stocks
-    st.write("**Get data for trending stocks:**")
-    trending_buttons = st.columns(2)
-    with trending_buttons[0]:
-        if st.button("📊 Get AAPL", use_container_width=True):
-            st.session_state.auto_fetch = "AAPL"
-    with trending_buttons[1]:
-        if st.button("📊 Get TSLA", use_container_width=True):
-            st.session_state.auto_fetch = "TSLA"
+    # One-click data fetching for popular stocks
+    st.write("**📊 Instant Stock Analysis:**")
+    quick_col1, quick_col2 = st.columns(2)
     
-    # Data management
-    st.markdown("**🗂️ Data Management:**")
-    if st.button("🗑️ Clear All Data", type="secondary", use_container_width=True):
-        if st.button("⚠️ Confirm Delete", key="confirm_delete"):
+    with quick_col1:
+        if st.button("🍎 Analyze AAPL", use_container_width=True, help="Get Apple sentiment data"):
+            with st.spinner("Fetching AAPL data..."):
+                try:
+                    run_pipeline("AAPL")
+                    fetch_news_sentiment("AAPL")
+                    try:
+                        fetch_twitter_sentiment("AAPL", max_tweets=20, skip_rate_limit_wait=True)
+                    except Exception as e:
+                        st.warning("Twitter API limited, using sample data...")
+                        from scraping.twitter_scraper import create_sample_twitter_data
+                        create_sample_twitter_data("AAPL", num_tweets=15)
+                    st.success("✅ AAPL data ready! Check Dashboard tab.")
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
+        
+        if st.button("🚗 Analyze TSLA", use_container_width=True, help="Get Tesla sentiment data"):
+            with st.spinner("Fetching TSLA data..."):
+                try:
+                    run_pipeline("TSLA")
+                    fetch_news_sentiment("TSLA")
+                    try:
+                        fetch_twitter_sentiment("TSLA", max_tweets=20, skip_rate_limit_wait=True)
+                    except Exception as e:
+                        st.warning("Twitter API limited, using sample data...")
+                        from scraping.twitter_scraper import create_sample_twitter_data
+                        create_sample_twitter_data("TSLA", num_tweets=15)
+                    st.success("✅ TSLA data ready! Check Dashboard tab.")
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
+    
+    with quick_col2:
+        if st.button("🔥 Analyze NVDA", use_container_width=True, help="Get NVIDIA sentiment data"):
+            with st.spinner("Fetching NVDA data..."):
+                try:
+                    run_pipeline("NVDA")
+                    fetch_news_sentiment("NVDA")
+                    try:
+                        fetch_twitter_sentiment("NVDA", max_tweets=20, skip_rate_limit_wait=True)
+                    except Exception as e:
+                        st.warning("Twitter API limited, using sample data...")
+                        from scraping.twitter_scraper import create_sample_twitter_data
+                        create_sample_twitter_data("NVDA", num_tweets=15)
+                    st.success("✅ NVDA data ready! Check Dashboard tab.")
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
+        
+        if st.button("💻 Analyze MSFT", use_container_width=True, help="Get Microsoft sentiment data"):
+            with st.spinner("Fetching MSFT data..."):
+                try:
+                    run_pipeline("MSFT")
+                    fetch_news_sentiment("MSFT")
+                    try:
+                        fetch_twitter_sentiment("MSFT", max_tweets=20, skip_rate_limit_wait=True)
+                    except Exception as e:
+                        st.warning("Twitter API limited, using sample data...")
+                        from scraping.twitter_scraper import create_sample_twitter_data
+                        create_sample_twitter_data("MSFT", num_tweets=15)
+                    st.success("✅ MSFT data ready! Check Dashboard tab.")
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
+    
+    st.markdown("---")
+    
+    # Workspace management actions
+    st.write("**🗂️ Data Management:**")
+    
+    # Refresh data action
+    if st.button("🔄 Refresh All Data", use_container_width=True, help="Reload data from files"):
+        st.rerun()
+        st.success("✅ Data refreshed!")
+    
+    # Clear data with confirmation
+    if st.button("🗑️ Clear All Data", use_container_width=True, type="secondary", help="Delete all stored sentiment data"):
+        st.warning("⚠️ This will delete ALL your sentiment data!")
+        if st.button("⚠️ Yes, Delete Everything", key="confirm_delete", type="secondary"):
             try:
+                import glob
                 for file in glob.glob("data/*.json"):
                     os.remove(file)
                 st.success("✅ All data cleared!")
@@ -237,7 +316,28 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"❌ Error: {e}")
     
-    st.markdown("---")
+    # Export all data
+    if tickers:
+        st.write("**📤 Export Options:**")
+        if st.button("📋 Export All as CSV", use_container_width=True, help="Download all sentiment data"):
+            # Combine all ticker data into one CSV
+            all_data = []
+            for ticker in tickers:
+                ticker_df = load_dataframes(ticker)
+                if not ticker_df.empty:
+                    ticker_df['ticker'] = ticker
+                    all_data.append(ticker_df)
+            
+            if all_data:
+                combined_data = pd.concat(all_data, ignore_index=True)
+                csv = combined_data.to_csv(index=False)
+                st.download_button(
+                    label="💾 Download Combined Data",
+                    data=csv,
+                    file_name="all_stocks_sentiment_data.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
     
     # === STEP 5: HELP ===
     with st.expander("❓ How to Use StockScope"):
@@ -497,15 +597,130 @@ if 'df' in locals() and not df.empty:
             fig_bar.update_layout(xaxis_title="Date", yaxis_title="Number of Posts")
             st.plotly_chart(fig_bar, use_container_width=True)
         
-        # Word cloud section
-        st.subheader("☁️ Trending Topics")
-        combined_text = " ".join(df_filtered["title"].dropna().tolist())
-        if combined_text and len(combined_text) > 10:
-            fig_wordcloud = generate_wordcloud_for_streamlit(combined_text, title="Most Discussed Topics")
-            if fig_wordcloud:
-                st.pyplot(fig_wordcloud)
-        else:
-            st.info("💡 Not enough text data for word cloud generation")
+        # === NEW EXCITING VISUALIZATIONS SECTION ===
+        st.markdown("---")
+        
+        # Sentiment Gauge - Hero visualization
+        gauge_col1, gauge_col2 = st.columns([3, 1])
+        
+        with gauge_col1:
+            st.subheader("🎯 Market Sentiment Health")
+            gauge_fig = create_sentiment_gauge(df_filtered)
+            if gauge_fig:
+                st.plotly_chart(gauge_fig, use_container_width=True)
+        
+        with gauge_col2:
+            with st.expander("📖 How to Read", expanded=False):
+                st.markdown("""
+                **Sentiment Scale:**
+                - 🟢 **75-100**: Very Bullish
+                - 🟡 **25-75**: Neutral
+                - 🔴 **0-25**: Very Bearish
+                
+                **Based on:** Average compound sentiment score across all posts (-1 to +1 scale)
+                """)
+        
+        # Advanced visualizations in tabs
+        viz_tab1, viz_tab2, viz_tab3, viz_tab4 = st.tabs([
+            "📈 Advanced Timeline", 
+            "🔥 Trending Topics", 
+            "⚡ Engagement Analysis", 
+            "🎯 Source Comparison"
+        ])
+        
+        with viz_tab1:
+            timeline_col1, timeline_col2 = st.columns([4, 1])
+            
+            with timeline_col1:
+                st.markdown("**📊 Advanced Sentiment & Volume Timeline**")
+                timeline_fig = create_sentiment_timeline_advanced(df_filtered)
+                if timeline_fig:
+                    st.plotly_chart(timeline_fig, use_container_width=True)
+                else:
+                    st.info("Need more data points for timeline analysis")
+            
+            with timeline_col2:
+                st.info("💡 **Chart Guide:**")
+                st.markdown("""
+                **Top Chart:** Sentiment trends
+                - Green dashed = Bullish zone (>0.1)
+                - Red dashed = Bearish zone (<-0.1)
+                - Gray dotted = Neutral (0)
+                
+                **Bottom Chart:** Post volume
+                - Higher bars = More discussion
+                """)
+        
+        with viz_tab2:
+            col_trend1, col_trend2 = st.columns(2)
+            
+            with col_trend1:
+                st.markdown("**🔥 Hot Keywords & Topics**")
+                trending_fig = create_trending_topics_bar(df_filtered)
+                if trending_fig:
+                    st.plotly_chart(trending_fig, use_container_width=True)
+                    st.caption("💡 Shows frequency of stock-related keywords in discussions")
+                else:
+                    st.info("Not enough keyword data available")
+            
+            with col_trend2:
+                st.markdown("**📅 Sentiment Heatmap**")
+                heatmap_fig = create_sentiment_heatmap(df_filtered)
+                if heatmap_fig:
+                    st.plotly_chart(heatmap_fig, use_container_width=True)
+                    st.caption("💡 Darker green = More positive sentiment at that time")
+                else:
+                    st.info("Need more time-distributed data")
+        
+        with viz_tab3:
+            engagement_col1, engagement_col2 = st.columns([3, 1])
+            
+            with engagement_col1:
+                st.markdown("**⚡ Engagement vs Sentiment Analysis**")
+                st.caption("See how engagement (upvotes/likes) correlates with sentiment")
+                scatter_fig = create_engagement_vs_sentiment_scatter(df_filtered)
+                if scatter_fig:
+                    st.plotly_chart(scatter_fig, use_container_width=True)
+                else:
+                    st.info("Need engagement data for this analysis")
+            
+            with engagement_col2:
+                with st.expander("📊 Reading Tips"):
+                    st.markdown("""
+                    **X-axis:** Sentiment score
+                    **Y-axis:** Engagement (upvotes/likes)
+                    
+                    **Look for:**
+                    - 🔥 High engagement + positive sentiment = Bullish momentum
+                    - ⚠️ High engagement + negative sentiment = Bearish concern
+                    - 😴 Low engagement = Limited interest
+                    """)
+        
+        with viz_tab4:
+            radar_col1, radar_col2 = st.columns([3, 1])
+            
+            with radar_col1:
+                st.markdown("**🎯 Multi-Source Performance Radar**")
+                st.caption("Compare sentiment metrics across Reddit, Twitter, and News")
+                radar_fig = create_source_comparison_radar(df_filtered)
+                if radar_fig:
+                    st.plotly_chart(radar_fig, use_container_width=True)
+                else:
+                    st.info("Need data from multiple sources for comparison")
+            
+            with radar_col2:
+                with st.expander("🎯 Radar Guide"):
+                    st.markdown("""
+                    **Each line** = One data source
+                    
+                    **Axes:**
+                    - **Avg Sentiment:** How positive/negative
+                    - **Volatility:** How much sentiment varies
+                    - **Volume:** Number of posts
+                    - **Engagement:** Average likes/upvotes
+                    
+                    **Bigger shape** = Better overall performance
+                    """)
         
         # Enhanced data table
         st.subheader("📋 Detailed Data")
@@ -539,11 +754,11 @@ if 'df' in locals() and not df.empty:
     else:
         st.info("🔍 No data matches your current filters. Try adjusting the criteria.")
 else:
-    # Welcome message for new users
+    # Welcome message for new users - Dark mode compatible
     st.markdown("""
-    <div style="text-align: center; padding: 2rem; background: #f8f9fa; border-radius: 10px; margin: 2rem 0;">
-        <h2>👋 Welcome to StockScope!</h2>
-        <p>Get started by fetching sentiment data for your favorite stocks.</p>
-        <p>Use the <strong>"Fetch Data"</strong> tab to analyze a stock ticker.</p>
+    <div style="text-align: center; padding: 2rem; background: rgba(100, 100, 100, 0.1); border: 2px solid rgba(100, 100, 100, 0.3); border-radius: 10px; margin: 2rem 0;">
+        <h2 style="color: inherit;">👋 Welcome to StockScope!</h2>
+        <p style="color: inherit;">Get started by fetching sentiment data for your favorite stocks.</p>
+        <p style="color: inherit;">Use the <strong>"Fetch Data"</strong> tab to analyze a stock ticker.</p>
     </div>
     """, unsafe_allow_html=True)

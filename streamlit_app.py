@@ -11,6 +11,9 @@ from scraping.news_scraper import fetch_news_sentiment
 from scraping.twitter_scraper import fetch_twitter_sentiment
 from visualizations.plot_sentiment import generate_wordcloud_for_streamlit
 
+# Initialize an empty DataFrame for `df`
+df = pd.DataFrame()
+
 # Page configuration
 st.set_page_config(
     page_title="StockScope", 

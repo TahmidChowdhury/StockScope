@@ -8,7 +8,7 @@ from datetime import datetime
 # Load environment variables from .env
 load_dotenv()
 
-NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 BASE_URL = "https://newsapi.org/v2/everything"
 
 analyzer = SentimentIntensityAnalyzer()
@@ -42,7 +42,7 @@ def fetch_news_sentiment(ticker, limit=20):
         "language": "en",
         "pageSize": limit,
         "sortBy": "publishedAt",
-        "apiKey": NEWSAPI_KEY
+        "apiKey": NEWS_API_KEY
     }
 
     response = requests.get(BASE_URL, params=params)

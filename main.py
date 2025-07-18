@@ -1,7 +1,8 @@
 # main.py
 
 from scraping.reddit_scraper import fetch_reddit_posts
-from scraping.twitter_scraper import fetch_twitter_sentiment
+# from scraping.twitter_scraper import fetch_twitter_sentiment  # COMMENTED OUT - Twitter API disabled until paid access
+from scraping.sec_scraper import fetch_sec_sentiment
 from sentiment.analyzer import analyze_sentiment
 from datetime import datetime
 import json
@@ -35,7 +36,7 @@ def run_pipeline(ticker: str, limit=20):
 
     return output_path  # return the path so Streamlit can load it
 
-def run_full_pipeline(ticker: str, reddit_limit=20, twitter_limit=50):
+def run_full_pipeline(ticker: str, reddit_limit=20, twitter_limit=50, sec_limit=10):
     """Run the complete data pipeline for all sources"""
     results = {}
     
@@ -43,19 +44,32 @@ def run_full_pipeline(ticker: str, reddit_limit=20, twitter_limit=50):
     try:
         reddit_path = run_pipeline(ticker, limit=reddit_limit)
         results['reddit'] = reddit_path
-        print(f"✅ Reddit data saved to {reddit_path}")
+        print(f"[SUCCESS] Reddit data saved to {reddit_path}")
     except Exception as e:
-        print(f"❌ Reddit scraping failed: {e}")
+        print(f"[ERROR] Reddit scraping failed: {e}")
         results['reddit'] = None
     
-    # Fetch Twitter data
+    # Twitter data - COMMENTED OUT until paid API access
+    # try:
+    #     twitter_path = fetch_twitter_sentiment(ticker, max_tweets=twitter_limit)
+    #     results['twitter'] = twitter_path
+    #     if twitter_path:
+    #         print(f"[SUCCESS] Twitter data saved to {twitter_path}")
+    # except Exception as e:
+    #     print(f"[ERROR] Twitter scraping failed: {e}")
+    #     results['twitter'] = None
+    
+    print("[WARNING] Twitter API disabled - upgrade to paid access to enable Twitter sentiment analysis")
+    results['twitter'] = None
+    
+    # Fetch SEC data
     try:
-        twitter_path = fetch_twitter_sentiment(ticker, max_tweets=twitter_limit)
-        results['twitter'] = twitter_path
-        if twitter_path:
-            print(f"✅ Twitter data saved to {twitter_path}")
+        sec_path = fetch_sec_sentiment(ticker, limit=sec_limit)
+        results['sec'] = sec_path
+        if sec_path:
+            print(f"[SUCCESS] SEC data saved to {sec_path}")
     except Exception as e:
-        print(f"❌ Twitter scraping failed: {e}")
-        results['twitter'] = None
+        print(f"[ERROR] SEC scraping failed: {e}")
+        results['sec'] = None
     
     return results

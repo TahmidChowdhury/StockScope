@@ -1,337 +1,411 @@
-# 📊 StockScope
+# StockScope Pro - Live Stock Sentiment Analysis Platform
 
-**StockScope** is a comprehensive multi-source stock sentiment analyzer that aggregates public sentiment from Reddit, Twitter, and financial news in real-time. Built with Python, VADER NLP, and Streamlit, this platform provides instant sentiment analysis and visualization for any stock ticker across multiple data sources.
-
----
-
-## 🌟 Key Features
-
-### 📱 **Multi-Source Data Collection**
-- 🔴 **Reddit Analysis**: Scrapes r/stocks, r/wallstreetbets, and other financial subreddits
-- 🐦 **Twitter Sentiment**: Real-time tweet analysis using Twitter API v2
-- 📰 **Financial News**: Sentiment analysis from multiple news sources
-- 🔄 **Unified Dashboard**: All sources combined in one comprehensive view
-
-### 🧠 **Advanced Analytics**
-- 💬 **VADER Sentiment Analysis**: Professional-grade NLP for accurate sentiment scoring
-- 📊 **Interactive Visualizations**: Dynamic charts, trends, and distributions
-- ☁️ **Word Clouds**: Visual representation of trending topics and keywords
-- 🎯 **Smart Filtering**: Filter by source, sentiment, date range, and more
-
-### ⚡ **Enhanced User Experience**
-- 🚀 **One-Click Analysis**: Instant data fetching and processing
-- 📈 **Real-Time Updates**: Live sentiment tracking and updates
-- 💾 **Data Export**: Download results as CSV for further analysis
-- 🎨 **Modern UI**: Clean, responsive design with gradient themes
-- 📱 **Mobile Friendly**: Works seamlessly on all devices
-
-### 🛡️ **Robust Infrastructure**
-- ⚠️ **Rate Limit Handling**: Automatic fallback and retry mechanisms
-- 🔄 **Error Recovery**: Graceful handling of API failures
-- 📊 **Sample Data**: Testing mode when APIs are unavailable
-- 🔒 **Secure**: Environment-based credential management
+**StockScope Pro** is a comprehensive real-time stock sentiment analysis platform that combines social media sentiment, financial news analysis, and SEC filings to provide AI-powered investment recommendations. Built with Python and featuring a modern dark-themed Streamlit dashboard with live data capabilities.
 
 ---
 
-## 🚀 How It Works
+## SECURITY & DISCLAIMER
 
-1. **Enter Stock Ticker**: Type any stock symbol (e.g., `TSLA`, `AAPL`, `NVDA`)
-2. **Fetch & Analyze**: Click to start multi-source data collection
-3. **Real-Time Processing**: StockScope will simultaneously:
-   - 🔴 Scrape Reddit for recent discussions
-   - 🐦 Fetch Twitter sentiment from recent tweets
-   - 📰 Analyze financial news articles
-   - 🧠 Process sentiment using advanced NLP
-   - 💾 Save structured data to JSON files
-4. **Interactive Dashboard**: Explore results with:
-   - 📊 Sentiment distribution charts
-   - 📈 Timeline trends across all sources
-   - ☁️ Word clouds of trending topics
-   - 📋 Detailed data tables with filtering
+### Security Notice
+- **API Key Protection**: Never commit API keys to version control. Use .env files (included in .gitignore)
+- **Environment Variables**: Copy .env.example to .env and add your actual API keys
+- **Private Repository**: Keep your repository private if it contains sensitive configuration
+- **Sample Data**: Application works with sample data if no API keys are provided
+
+### Important Disclaimers
+- **Educational Purpose**: This tool is for educational and research purposes only
+- **Not Financial Advice**: Do not use as sole basis for investment decisions
+- **Market Risk**: All investments carry risk of loss
+- **Data Accuracy**: Verify all data independently before making investment decisions
+- **Professional Consultation**: Consult with qualified financial professionals for investment advice
 
 ---
 
-## 🧰 Tech Stack
+## Key Features
 
-### **Backend**
-- **Python 3.9+** - Core application logic
-- **PRAW** - Reddit API integration
-- **Tweepy** - Twitter API v2 client
-- **VADER Sentiment** - Advanced sentiment analysis
+### Live Data Management
+- **Auto-refresh**: Automatically updates data every 15-240 minutes
+- **Manual refresh**: Update individual stocks or entire portfolio on demand
+- **Add new stocks**: Dynamically expand your portfolio with any ticker
+- **Real-time progress**: Live status updates during data collection
+- **Individual management**: Refresh, analyze, or remove specific stocks
+
+### AI Investment Advisor
+- **Smart Recommendations**: Get BUY/SELL/HOLD signals with confidence scores
+- **Risk Assessment**: Automatic risk level analysis (LOW/MEDIUM/HIGH)
+- **Detailed Analysis**: Comprehensive breakdown of key factors and risks
+- **Interactive Charts**: Sentiment distribution and source breakdown visualizations
+- **Position Sizing**: Suggested investment amounts based on risk levels
+
+### Multi-Source Sentiment Intelligence
+- **Reddit Analysis**: Scrapes r/stocks, r/wallstreetbets, r/investing, and r/SecurityAnalysis
+- **Financial News**: Professional news source sentiment analysis via NewsAPI
+- **SEC Filings**: Official regulatory document analysis
+- **VADER NLP**: Advanced sentiment scoring and classification
+
+### Professional Dashboard
+- **Dark Theme**: Modern, professional interface optimized for extended use
+- **Responsive Grid**: Clean card-based layout for multiple stocks
+- **Performance Analytics**: Multi-stock comparison and trend analysis
+- **Export Capabilities**: Download analysis data as CSV
+- **Mobile Friendly**: Responsive design for all devices
+
+### Enhanced Visualizations
+- **Sentiment Timeline**: Track sentiment trends over time
+- **Source Distribution**: Compare Reddit vs News vs SEC data
+- **Performance Dashboard**: Multi-stock comparison charts
+- **Interactive Cards**: Expandable analysis and advice panels
+
+---
+
+## What Makes StockScope Pro Special?
+
+Think of StockScope Pro as your **personal investment research assistant** that:
+
+1. **Listens** to what people are saying about stocks on social media and news
+2. **Analyzes** official SEC filings and regulatory documents
+3. **Processes** thousands of data points using AI sentiment analysis
+4. **Recommends** exactly what to buy, sell, or hold with detailed reasoning
+5. **Updates** automatically to keep your analysis current
+
+### Live Data Features
+
+**Before**: Static analysis of old data  
+**After**: "Auto-refresh enabled - TSLA updated 5 minutes ago with 50 new posts"
+
+- **Real-time Updates**: Never miss important market sentiment shifts
+- **Expandable Portfolio**: Add any stock ticker instantly
+- **Smart Notifications**: Know when your data is refreshed
+- **Bulk Operations**: Manage your entire portfolio efficiently
+
+---
+
+## Tech Stack
+
+### Core Platform
+- **Streamlit** - Modern web application framework
+- **Plotly** - Interactive financial charts and visualizations
+- **Pandas** - Advanced data manipulation and analysis
+- **NumPy** - Numerical computing for financial calculations
+
+### Data Collection
+- **PRAW** - Reddit API integration for social sentiment
+- **NewsAPI** - Professional news source integration
+- **SEC API** - Official regulatory document access
+- **Requests** - HTTP client for web scraping
+
+### Analysis Engine
+- **VADER Sentiment** - Advanced NLP sentiment analysis
 - **Python-dotenv** - Environment variable management
-
-### **Frontend & Visualization**
-- **Streamlit** - Interactive web dashboard
-- **Plotly** - Dynamic, interactive charts
-- **Matplotlib** - Word cloud generation
-- **Pandas** - Data manipulation and analysis
-
-### **APIs & Data Sources**
-- **Reddit API** - Real-time social sentiment
-- **Twitter API v2** - Social media sentiment tracking
-- **News APIs** - Financial news sentiment analysis
+- **JSON** - Data storage and processing
+- **DateTime** - Time-based analysis and filtering
 
 ---
 
-## 🛠️ Setup Instructions
+## Quick Start Guide
 
-### 1. Clone the Repository
+### 1. Installation
 
 ```bash
 git clone https://github.com/TahmidChowdhury/StockScope.git
 cd StockScope
-```
-
-### 2. Create Virtual Environment (Recommended)
-
-```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-### 3. Install Dependencies
-
-```bash
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 4. Set Up API Credentials
+### 2. API Setup (Optional - works with sample data)
 
-Create a `.env` file in your project root with the following credentials:
+Copy the example environment file:
+```bash
+cp .env.example .env
+```
 
+Edit `.env` file with your API keys:
 ```env
-# Reddit API Credentials
-REDDIT_CLIENT_ID=your_reddit_client_id
-REDDIT_CLIENT_SECRET=your_reddit_client_secret
-REDDIT_USERNAME=your_reddit_username
-REDDIT_PASSWORD=your_reddit_password
-REDDIT_USER_AGENT=StockScope/1.0
+# Reddit API (optional)
+REDDIT_CLIENT_ID=your_client_id
+REDDIT_CLIENT_SECRET=your_secret
+REDDIT_USERNAME=your_username
+REDDIT_PASSWORD=your_password
+REDDIT_USER_AGENT=StockScope/2.0
 
-# Twitter API Credentials
-TWITTER_API_KEY=your_twitter_api_key
-TWITTER_API_SECRET=your_twitter_api_secret
-TWITTER_BEARER_TOKEN=your_twitter_bearer_token
+# News API (optional)
+NEWS_API_KEY=your_news_key
 
-# News API Credentials (Optional)
-NEWS_API_KEY=your_news_api_key
+# Twitter API (optional)
+TWITTER_BEARER_TOKEN=your_bearer_token
 ```
 
-#### 🔑 **Getting API Keys:**
-
-**Reddit API:**
-1. Go to [reddit.com/prefs/apps](https://reddit.com/prefs/apps)
-2. Create a new application (script type)
-3. Copy your client ID and secret
-
-**Twitter API:**
-1. Apply at [developer.twitter.com](https://developer.twitter.com)
-2. Create a new project/app
-3. Generate your Bearer Token and API keys
-
-**News API (Optional):**
-1. Sign up at [newsapi.org](https://newsapi.org)
-2. Get your free API key
-
----
-
-## 🖥️ Running the Application
-
-### Start the Streamlit Dashboard
+### 3. Launch StockScope Pro
 
 ```bash
-streamlit run streamlit_app.py
+streamlit run app.py
 ```
 
-Then open your browser and navigate to `http://localhost:8501`
+Open `http://localhost:8501` and start analyzing!
 
-### Command Line Testing
+---
 
-Test individual components:
+## Dashboard Walkthrough
 
-```bash
-# Test Reddit scraper
-python scraping/reddit_scraper.py
+### Main Dashboard
+- **Stock Portfolio Grid**: Visual cards showing all analyzed stocks
+- **Performance Tab**: Multi-stock comparison and trend analysis
+- **Recommendations Tab**: AI-generated investment suggestions
+- **Live Status**: Real-time data refresh information
 
-# Test Twitter scraper
-python scraping/twitter_scraper.py
+### Investment Advice
+1. **Click "Get Advice"** on any stock card
+2. **View Recommendation**: BUY/HOLD/SELL with confidence score
+3. **Analyze Risk Factors**: Detailed breakdown of investment considerations
+4. **Review Charts**: Sentiment distribution and source analysis
 
-# Test News scraper
-python scraping/news_scraper.py
+### Analysis Features
+- **Sentiment Timeline**: Track how sentiment changes over time
+- **Source Breakdown**: See data from Reddit, News, and SEC
+- **Recent Activity**: Latest posts and discussions
+- **Export Data**: Download analysis as CSV
 
-# Run full pipeline
-python main.py
+### Live Data Management
+- **Auto-refresh Toggle**: Set automatic updates (15-240 minutes)
+- **Add New Stocks**: Instantly expand your portfolio
+- **Individual Refresh**: Update specific stocks on demand
+- **Bulk Operations**: Manage entire portfolio efficiently
+
+---
+
+## How the AI Analysis Works
+
+### Step 1: Multi-Source Data Collection
+- **Reddit**: Scrapes financial subreddits for community sentiment
+- **News**: Analyzes professional financial news articles
+- **SEC**: Processes official regulatory filings
+- **Real-time**: Continuously updates with fresh data
+
+### Step 2: Advanced Sentiment Analysis
+- **VADER NLP**: Analyzes text sentiment with high accuracy
+- **Confidence Scoring**: Measures reliability of sentiment signals
+- **Trend Analysis**: Identifies improving/declining sentiment patterns
+- **Source Weighting**: Balances different data sources appropriately
+
+### Step 3: AI Recommendation Engine
+- **Multi-factor Analysis**: Combines sentiment, volume, and recency
+- **Risk Assessment**: Evaluates investment risk levels
+- **Confidence Metrics**: Transparent scoring system
+- **Detailed Reasoning**: Explains every recommendation
+
+### Step 4: Interactive Visualization
+- **Real-time Charts**: Live updating visualizations
+- **Comparative Analysis**: Multi-stock performance comparison
+- **Export Capabilities**: Download data for further analysis
+- **Mobile Responsive**: Works on all devices
+
+---
+
+## Sample Investment Analysis
+
+**Example: Analyzing NVDA with live data**
+
 ```
+[STRONG BUY] - NVIDIA (NVDA)
+Score: 92/100 | Confidence: 87%
+Risk Level: MEDIUM | Time Horizon: Short-term
 
----
+Key Factors:
+• Average sentiment: 0.342 (strongly positive)
+• Total discussions: 83 posts
+• Positive sentiment: 64 posts (77.1%)
+• Recent trend: Improving
+• Data quality: High (multiple sources)
 
-## 📊 Dashboard Features
+Data Sources:
+• Reddit: 83 posts from financial subreddits
+• News: 20 recent articles
+• SEC: 6 regulatory filings
 
-### **Main Dashboard**
-- 📈 **Real-time metrics**: Total posts, source breakdown, average sentiment
-- 🥧 **Sentiment distribution**: Visual pie chart of positive/negative/neutral sentiment
-- 📊 **Trend analysis**: Timeline showing sentiment changes over time
-- ☁️ **Word clouds**: Most discussed topics and keywords
-
-### **Advanced Filtering**
-- 📅 **Date Range**: Filter data by specific time periods
-- 📊 **Source Selection**: Include/exclude Reddit, Twitter, or News
-- 🎯 **Sentiment Filtering**: Focus on positive, negative, or neutral content
-- 🔍 **Interactive Search**: Real-time data exploration
-
-### **Data Management**
-- 💾 **Export Options**: Download analysis results as CSV
-- 🔄 **Refresh Controls**: Update data with force refresh options
-- 🗂️ **Data Persistence**: Automatic saving of analysis results
-- 📋 **Detailed Views**: Expandable data tables with full content
-
----
-
-## 🧪 Example Analysis
-
-Here's what you get when analyzing a stock like `TSLA`:
-
-**Sample Output:**
-- **Reddit Posts**: 45 discussions from multiple subreddits
-- **Twitter Mentions**: 30 recent tweets with engagement metrics
-- **News Articles**: 12 financial news pieces
-- **Overall Sentiment**: 65% Positive, 25% Neutral, 10% Negative
-- **Trending Topics**: "earnings", "innovation", "market volatility"
-
----
-
-## 🔧 Advanced Configuration
-
-### Rate Limiting & Error Handling
-- **Automatic Retry**: Built-in retry logic for API failures
-- **Fallback Data**: Sample data generation when APIs are unavailable
-- **Rate Limit Management**: Intelligent handling of API quotas
-
-### Customization Options
-- **Sentiment Thresholds**: Adjust positive/negative boundaries
-- **Data Sources**: Enable/disable specific platforms
-- **Sample Size**: Configure number of posts to analyze
-- **Time Windows**: Set analysis periods
-
----
-
-## 🛣️ Roadmap & Future Features
-
-### **Short Term**
-- [ ] Additional news sources integration
-- [ ] Enhanced sentiment model (BERT/RoBERTa)
-- [ ] Real-time price correlation analysis
-- [ ] Email/SMS sentiment alerts
-
-### **Medium Term**
-- [ ] Machine learning trend prediction
-- [ ] Portfolio sentiment tracking
-- [ ] Historical sentiment analysis
-- [ ] API endpoint for external integration
-
-### **Long Term**
-- [ ] Multi-language sentiment analysis
-- [ ] Cryptocurrency sentiment tracking
-- [ ] Cloud deployment (AWS/GCP)
-- [ ] Mobile application
-- [ ] User authentication and portfolios
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-### Development Setup
-```bash
-# Install development dependencies
-pip install -r requirements-dev.txt
-
-# Run tests
-python -m pytest tests/
-
-# Code formatting
-black src/
-isort src/
+Risk Assessment:
+• Standard market risks apply
+• Medium volatility expected
+• Strong community support
 ```
 
 ---
 
-## 📈 Performance & Limitations
+## Advanced Features
 
-### **Current Capabilities**
-- **Reddit**: ~50-100 posts per ticker
-- **Twitter**: ~20-50 tweets per request (rate limited)
-- **News**: ~10-20 articles per ticker
-- **Processing Speed**: ~30-60 seconds for full analysis
+### Live Data Management
+- **Auto-refresh Scheduling**: Set custom refresh intervals
+- **Progress Tracking**: Real-time status of data collection
+- **Error Handling**: Graceful handling of API failures
+- **Data Persistence**: Automatic saving of all analysis
 
-### **Known Limitations**
-- Twitter API free tier has strict rate limits (15 requests/15 minutes)
-- Reddit API requires authentication
-- Some news sources may require premium access
-- Real-time data depends on API availability
+### Portfolio Management
+- **Dynamic Addition**: Add any stock ticker instantly
+- **Individual Control**: Refresh or remove specific stocks
+- **Bulk Operations**: Manage entire portfolio efficiently
+- **Export Capabilities**: Download analysis as CSV
+
+### Analysis Tools
+- **Multi-timeframe Analysis**: Compare different time periods
+- **Source Filtering**: Focus on specific data sources
+- **Sentiment Thresholds**: Filter by sentiment strength
+- **Performance Comparison**: Multi-stock analysis
 
 ---
 
-## 🐛 Troubleshooting
+## Current Portfolio
+
+The platform currently tracks **12 stocks** with live data:
+
+### Tech Giants
+- **AAPL** (Apple) - Consumer electronics leader
+- **GOOGL** (Google) - Search and cloud computing
+- **MSFT** (Microsoft) - Software and cloud services
+- **META** (Meta) - Social media and metaverse
+- **NVDA** (NVIDIA) - AI and graphics processing
+- **TSLA** (Tesla) - Electric vehicles and energy
+
+### Growth Stocks
+- **AMZN** (Amazon) - E-commerce and cloud services
+- **PLTR** (Palantir) - Data analytics and AI
+- **RKLB** (Rocket Lab) - Space technology
+
+### Cryptocurrencies
+- **BTC** (Bitcoin) - Digital currency
+- **ETH** (Ethereum) - Blockchain platform
+- **DOGE** (Dogecoin) - Meme cryptocurrency
+
+*Add any stock instantly using the sidebar!*
+
+---
+
+## Requirements
+
+Our streamlined requirements.txt includes **essential packages**:
+
+### Core Platform
+```
+streamlit==1.45.0        # Web application framework
+plotly==6.0.1            # Interactive visualizations
+pandas==2.2.3            # Data manipulation
+numpy==2.0.2             # Numerical computing
+```
+
+### Data Collection
+```
+praw==7.8.1              # Reddit API client
+requests==2.32.3         # HTTP client
+beautifulsoup4==4.13.4   # Web scraping
+python-dotenv==1.0.1     # Environment variables
+```
+
+### Analysis Engine
+```
+vaderSentiment==3.3.2    # Sentiment analysis
+lxml==5.3.0              # XML/HTML parsing
+```
+
+---
+
+## Troubleshooting
 
 ### Common Issues
 
-**"Rate limit exceeded"**
-- Wait 15 minutes for Twitter API reset
-- Use sample data mode for testing
-
-**"Authentication failed"**
-- Check your `.env` file credentials
-- Ensure API keys are valid and active
-
-**"No data found"**
-- Try different stock tickers
-- Check if APIs are accessible
-- Use force refresh option
-
-**Installation Issues**
+**"Module not found" errors:**
 ```bash
-# Update pip
 pip install --upgrade pip
+pip install -r requirements.txt
+```
 
-# Install with verbose output
-pip install -r requirements.txt -v
+**App not loading:**
+```bash
+streamlit run app.py --server.port 8501
+```
 
-# Clear cache if needed
-pip cache purge
+**Data not updating:**
+- Check internet connection
+- Verify API keys in .env file
+- Use manual refresh button
+
+**Charts not displaying:**
+```bash
+pip install plotly --upgrade
+streamlit cache clear
 ```
 
 ---
 
-## 📄 License
+## Roadmap
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+### Phase 1: Enhanced Analytics
+- [ ] Technical indicators integration
+- [ ] Price data correlation
+- [ ] Volatility analysis
+- [ ] Risk-adjusted returns
+
+### Phase 2: Advanced Features
+- [ ] Real-time alerts and notifications
+- [ ] Custom watchlists
+- [ ] Performance tracking
+- [ ] Backtesting capabilities
+
+### Phase 3: Professional Tools
+- [ ] Portfolio optimization
+- [ ] API endpoints
+- [ ] Multi-user support
+- [ ] Advanced reporting
 
 ---
 
-## 🙏 Acknowledgments
+## Contributing
 
-- **VADER Sentiment Analysis** - For robust sentiment analysis
-- **Streamlit Team** - For the amazing web framework
-- **Reddit API** - For access to social sentiment data
-- **Twitter API** - For real-time social media insights
+We welcome contributions to make StockScope Pro even better!
+
+```bash
+# Development setup
+git clone https://github.com/TahmidChowdhury/StockScope.git
+cd StockScope
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Run the application
+streamlit run app.py
+
+# Submit changes
+git checkout -b feature/amazing-feature
+git commit -m "Add amazing feature"
+git push origin feature/amazing-feature
+```
 
 ---
 
-## 👨‍💻 Author
+## License
 
-**[Tahmid Chowdhury](https://github.com/TahmidChowdhury)**  
-🌐 Portfolio: [https://tahmidchowdhury.github.io/](https://tahmidchowdhury.github.io/)  
+MIT License - Use this code to build amazing investment tools!
+
+---
+
+## Acknowledgments
+
+- **Streamlit** - Making beautiful web apps simple
+- **Plotly** - Interactive visualization library
+- **PRAW** - Reddit API integration
+- **NewsAPI** - Professional news data
+- **VADER** - Robust sentiment analysis
+
+---
+
+## Created By
+
+**Tahmid Chowdhury**  
+Portfolio: https://tahmidchowdhury.github.io/ | GitHub: https://github.com/TahmidChowdhury
 
 ---
 
 <div align="center">
-  <p><strong>Built with 📊 Data, and ☕️ Coffee</strong></p>
-  <p><em>⭐ Star this repository if you found it useful!</em></p>
+  <h3>From Social Sentiment to Smart Investment Decisions</h3>
+  <p><strong>Star this repo if StockScope Pro helped your investment research!</strong></p>
+  <p><em>Built with Live Data, AI Analysis, and Coffee</em></p>
 </div>

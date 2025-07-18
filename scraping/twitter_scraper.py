@@ -55,15 +55,28 @@ def get_twitter_client():
         return None
 
 def check_rate_limits(client):
-    """Check current rate limit status"""
+    """Check current rate limit status with detailed information"""
     try:
-        # This is a simple way to check if we can make requests
+        # Try a simple API call to check if we can make requests
         response = client.get_me()
+        print("[SUCCESS] Twitter API rate limits OK")
         return True
-    except tweepy.TooManyRequests:
+    except tweepy.TooManyRequests as e:
+        print("[WARNING] Twitter API rate limit exceeded")
+        # Try to get rate limit info if available
+        if hasattr(e, 'response') and e.response:
+            reset_time = e.response.headers.get('x-rate-limit-reset')
+            if reset_time:
+                reset_datetime = datetime.fromtimestamp(int(reset_time))
+                time_until_reset = reset_datetime - datetime.now()
+                minutes_until_reset = max(0, int(time_until_reset.total_seconds() / 60))
+                print(f"[INFO] Rate limit resets in {minutes_until_reset} minutes ({reset_datetime.strftime('%H:%M:%S')})")
+        return False
+    except tweepy.Unauthorized:
+        print("[ERROR] Twitter API authentication failed. Check your credentials.")
         return False
     except Exception as e:
-        print(f"Error checking rate limits: {e}")
+        print(f"[WARNING] Error checking Twitter API status: {e}")
         return False
 
 def fetch_twitter_sentiment(ticker, max_tweets=20, skip_rate_limit_wait=False):
@@ -80,20 +93,25 @@ def fetch_twitter_sentiment(ticker, max_tweets=20, skip_rate_limit_wait=False):
     """
     client = get_twitter_client()
     if not client:
-        print("❌ Failed to initialize Twitter client")
-        return None
+        print("[ERROR] Failed to initialize Twitter client")
+        print("[INFO] Falling back to sample data...")
+        return create_sample_twitter_data(ticker, max_tweets)
     
     # Check if we're already rate limited
-    if not check_rate_limits(client) and skip_rate_limit_wait:
-        print("⚠️ Rate limited. Skipping Twitter data collection.")
-        return None
+    if not check_rate_limits(client):
+        if skip_rate_limit_wait:
+            print("[WARNING] Rate limited. Creating sample data instead...")
+            return create_sample_twitter_data(ticker, max_tweets)
+        else:
+            print("[INFO] Consider waiting for rate limit to reset, or use sample data")
+            return None
     
     # Create search query for the ticker (no $ symbol for basic API)
     query = f"({ticker} stock OR {ticker} shares OR \"{ticker}\" trading) -is:retweet lang:en"
     
     tweets = []
     try:
-        print(f"🔍 Searching for tweets about {ticker}...")
+        print(f"[INFO] Searching for tweets about {ticker}...")
         
         # Reduce max_results to stay within rate limits
         max_results = min(max_tweets, 30)  # Lower limit for free tier
@@ -108,18 +126,14 @@ def fetch_twitter_sentiment(ticker, max_tweets=20, skip_rate_limit_wait=False):
         )
         
         if not response.data:
-            print(f"⚠️ No tweets found for {ticker}")
-            # Create empty file to avoid errors in Streamlit
-            os.makedirs("data", exist_ok=True)
-            output_path = os.path.join("data", f"{ticker}_twitter_sentiment.json")
-            with open(output_path, "w") as f:
-                json.dump([], f)
-            return output_path
+            print(f"[WARNING] No tweets found for {ticker}")
+            print("[INFO] Creating sample data since no real tweets found...")
+            return create_sample_twitter_data(ticker, max_tweets)
         
         # Get user data for usernames
         users = {user.id: user.username for user in response.includes.get('users', [])} if response.includes else {}
         
-        print(f"📊 Processing {len(response.data)} tweets...")
+        print(f"[INFO] Processing {len(response.data)} tweets...")
         
         for tweet in response.data:
             # Analyze sentiment
@@ -152,19 +166,21 @@ def fetch_twitter_sentiment(ticker, max_tweets=20, skip_rate_limit_wait=False):
             })
             
     except tweepy.TooManyRequests:
-        print(f"⚠️ Rate limit reached for Twitter API.")
+        print(f"[WARNING] Rate limit reached during Twitter API request for {ticker}")
         if skip_rate_limit_wait:
-            print("Skipping Twitter data collection due to rate limits.")
-            return None
+            print("[INFO] Automatically creating sample data instead...")
+            return create_sample_twitter_data(ticker, max_tweets)
         else:
-            print("Consider waiting 15 minutes before trying again.")
+            print("[INFO] Try again in 15 minutes, or use sample data")
             return None
     except tweepy.Unauthorized:
-        print("❌ Twitter API authentication failed. Check your credentials.")
-        return None
+        print("[ERROR] Twitter API authentication failed. Check your credentials.")
+        print("[INFO] Creating sample data instead...")
+        return create_sample_twitter_data(ticker, max_tweets)
     except Exception as e:
-        print(f"❌ Error fetching tweets for {ticker}: {e}")
-        return None
+        print(f"[ERROR] Error fetching tweets for {ticker}: {e}")
+        print("[INFO] Creating sample data due to error...")
+        return create_sample_twitter_data(ticker, max_tweets)
     
     # Save to JSON file (even if empty)
     os.makedirs("data", exist_ok=True)
@@ -174,9 +190,9 @@ def fetch_twitter_sentiment(ticker, max_tweets=20, skip_rate_limit_wait=False):
         json.dump(tweets, f, indent=2, default=str)
     
     if tweets:
-        print(f"✅ Saved {len(tweets)} tweets for {ticker} to {output_path}")
+        print(f"[SUCCESS] Saved {len(tweets)} tweets for {ticker} to {output_path}")
     else:
-        print(f"⚠️ No tweets collected for {ticker}, saved empty file")
+        print(f"[WARNING] No tweets collected for {ticker}, saved empty file")
     
     return output_path
 
@@ -184,11 +200,11 @@ def create_sample_twitter_data(ticker, num_tweets=10):
     """
     Create sample Twitter data for testing when API is rate limited.
     """
-    print(f"🧪 Creating sample Twitter data for {ticker}...")
+    print(f"[INFO] Creating sample Twitter data for {ticker}...")
     
     sample_tweets = []
     sample_contents = [
-        f"{ticker} stock is looking bullish today! 🚀",
+        f"{ticker} stock is looking bullish today!",
         f"Just bought more {ticker} shares, great long-term investment",
         f"{ticker} earnings report disappointed investors",
         f"Thinking about selling my {ticker} position",
@@ -233,7 +249,7 @@ def create_sample_twitter_data(ticker, num_tweets=10):
     with open(output_path, "w") as f:
         json.dump(sample_tweets, f, indent=2, default=str)
     
-    print(f"✅ Created {len(sample_tweets)} sample tweets for {ticker}")
+    print(f"[SUCCESS] Created {len(sample_tweets)} sample tweets for {ticker}")
     return output_path
 
 def fetch_twitter_data(query, max_tweets=100):
@@ -283,17 +299,17 @@ def fetch_twitter_data(query, max_tweets=100):
 if __name__ == "__main__":
     # Example usage
     ticker = "TSLA"
-    print(f"🐦 Testing Twitter API for {ticker}...")
+    print(f"[INFO] Testing Twitter API for {ticker}...")
     result_path = fetch_twitter_sentiment(ticker, max_tweets=20)
     if result_path:
-        print(f"✅ Successfully analyzed Twitter sentiment for {ticker}")
+        print(f"[SUCCESS] Successfully analyzed Twitter sentiment for {ticker}")
         
         # Show a sample of the data
         with open(result_path, 'r') as f:
             data = json.load(f)
-            print(f"\n📊 Sample of {len(data)} tweets:")
+            print(f"\n[DATA] Sample of {len(data)} tweets:")
             for i, tweet in enumerate(data[:3]):
                 print(f"{i+1}. @{tweet['username']}: {tweet['content'][:100]}...")
                 print(f"   Sentiment: {tweet['sentiment_label']} ({tweet['sentiment']['compound']:.3f})")
     else:
-        print(f"❌ Failed to fetch Twitter data for {ticker}")
+        print(f"[ERROR] Failed to fetch Twitter data for {ticker}")

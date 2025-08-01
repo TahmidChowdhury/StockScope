@@ -67,7 +67,7 @@ def apply_dark_theme():
         border-right: 1px solid #4A4A4A;
     }
     
-    /* Card styling for dark theme */
+    /* Card styling for dark theme with better spacing */
     .pro-card {
         background-color: #262730;
         border: 1px solid #4A4A4A;
@@ -75,15 +75,69 @@ def apply_dark_theme():
         padding: 1.5rem;
         margin: 1rem 0;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+        word-wrap: break-word;
     }
     
-    /* Metrics styling */
+    /* Metrics styling with responsive layout */
     .metric-card {
         background-color: #262730;
         border-radius: 8px;
         padding: 1rem;
         margin: 0.5rem 0;
         border: 1px solid #4A4A4A;
+        min-height: 80px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+    
+    /* Stock grid improvements for better spacing */
+    .stock-grid-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 1.5rem;
+        padding: 1rem 0;
+    }
+    
+    .stock-card {
+        background-color: #262730;
+        border: 1px solid #4A4A4A;
+        border-radius: 12px;
+        padding: 1.5rem;
+        min-height: 400px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        overflow: hidden;
+    }
+    
+    /* Prevent text overflow in cards */
+    .stock-card h3, .stock-card h4 {
+        text-overflow: ellipsis;
+        overflow: hidden;
+        white-space: nowrap;
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Responsive metrics grid */
+    .metrics-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin: 1rem 0;
+    }
+    
+    /* Better button spacing and sizing */
+    .button-row {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: auto;
+        padding-top: 1rem;
+    }
+    
+    .button-row .stButton {
+        flex: 1;
     }
     
     /* Button styling */
@@ -94,6 +148,9 @@ def apply_dark_theme():
         border-radius: 8px;
         font-weight: 500;
         transition: all 0.2s ease;
+        width: 100%;
+        min-height: 40px;
+        font-size: 0.9rem;
     }
     
     .stButton > button:hover {
@@ -130,6 +187,7 @@ def apply_dark_theme():
         background-color: #262730;
         border: 1px solid #4A4A4A;
         border-radius: 8px;
+        margin: 0.5rem 0;
     }
     
     /* Text color */
@@ -140,6 +198,7 @@ def apply_dark_theme():
     /* Divider styling */
     .stDivider {
         border-color: #4A4A4A;
+        margin: 1rem 0;
     }
     
     /* Plotly chart background */
@@ -155,6 +214,78 @@ def apply_dark_theme():
     /* Progress bar styling */
     .stProgress > div > div {
         background-color: #667eea;
+    }
+    
+    /* Header metrics responsive layout */
+    .header-metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin: 1rem 0;
+    }
+    
+    /* Tabs styling improvements */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 1rem;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        padding: 0.75rem 1.5rem;
+        background-color: #262730;
+        border-radius: 8px;
+    }
+    
+    /* Mobile responsiveness */
+    @media (max-width: 768px) {
+        .stock-grid-container {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
+        
+        .metrics-row {
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 0.5rem;
+        }
+        
+        .header-metrics {
+            grid-template-columns: 1fr;
+            gap: 0.5rem;
+        }
+        
+        .button-row {
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        
+        .stButton > button {
+            font-size: 0.8rem;
+            padding: 0.5rem;
+        }
+    }
+    
+    /* Chart container improvements */
+    .chart-container {
+        background-color: #262730;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+        overflow: hidden;
+    }
+    
+    /* Prevent overflow in recommendation panels */
+    .recommendation-panel {
+        max-width: 100%;
+        overflow-x: auto;
+    }
+    
+    /* Improved spacing for analysis panels */
+    .analysis-panel {
+        background-color: #262730;
+        border: 1px solid #4A4A4A;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        overflow: hidden;
     }
     </style>
     """, unsafe_allow_html=True)

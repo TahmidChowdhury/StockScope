@@ -28,28 +28,51 @@ def fetch_reddit_posts(ticker, limit=50, days_back=90):
     """
     reddit = get_reddit_client()
     
-    # Comprehensive subreddit list organized by category
+    # Clean up duplicate subreddits and fix issues
     subreddits = [
         # Major investment communities
         "stocks", "wallstreetbets", "investing", "SecurityAnalysis",
         
-        # Growth/tech focused
+        # Growth/tech focused  
         "ValueInvesting", "GrowthInvesting", "investing_discussion",
         
         # Small caps and pennies (good for EOSE, RKLB)
         "smallcaps", "pennystocks", "RobinHoodPennyStocks",
         
-        # Specific sectors
-        "technology", "biotech", "energy", "EVs", "spacs",
+        # Specific sectors (removed broken ones)
+        "technology", "biotech", "energy", "spacs",
         
         # Options and active trading
-        "options", "thetagang", "SecurityAnalysis", "financialindependence",
+        "options", "thetagang", "financialindependence",
         
         # International and emerging
-        "SecurityAnalysis", "investing_discussion", "CanadianInvestor",
+        "CanadianInvestor", "UKInvesting", "EuropeFIRE", "AusFinance",
         
-        # Company-specific (will be filtered by ticker search)
-        "SecurityAnalysis", "business", "economy"
+        # Additional major investing communities
+        "StockMarket", "InvestmentClub", "portfolios", "dividends", 
+        "FIRE", "Bogleheads",
+        
+        # Sector-specific subreddits (removed broken ones)
+        "CleanEnergy", "RenewableEnergy", "solar", "ElectricVehicles", 
+        "TeslaInvestorsClub", "SpaceStocks", "aerospace",
+        
+        # ESG and sustainability focused
+        "ESGInvesting",
+        
+        # Meme and retail trader communities
+        "Superstonk", "DDintoGME", "amcstock", "CLOV", "SPCE", "SPACs",
+        
+        # Cryptocurrency (for companies with crypto exposure)
+        "CryptoCurrency", "BitcoinMarkets", "ethtrader",
+        
+        # News and discussion
+        "business", "economy", "Economics", "StockMarketChat",
+        
+        # Specific trading strategies
+        "GrowthStocks", "DividendGrowth", "REIT", "commodities",
+        
+        # Personal finance communities
+        "PersonalFinanceCanada", "SpaceXLounge", "SpaceXMasterrace"
     ]
     results = []
     

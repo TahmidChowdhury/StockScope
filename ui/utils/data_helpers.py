@@ -47,8 +47,10 @@ def load_dataframes(ticker):
         "sentiment": p.get("sentiment", {}).get("label", ""),
         "compound": p.get("sentiment", {}).get("compound", 0),
         "created_dt": pd.to_datetime(p.get("created"), errors="coerce"),
-        "source": "Reddit"
-    } for p in reddit_data]) if reddit_data else pd.DataFrame(columns=["title", "score", "subreddit", "sentiment", "compound", "created_dt", "source"])
+        "source": "Reddit",
+        "url": p.get("url", ""),
+        "source_name": None
+    } for p in reddit_data]) if reddit_data else pd.DataFrame(columns=["title", "score", "subreddit", "sentiment", "compound", "created_dt", "source", "url", "source_name"])
 
     # News DataFrame
     news_df = pd.DataFrame([{
@@ -58,8 +60,10 @@ def load_dataframes(ticker):
         "sentiment": n.get("sentiment", {}).get("label", ""),
         "compound": n.get("sentiment", {}).get("compound", 0),
         "created_dt": pd.to_datetime(n.get("publishedAt"), utc=True, errors="coerce").tz_convert(None) if n.get("publishedAt") else pd.NaT,
-        "source": "News"
-    } for n in news_data]) if news_data else pd.DataFrame(columns=["title", "score", "subreddit", "sentiment", "compound", "created_dt", "source"])
+        "source": "News",
+        "url": n.get("url", ""),
+        "source_name": n.get("source", "")
+    } for n in news_data]) if news_data else pd.DataFrame(columns=["title", "score", "subreddit", "sentiment", "compound", "created_dt", "source", "url", "source_name"])
 
     # SEC DataFrame
     sec_df = pd.DataFrame([{
@@ -69,8 +73,10 @@ def load_dataframes(ticker):
         "sentiment": s.get("sentiment", {}).get("label", ""),
         "compound": s.get("sentiment", {}).get("compound", 0),
         "created_dt": pd.to_datetime(s.get("filing_date"), errors="coerce"),
-        "source": "SEC"
-    } for s in sec_data]) if sec_data else pd.DataFrame(columns=["title", "score", "subreddit", "sentiment", "compound", "created_dt", "source"])
+        "source": "SEC",
+        "url": s.get("url", ""),
+        "source_name": "SEC EDGAR"
+    } for s in sec_data]) if sec_data else pd.DataFrame(columns=["title", "score", "subreddit", "sentiment", "compound", "created_dt", "source", "url", "source_name"])
 
     # Normalize and concatenate
     reddit_df["created_dt"] = pd.to_datetime(reddit_df["created_dt"], errors="coerce")
@@ -94,7 +100,7 @@ def load_dataframes(ticker):
     combined_df["source"] = combined_df["source"].apply(lambda x: "SEC" if x == "SEC" else x.capitalize() if pd.notna(x) else x)
     combined_df["created_dt"] = pd.to_datetime(combined_df["created_dt"], errors="coerce")
 
-    return combined_df if not combined_df.empty else pd.DataFrame(columns=["title", "score", "subreddit", "sentiment", "compound", "created_dt", "source"])
+    return combined_df if not combined_df.empty else pd.DataFrame(columns=["title", "score", "subreddit", "sentiment", "compound", "created_dt", "source", "url", "source_name"])
 
 def get_metric_description(metric):
     """Get description for investment metrics"""

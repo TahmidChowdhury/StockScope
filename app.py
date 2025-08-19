@@ -29,6 +29,7 @@ from scraping.news_scraper import fetch_news_sentiment
 from ui.pages.dashboard import render_dashboard_tab
 from ui.pages.quantitative_strategies import create_quantitative_strategies_page
 from ui.pages.investment_advice import render_investment_advice_tab
+from ui.pages.articles import render_articles_tab
 from ui.pages.about import render_about_tab
 
 # Initialize session state
@@ -537,6 +538,7 @@ def create_navigation():
         # Page selection
         pages = {
             "📊 Dashboard": "Dashboard",
+            "📰 Articles": "Articles",
             "🎯 Investment Advice": "Investment Advice",
             "📈 Quantitative Strategies": "Quantitative Strategies",
             "ℹ️ About": "About"
@@ -1119,6 +1121,9 @@ def main():
     
     elif st.session_state.current_page == "Quantitative Strategies":
         create_quantitative_strategies_page()
+    
+    elif st.session_state.current_page == "Articles":
+        render_articles_tab()
     
     elif st.session_state.current_page == "About":
         render_about_tab()

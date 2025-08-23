@@ -3,14 +3,13 @@
 import { useState, useEffect } from 'react'
 import StockSearch from '@/components/StockSearch'
 import StockDashboard from '@/components/StockDashboard'
+import type { ViewType, StockMetadata } from '@/types'
 
 // Get API URL from environment variables
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-type View = 'search' | 'dashboard'
-
 export default function Home() {
-  const [currentView, setCurrentView] = useState<View>('search')
+  const [currentView, setCurrentView] = useState<ViewType>('search')
   const [selectedStock, setSelectedStock] = useState<string>('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisStatus, setAnalysisStatus] = useState<string | null>(null)
@@ -144,7 +143,7 @@ export default function Home() {
 
 // Portfolio component to show existing analyzed stocks
 function PortfolioView({ onViewDashboard }: { onViewDashboard: (symbol: string) => void }) {
-  const [stocks, setStocks] = useState<string[]>([])
+  const [stocks, setStocks] = useState<StockMetadata[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -156,7 +155,22 @@ function PortfolioView({ onViewDashboard }: { onViewDashboard: (symbol: string) 
       const response = await fetch(`${API_BASE_URL}/api/stocks`)
       if (response.ok) {
         const data = await response.json()
-        setStocks(data.stocks || [])
+        // Handle both old format (array of strings) and new format (array of objects)
+        if (Array.isArray(data.stocks)) {
+          if (data.stocks.length > 0 && typeof data.stocks[0] === 'string') {
+            // Old format: convert strings to objects
+            setStocks(data.stocks.map((symbol: string) => ({
+              symbol,
+              total_posts: 0,
+              avg_sentiment: 0,
+              last_updated: '',
+              sources: []
+            })))
+          } else {
+            // New format: use objects directly
+            setStocks(data.stocks || [])
+          }
+        }
       }
     } catch (error) {
       console.error('Failed to fetch stocks:', error)
@@ -192,15 +206,26 @@ function PortfolioView({ onViewDashboard }: { onViewDashboard: (symbol: string) 
     <div className="max-w-4xl mx-auto mb-12">
       <h2 className="text-2xl font-bold text-white mb-6 text-center">📊 Your Portfolio</h2>
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-        {stocks.map((symbol) => (
+        {stocks.map((stock) => (
           <button
-            key={symbol}
-            onClick={() => onViewDashboard(symbol)}
+            key={stock.symbol}
+            onClick={() => onViewDashboard(stock.symbol)}
             className="bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg p-4 border border-white/20 transition-all duration-200 hover:scale-105"
           >
             <div className="text-center">
-              <div className="text-2xl font-bold text-white mb-1">{symbol}</div>
-              <div className="text-sm text-white/60">View Dashboard</div>
+              <div className="text-2xl font-bold text-white mb-1">{stock.symbol}</div>
+              <div className="text-sm text-white/60">
+                {stock.total_posts > 0 ? `${stock.total_posts} posts` : 'View Dashboard'}
+              </div>
+              {stock.avg_sentiment !== 0 && (
+                <div className={`text-xs mt-1 ${
+                  stock.avg_sentiment > 0.1 ? 'text-green-400' : 
+                  stock.avg_sentiment < -0.1 ? 'text-red-400' : 'text-yellow-400'
+                }`}>
+                  {stock.avg_sentiment > 0 ? '📈' : stock.avg_sentiment < 0 ? '📉' : '➡️'} 
+                  {(stock.avg_sentiment * 100).toFixed(0)}%
+                </div>
+              )}
             </div>
           </button>
         ))}

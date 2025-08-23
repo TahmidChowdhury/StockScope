@@ -1,40 +1,49 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { TrendingUp, TrendingDown, Activity, MessageSquare, Newspaper, Building2 } from 'lucide-react'
-
-interface StockData {
-  ticker: string
-  total_posts: number
-  avg_sentiment: number
-  sources: {
-    Reddit?: number
-    News?: number
-    SEC?: number
-  }
-}
-
-interface StockDashboardProps {
-  symbol: string
-  onBack: () => void
-}
+import type { StockDashboardProps, StockAnalysis } from '@/types'
 
 export default function StockDashboard({ symbol, onBack }: StockDashboardProps) {
-  const [stockData, setStockData] = useState<StockData | null>(null)
+  const [stockData, setStockData] = useState<StockAnalysis | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchStockData()
-  }, [symbol])
+  // Get API URL from environment variables
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-  const fetchStockData = async () => {
+  useEffect(() => {
+    const fetchStockData = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        
+        const response = await fetch(`${API_BASE_URL}/api/stocks/${symbol}`)
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch data for ${symbol}`)
+        }
+        
+        const data = await response.json()
+        setStockData(data)
+      } catch (error) {
+        console.error('Error fetching stock data:', error)
+        setError(error instanceof Error ? error.message : 'Unknown error')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchStockData()
+  }, [symbol, API_BASE_URL])
+
+  const refetchStockData = async () => {
     try {
       setLoading(true)
       setError(null)
       
-      const response = await fetch(`http://localhost:8000/api/stocks/${symbol}`)
+      const response = await fetch(`${API_BASE_URL}/api/stocks/${symbol}`)
       
       if (!response.ok) {
         throw new Error(`Failed to fetch data for ${symbol}`)
@@ -80,17 +89,28 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
   }
 
   // Prepare chart data
-  const sourceData = Object.entries(stockData.sources).map(([source, count]) => ({
+  const sourceData = stockData.sources.reduce((acc, source) => {
+    acc[source] = (acc[source] || 0) + 1
+    return acc
+  }, {} as Record<string, number>)
+
+  const chartData = Object.entries(sourceData).map(([source, count]) => ({
     source,
     count,
     color: source === 'Reddit' ? '#FF4500' : source === 'News' ? '#1DA1F2' : '#6366F1'
   }))
 
-  const sentimentColor = stockData.avg_sentiment > 0.1 ? '#10B981' : 
-                        stockData.avg_sentiment < -0.1 ? '#EF4444' : '#F59E0B'
+  // Safe access to avg_sentiment with fallback to 0
+  const avgSentiment = stockData.avg_sentiment ?? 0
+  const sentimentColor = avgSentiment > 0.1 ? '#10B981' : 
+                        avgSentiment < -0.1 ? '#EF4444' : '#F59E0B'
 
-  const sentimentEmoji = stockData.avg_sentiment > 0.1 ? '🟢' : 
-                        stockData.avg_sentiment < -0.1 ? '🔴' : '🟡'
+  const sentimentEmoji = avgSentiment > 0.1 ? '🟢' : 
+                        avgSentiment < -0.1 ? '🔴' : '🟡'
+
+  // Calculate counts for each source type
+  const redditCount = stockData.sources.filter(source => source === 'Reddit').length
+  const newsCount = stockData.sources.filter(source => source === 'News').length
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
@@ -111,7 +131,7 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
           </div>
           
           <button
-            onClick={fetchStockData}
+            onClick={refetchStockData}
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
           >
             <Activity className="h-4 w-4" />
@@ -125,7 +145,7 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/70 text-sm">Total Posts</p>
-                <p className="text-3xl font-bold text-white">{stockData.total_posts.toLocaleString()}</p>
+                <p className="text-3xl font-bold text-white">{(stockData.total_posts ?? 0).toLocaleString()}</p>
               </div>
               <MessageSquare className="h-8 w-8 text-blue-400" />
             </div>
@@ -136,11 +156,11 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
               <div>
                 <p className="text-white/70 text-sm">Avg Sentiment</p>
                 <p className="text-3xl font-bold" style={{ color: sentimentColor }}>
-                  {stockData.avg_sentiment.toFixed(3)}
+                  {avgSentiment.toFixed(3)}
                 </p>
-                <p className="text-sm text-white/60">{sentimentEmoji} {stockData.avg_sentiment > 0 ? 'Positive' : stockData.avg_sentiment < 0 ? 'Negative' : 'Neutral'}</p>
+                <p className="text-sm text-white/60">{sentimentEmoji} {avgSentiment > 0 ? 'Positive' : avgSentiment < 0 ? 'Negative' : 'Neutral'}</p>
               </div>
-              {stockData.avg_sentiment > 0 ? 
+              {avgSentiment > 0 ? 
                 <TrendingUp className="h-8 w-8 text-green-400" /> : 
                 <TrendingDown className="h-8 w-8 text-red-400" />
               }
@@ -151,7 +171,7 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/70 text-sm">Reddit Posts</p>
-                <p className="text-3xl font-bold text-white">{(stockData.sources.Reddit || 0).toLocaleString()}</p>
+                <p className="text-3xl font-bold text-white">{redditCount.toLocaleString()}</p>
               </div>
               <MessageSquare className="h-8 w-8 text-orange-400" />
             </div>
@@ -161,7 +181,7 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/70 text-sm">News Articles</p>
-                <p className="text-3xl font-bold text-white">{(stockData.sources.News || 0).toLocaleString()}</p>
+                <p className="text-3xl font-bold text-white">{newsCount.toLocaleString()}</p>
               </div>
               <Newspaper className="h-8 w-8 text-blue-400" />
             </div>
@@ -180,14 +200,14 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={sourceData}
+                    data={chartData}
                     cx="50%"
                     cy="50%"
                     outerRadius={80}
                     dataKey="count"
                     label={({ source, count }) => `${source}: ${count}`}
                   >
-                    {sourceData.map((entry, index) => (
+                    {chartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
@@ -212,7 +232,7 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
             </h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={sourceData}>
+                <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                   <XAxis dataKey="source" stroke="rgba(255,255,255,0.7)" />
                   <YAxis stroke="rgba(255,255,255,0.7)" />

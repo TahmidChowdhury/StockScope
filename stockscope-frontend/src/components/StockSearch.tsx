@@ -3,49 +3,39 @@
 import { useState, useEffect, useRef } from 'react'
 import { MagnifyingGlassIcon, ChartBarIcon } from '@heroicons/react/24/outline'
 import { Combobox } from '@headlessui/react'
-
-interface StockSuggestion {
-  symbol: string
-  name: string
-  sector?: string
-}
-
-interface StockSearchProps {
-  onAnalyze: (symbol: string) => void
-  isLoading?: boolean
-}
+import type { StockSuggestion, StockSearchProps } from '@/types'
 
 export default function StockSearch({ onAnalyze, isLoading = false }: StockSearchProps) {
   const [query, setQuery] = useState('')
   const [suggestions, setSuggestions] = useState<StockSuggestion[]>([])
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
-  const debounceRef = useRef<NodeJS.Timeout>()
+  const debounceRef = useRef<NodeJS.Timeout | null>(null)
 
   // Get API URL from environment variables with fallback
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-  // Fetch suggestions from your FastAPI backend
-  const fetchSuggestions = async (searchQuery: string) => {
-    if (!searchQuery.trim()) {
-      setSuggestions([])
-      return
-    }
-
-    setIsLoadingSuggestions(true)
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/stocks/suggestions?q=${encodeURIComponent(searchQuery)}`)
-      const data = await response.json()
-      setSuggestions(data)
-    } catch (error) {
-      console.error('Failed to fetch suggestions:', error)
-      setSuggestions([])
-    } finally {
-      setIsLoadingSuggestions(false)
-    }
-  }
-
   // Debounced search - prevents too many API calls while typing
   useEffect(() => {
+    // Fetch suggestions from your FastAPI backend
+    const fetchSuggestions = async (searchQuery: string) => {
+      if (!searchQuery.trim()) {
+        setSuggestions([])
+        return
+      }
+
+      setIsLoadingSuggestions(true)
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/stocks/suggestions?q=${encodeURIComponent(searchQuery)}`)
+        const data = await response.json()
+        setSuggestions(data)
+      } catch (error) {
+        console.error('Failed to fetch suggestions:', error)
+        setSuggestions([])
+      } finally {
+        setIsLoadingSuggestions(false)
+      }
+    }
+
     if (debounceRef.current) {
       clearTimeout(debounceRef.current)
     }
@@ -59,7 +49,7 @@ export default function StockSearch({ onAnalyze, isLoading = false }: StockSearc
         clearTimeout(debounceRef.current)
       }
     }
-  }, [query])
+  }, [query, API_BASE_URL])
 
   const handleAnalyze = (symbol: string) => {
     setQuery('')

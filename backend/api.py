@@ -26,9 +26,99 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import your existing functions
 from main import run_full_pipeline
 from scraping.news_scraper import fetch_news_sentiment
-from ui.utils.data_helpers import get_available_tickers, load_dataframes
 from analysis.investment_advisor import InvestmentAdvisor
 from analysis.quantitative_strategies import QuantitativeStrategies
+
+# Add utility functions directly to replace the removed ones
+def get_available_tickers():
+    """Get list of available stock tickers from data files"""
+    try:
+        data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
+        if not os.path.exists(data_dir):
+            return []
+        
+        tickers = set()
+        for filename in os.listdir(data_dir):
+            if filename.endswith('_sentiment.json') or filename.endswith('.json'):
+                # Extract ticker from filename (e.g., AAPL_reddit_sentiment.json -> AAPL)
+                ticker = filename.split('_')[0]
+                tickers.add(ticker)
+        
+        return sorted(list(tickers))
+    except Exception as e:
+        logger.error(f"Error getting available tickers: {e}")
+        return []
+
+def load_dataframes(ticker):
+    """Load and combine all sentiment data for a ticker into a single DataFrame"""
+    import pandas as pd
+    
+    try:
+        data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
+        combined_data = []
+        
+        # Look for all files matching the ticker pattern
+        for filename in os.listdir(data_dir):
+            if filename.startswith(f"{ticker}_") and filename.endswith('.json'):
+                file_path = os.path.join(data_dir, filename)
+                
+                try:
+                    with open(file_path, 'r') as f:
+                        data = json.load(f)
+                    
+                    # Determine source from filename
+                    if 'reddit' in filename:
+                        source = 'Reddit'
+                    elif 'news' in filename:
+                        source = 'News'
+                    elif 'sec' in filename:
+                        source = 'SEC'
+                    else:
+                        source = 'Unknown'
+                    
+                    # Process each item in the data
+                    for item in data:
+                        if isinstance(item, dict):
+                            # Add source info
+                            item['source'] = source
+                            
+                            # Standardize sentiment data
+                            if 'sentiment' in item and isinstance(item['sentiment'], dict):
+                                item.update(item['sentiment'])
+                            
+                            # Handle different timestamp formats
+                            if 'created_utc' in item:
+                                if isinstance(item['created_utc'], (int, float)):
+                                    item['created_utc'] = pd.to_datetime(item['created_utc'], unit='s')
+                                else:
+                                    item['created_utc'] = pd.to_datetime(item['created_utc'])
+                            elif 'created' in item:
+                                item['created_utc'] = pd.to_datetime(item['created'])
+                            else:
+                                item['created_utc'] = pd.Timestamp.now()
+                            
+                            combined_data.append(item)
+                
+                except Exception as e:
+                    logger.warning(f"Error loading file {filename}: {e}")
+                    continue
+        
+        if not combined_data:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(combined_data)
+        
+        # Ensure required columns exist
+        if 'compound' not in df.columns:
+            df['compound'] = 0.0
+        if 'sentiment' not in df.columns:
+            df['sentiment'] = 'neutral'
+        
+        return df
+        
+    except Exception as e:
+        logger.error(f"Error loading dataframes for {ticker}: {e}")
+        return pd.DataFrame()
 
 # In-memory cache with TTL
 class CacheManager:

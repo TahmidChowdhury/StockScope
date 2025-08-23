@@ -218,11 +218,18 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
                     ]}
                     labelFormatter={() => "Data Source"}
                     contentStyle={{ 
-                      backgroundColor: 'rgba(0,0,0,0.8)', 
-                      border: 'none', 
+                      backgroundColor: 'rgba(0,0,0,0.9)', 
+                      border: '1px solid rgba(255,255,255,0.2)', 
                       borderRadius: '8px',
+                      color: 'white',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                    }}
+                    itemStyle={{
                       color: 'white'
-                    }} 
+                    }}
+                    labelStyle={{
+                      color: 'white'
+                    }}
                   />
                 </PieChart>
               </ResponsiveContainer>

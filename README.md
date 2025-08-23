@@ -1,383 +1,296 @@
-# StockScope Pro - Live Stock Sentiment Analysis Platform
+# StockScope Pro - Advanced Stock Sentiment Analysis Platform
 
-**StockScope Pro** is a comprehensive real-time stock sentiment analysis platform that combines social media sentiment, financial news analysis, and SEC filings to provide AI-powered investment recommendations. Built with Python and featuring a modern dark-themed Streamlit dashboard with live data capabilities.
+**StockScope Pro** is a comprehensive real-time stock sentiment analysis platform that combines social media sentiment, financial news analysis, and SEC filings to provide AI-powered investment recommendations. Built with a modern Next.js frontend and optimized FastAPI backend for professional-grade performance.
 
 ---
 
-## SECURITY & DISCLAIMER
+## Architecture
 
-### Security Notice
-- **API Key Protection**: Never commit API keys to version control. Use .env files (included in .gitignore)
-- **Environment Variables**: Copy .env.example to .env and add your actual API keys
-- **Private Repository**: Keep your repository private if it contains sensitive configuration
-- **Sample Data**: Application works with sample data if no API keys are provided
+### Frontend
+- **Next.js 15** with Turbopack for blazing-fast development
+- **React 19** with modern hooks and state management
+- **TypeScript** for type safety and developer experience
+- **Tailwind CSS 4** for responsive, modern UI design
+- **Headless UI** for accessible component primitives
 
-### Important Disclaimers
-- **Educational Purpose**: This tool is for educational and research purposes only
-- **Not Financial Advice**: Do not use as sole basis for investment decisions
-- **Market Risk**: All investments carry risk of loss
-- **Data Accuracy**: Verify all data independently before making investment decisions
-- **Professional Consultation**: Consult with qualified financial professionals for investment advice
+### Backend
+- **FastAPI** with async/await for high-performance API endpoints
+- **Python 3.9+** with comprehensive data analysis libraries
+- **Pydantic** for data validation and serialization
+- **In-memory caching** with TTL for optimized response times
+- **Background task processing** for long-running analysis
+
+### Data Sources
+- **Reddit API** - Community sentiment from financial subreddits
+- **NewsAPI** - Professional financial news analysis
+- **SEC API** - Official regulatory document processing
+- **VADER NLP** - Advanced sentiment analysis engine
 
 ---
 
 ## Key Features
 
-### Live Data Management
-- **Auto-refresh**: Automatically updates data every 15-240 minutes
-- **Manual refresh**: Update individual stocks or entire portfolio on demand
-- **Add new stocks**: Dynamically expand your portfolio with any ticker
-- **Real-time progress**: Live status updates during data collection
-- **Individual management**: Refresh, analyze, or remove specific stocks
+### Real-Time Analysis
+- **Live sentiment tracking** from multiple data sources
+- **Background processing** with real-time status updates
+- **Intelligent caching** for sub-second response times
+- **Auto-refresh capabilities** with configurable intervals
 
-### AI Investment Advisor
-- **Smart Recommendations**: Get BUY/SELL/HOLD signals with confidence scores
-- **Risk Assessment**: Automatic risk level analysis (LOW/MEDIUM/HIGH)
-- **Detailed Analysis**: Comprehensive breakdown of key factors and risks
-- **Interactive Charts**: Sentiment distribution and source breakdown visualizations
-- **Position Sizing**: Suggested investment amounts based on risk levels
-
-### Multi-Source Sentiment Intelligence
-- **Reddit Analysis**: Scrapes r/stocks, r/wallstreetbets, r/investing, and r/SecurityAnalysis
-- **Financial News**: Professional news source sentiment analysis via NewsAPI
-- **SEC Filings**: Official regulatory document analysis
-- **VADER NLP**: Advanced sentiment scoring and classification
+### AI-Powered Insights
+- **Investment recommendations** with confidence scores
+- **Risk assessment** and trend analysis
+- **Multi-source sentiment aggregation**
+- **Quantitative strategy integration**
 
 ### Professional Dashboard
-- **Dark Theme**: Modern, professional interface optimized for extended use
-- **Responsive Grid**: Clean card-based layout for multiple stocks
-- **Performance Analytics**: Multi-stock comparison and trend analysis
-- **Export Capabilities**: Download analysis data as CSV
-- **Mobile Friendly**: Responsive design for all devices
+- **Modern dark theme** optimized for financial professionals
+- **Responsive design** that works on all devices
+- **Interactive charts** with real-time data updates
+- **Portfolio management** with bulk operations
 
-### Enhanced Visualizations
-- **Sentiment Timeline**: Track sentiment trends over time
-- **Source Distribution**: Compare Reddit vs News vs SEC data
-- **Performance Dashboard**: Multi-stock comparison charts
-- **Interactive Cards**: Expandable analysis and advice panels
-
----
-
-## What Makes StockScope Pro Special?
-
-Think of StockScope Pro as your **personal investment research assistant** that:
-
-1. **Listens** to what people are saying about stocks on social media and news
-2. **Analyzes** official SEC filings and regulatory documents
-3. **Processes** thousands of data points using AI sentiment analysis
-4. **Recommends** exactly what to buy, sell, or hold with detailed reasoning
-5. **Updates** automatically to keep your analysis current
-
-### Live Data Features
-
-**Before**: Static analysis of old data  
-**After**: "Auto-refresh enabled - TSLA updated 5 minutes ago with 50 new posts"
-
-- **Real-time Updates**: Never miss important market sentiment shifts
-- **Expandable Portfolio**: Add any stock ticker instantly
-- **Smart Notifications**: Know when your data is refreshed
-- **Bulk Operations**: Manage your entire portfolio efficiently
+### Developer Experience
+- **One-command startup** for development environment
+- **Hot reloading** for both frontend and backend
+- **TypeScript integration** with full type safety
+- **Comprehensive error handling** and logging
 
 ---
 
-## Tech Stack
+## Quick Start
 
-### Core Platform
-- **Streamlit** - Modern web application framework
-- **Plotly** - Interactive financial charts and visualizations
-- **Pandas** - Advanced data manipulation and analysis
-- **NumPy** - Numerical computing for financial calculations
+### Prerequisites
+- **Node.js 18+** and npm
+- **Python 3.9+** and pip
+- **Git** for version control
 
-### Data Collection
-- **PRAW** - Reddit API integration for social sentiment
-- **NewsAPI** - Professional news source integration
-- **SEC API** - Official regulatory document access
-- **Requests** - HTTP client for web scraping
-
-### Analysis Engine
-- **VADER Sentiment** - Advanced NLP sentiment analysis
-- **Python-dotenv** - Environment variable management
-- **JSON** - Data storage and processing
-- **DateTime** - Time-based analysis and filtering
-
----
-
-## Quick Start Guide
-
-### 1. Installation
+### Installation
 
 ```bash
+# Clone the repository
 git clone https://github.com/TahmidChowdhury/StockScope.git
 cd StockScope
+
+# Install Python dependencies
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+
+# Install Node.js dependencies
+cd stockscope-frontend
+npm install
+cd ..
 ```
 
-### 2. API Setup (Optional - works with sample data)
+### Environment Setup
 
-Copy the example environment file:
+1. **Backend Environment** (optional - works with sample data):
 ```bash
 cp .env.example .env
+# Edit .env with your API keys if desired
 ```
 
-Edit `.env` file with your API keys:
+2. **Frontend Environment**:
+```bash
+cd stockscope-frontend
+cp .env.example .env.local
+# API URL is pre-configured for local development
+```
+
+### Run the Application
+
+**Single Command** (recommended):
+```bash
+cd stockscope-frontend
+npm run full-app
+```
+
+This will start:
+- **Backend API** on http://localhost:8000
+- **Frontend App** on http://localhost:3000
+- **API Documentation** on http://localhost:8000/docs
+
+---
+
+## API Endpoints
+
+### Stock Analysis
+- `GET /api/stocks` - List all analyzed stocks with metadata
+- `GET /api/stocks/{symbol}` - Get comprehensive analysis for a stock
+- `POST /api/stocks/analyze` - Start analysis for a new stock
+- `GET /api/stocks/{symbol}/status` - Real-time analysis progress
+
+### Investment Insights
+- `GET /api/stocks/{symbol}/investment-advice` - AI-powered recommendations
+- `GET /api/stocks/{symbol}/quantitative` - Quantitative strategy analysis
+
+### Search & Discovery
+- `GET /api/stocks/suggestions` - Smart stock symbol autocomplete
+- `GET /api/health` - System health and metrics
+
+### Administration
+- `DELETE /api/cache` - Clear API cache (admin)
+
+---
+
+## Development Workflow
+
+### Available Commands
+
+```bash
+# Development (run both servers)
+npm run full-app
+
+# Individual servers
+npm run backend    # FastAPI only
+npm run frontend   # Next.js only
+
+# Utilities
+npm run setup      # Install all dependencies
+```
+
+### Code Structure
+
+```
+StockScope/
+├── backend/
+│   └── api.py              # FastAPI application with caching
+├── stockscope-frontend/
+│   ├── src/
+│   │   ├── app/            # Next.js app router
+│   │   └── components/     # React components
+│   └── package.json
+├── analysis/               # AI analysis modules
+├── scraping/              # Data collection scripts
+├── data/                  # Sentiment analysis results
+└── requirements.txt       # Python dependencies
+```
+
+---
+
+## Production Deployment
+
+### Containerized Deployment
+
+```bash
+# Build and run with Docker Compose
+docker-compose up --build
+```
+
+### Recommended Hosting
+
+**Frontend**: Vercel (optimized for Next.js)
+- Global CDN distribution
+- Automatic deployments from Git
+- Built-in performance optimization
+
+**Backend**: Railway or Render
+- Python-optimized hosting
+- Environment variable management
+- Automatic scaling
+
+### Environment Variables
+
+**Production Frontend**:
 ```env
-# Reddit API (optional)
-REDDIT_CLIENT_ID=your_client_id
-REDDIT_CLIENT_SECRET=your_secret
-REDDIT_USERNAME=your_username
-REDDIT_PASSWORD=your_password
-REDDIT_USER_AGENT=StockScope/2.0
-
-# News API (optional)
-NEWS_API_KEY=your_news_key
-
-# Twitter API (optional)
-TWITTER_BEARER_TOKEN=your_bearer_token
+NEXT_PUBLIC_API_URL=https://your-api-domain.com
 ```
 
-### 3. Launch StockScope Pro
-
-```bash
-streamlit run app.py
-```
-
-Open `http://localhost:8501` and start analyzing!
-
----
-
-## Dashboard Walkthrough
-
-### Main Dashboard
-- **Stock Portfolio Grid**: Visual cards showing all analyzed stocks
-- **Performance Tab**: Multi-stock comparison and trend analysis
-- **Recommendations Tab**: AI-generated investment suggestions
-- **Live Status**: Real-time data refresh information
-
-### Investment Advice
-1. **Click "Get Advice"** on any stock card
-2. **View Recommendation**: BUY/HOLD/SELL with confidence score
-3. **Analyze Risk Factors**: Detailed breakdown of investment considerations
-4. **Review Charts**: Sentiment distribution and source analysis
-
-### Analysis Features
-- **Sentiment Timeline**: Track how sentiment changes over time
-- **Source Breakdown**: See data from Reddit, News, and SEC
-- **Recent Activity**: Latest posts and discussions
-- **Export Data**: Download analysis as CSV
-
-### Live Data Management
-- **Auto-refresh Toggle**: Set automatic updates (15-240 minutes)
-- **Add New Stocks**: Instantly expand your portfolio
-- **Individual Refresh**: Update specific stocks on demand
-- **Bulk Operations**: Manage entire portfolio efficiently
-
----
-
-## How the AI Analysis Works
-
-### Step 1: Multi-Source Data Collection
-- **Reddit**: Scrapes financial subreddits for community sentiment
-- **News**: Analyzes professional financial news articles
-- **SEC**: Processes official regulatory filings
-- **Real-time**: Continuously updates with fresh data
-
-### Step 2: Advanced Sentiment Analysis
-- **VADER NLP**: Analyzes text sentiment with high accuracy
-- **Confidence Scoring**: Measures reliability of sentiment signals
-- **Trend Analysis**: Identifies improving/declining sentiment patterns
-- **Source Weighting**: Balances different data sources appropriately
-
-### Step 3: AI Recommendation Engine
-- **Multi-factor Analysis**: Combines sentiment, volume, and recency
-- **Risk Assessment**: Evaluates investment risk levels
-- **Confidence Metrics**: Transparent scoring system
-- **Detailed Reasoning**: Explains every recommendation
-
-### Step 4: Interactive Visualization
-- **Real-time Charts**: Live updating visualizations
-- **Comparative Analysis**: Multi-stock performance comparison
-- **Export Capabilities**: Download data for further analysis
-- **Mobile Responsive**: Works on all devices
-
----
-
-## Sample Investment Analysis
-
-**Example: Analyzing NVDA with live data**
-
-```
-[STRONG BUY] - NVIDIA (NVDA)
-Score: 92/100 | Confidence: 87%
-Risk Level: MEDIUM | Time Horizon: Short-term
-
-Key Factors:
-• Average sentiment: 0.342 (strongly positive)
-• Total discussions: 83 posts
-• Positive sentiment: 64 posts (77.1%)
-• Recent trend: Improving
-• Data quality: High (multiple sources)
-
-Data Sources:
-• Reddit: 83 posts from financial subreddits
-• News: 20 recent articles
-• SEC: 6 regulatory filings
-
-Risk Assessment:
-• Standard market risks apply
-• Medium volatility expected
-• Strong community support
+**Production Backend**:
+```env
+REDDIT_CLIENT_ID=your_reddit_client_id
+NEWS_API_KEY=your_news_api_key
+# ... other API keys
 ```
 
 ---
 
-## Advanced Features
+## Performance Features
 
-### Live Data Management
-- **Auto-refresh Scheduling**: Set custom refresh intervals
-- **Progress Tracking**: Real-time status of data collection
-- **Error Handling**: Graceful handling of API failures
-- **Data Persistence**: Automatic saving of all analysis
+### Caching Strategy
+- **API Response Caching** with configurable TTL
+- **Smart Cache Invalidation** when new data arrives
+- **Memory-efficient** storage with automatic cleanup
 
-### Portfolio Management
-- **Dynamic Addition**: Add any stock ticker instantly
-- **Individual Control**: Refresh or remove specific stocks
-- **Bulk Operations**: Manage entire portfolio efficiently
-- **Export Capabilities**: Download analysis as CSV
+### Optimization
+- **Background Task Processing** for analysis operations
+- **Debounced Search** to reduce API calls
+- **Progressive Loading** for large datasets
+- **Response Compression** for faster data transfer
 
-### Analysis Tools
-- **Multi-timeframe Analysis**: Compare different time periods
-- **Source Filtering**: Focus on specific data sources
-- **Sentiment Thresholds**: Filter by sentiment strength
-- **Performance Comparison**: Multi-stock analysis
-
----
-
-## Current Portfolio
-
-The platform currently tracks **12 stocks** with live data:
-
-### Tech Giants
-- **AAPL** (Apple) - Consumer electronics leader
-- **GOOGL** (Google) - Search and cloud computing
-- **MSFT** (Microsoft) - Software and cloud services
-- **META** (Meta) - Social media and metaverse
-- **NVDA** (NVIDIA) - AI and graphics processing
-- **TSLA** (Tesla) - Electric vehicles and energy
-
-### Growth Stocks
-- **AMZN** (Amazon) - E-commerce and cloud services
-- **PLTR** (Palantir) - Data analytics and AI
-- **RKLB** (Rocket Lab) - Space technology
-
-### Cryptocurrencies
-- **BTC** (Bitcoin) - Digital currency
-- **ETH** (Ethereum) - Blockchain platform
-- **DOGE** (Dogecoin) - Meme cryptocurrency
-
-*Add any stock instantly using the sidebar!*
+### Monitoring
+- **Health Check Endpoints** for uptime monitoring
+- **Structured Logging** for debugging and analytics
+- **Error Tracking** with detailed stack traces
+- **Performance Metrics** for response times
 
 ---
 
-## Requirements
+## Data Sources & Analysis
 
-Our streamlined requirements.txt includes **essential packages**:
+### Reddit Sentiment
+- **Subreddits**: r/stocks, r/wallstreetbets, r/investing, r/SecurityAnalysis
+- **Real-time Processing**: Live posts and comments analysis
+- **Sentiment Scoring**: VADER NLP with confidence metrics
 
-### Core Platform
-```
-streamlit==1.45.0        # Web application framework
-plotly==6.0.1            # Interactive visualizations
-pandas==2.2.3            # Data manipulation
-numpy==2.0.2             # Numerical computing
-```
+### Financial News
+- **NewsAPI Integration**: Professional financial news sources
+- **Article Analysis**: Headline and content sentiment scoring
+- **Source Credibility**: Weighted scoring based on publication quality
 
-### Data Collection
-```
-praw==7.8.1              # Reddit API client
-requests==2.32.3         # HTTP client
-beautifulsoup4==4.13.4   # Web scraping
-python-dotenv==1.0.1     # Environment variables
-```
+### SEC Filings
+- **Official Documents**: 10-K, 10-Q, 8-K filings analysis
+- **Regulatory Sentiment**: Management discussion analysis
+- **Filing Impact**: Historical correlation with stock performance
 
-### Analysis Engine
-```
-vaderSentiment==3.3.2    # Sentiment analysis
-lxml==5.3.0              # XML/HTML parsing
-```
+### AI Investment Advisor
+- **Multi-factor Analysis**: Combines all data sources
+- **Risk Assessment**: Volatility and trend analysis
+- **Confidence Scoring**: Transparent recommendation reliability
+- **Reasoning Engine**: Detailed explanation of recommendations
 
 ---
 
-## Troubleshooting
+## Security & Privacy
 
-### Common Issues
+### Data Protection
+- **Environment Variables**: All API keys secured in .env files
+- **Git Security**: Sensitive files excluded from version control
+- **API Rate Limiting**: Protection against abuse
+- **Input Validation**: Comprehensive request sanitization
 
-**"Module not found" errors:**
-```bash
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-**App not loading:**
-```bash
-streamlit run app.py --server.port 8501
-```
-
-**Data not updating:**
-- Check internet connection
-- Verify API keys in .env file
-- Use manual refresh button
-
-**Charts not displaying:**
-```bash
-pip install plotly --upgrade
-streamlit cache clear
-```
-
----
-
-## Roadmap
-
-### Phase 1: Enhanced Analytics
-- [ ] Technical indicators integration
-- [ ] Price data correlation
-- [ ] Volatility analysis
-- [ ] Risk-adjusted returns
-
-### Phase 2: Advanced Features
-- [ ] Real-time alerts and notifications
-- [ ] Custom watchlists
-- [ ] Performance tracking
-- [ ] Backtesting capabilities
-
-### Phase 3: Professional Tools
-- [ ] Portfolio optimization
-- [ ] API endpoints
-- [ ] Multi-user support
-- [ ] Advanced reporting
+### Best Practices
+- **HTTPS Enforcement** in production
+- **CORS Configuration** for secure cross-origin requests
+- **Error Handling** without sensitive data exposure
+- **Dependency Updates** for security patches
 
 ---
 
 ## Contributing
 
-We welcome contributions to make StockScope Pro even better!
+### Development Setup
 
 ```bash
-# Development setup
-git clone https://github.com/TahmidChowdhury/StockScope.git
+# Fork and clone the repository
+git clone https://github.com/yourusername/StockScope.git
 cd StockScope
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
 
-# Run the application
-streamlit run app.py
+# Create a feature branch
+git checkout -b feature/your-feature-name
 
-# Submit changes
-git checkout -b feature/amazing-feature
-git commit -m "Add amazing feature"
-git push origin feature/amazing-feature
+# Make your changes and test
+npm run full-app
+
+# Commit and push
+git commit -m "Add your feature description"
+git push origin feature/your-feature-name
 ```
+
+### Code Standards
+- **TypeScript** for frontend type safety
+- **Python Type Hints** for backend code
+- **ESLint** for JavaScript/TypeScript linting
+- **Prettier** for consistent code formatting
 
 ---
 
@@ -389,11 +302,11 @@ MIT License - Use this code to build amazing investment tools!
 
 ## Acknowledgments
 
-- **Streamlit** - Making beautiful web apps simple
-- **Plotly** - Interactive visualization library
-- **PRAW** - Reddit API integration
-- **NewsAPI** - Professional news data
-- **VADER** - Robust sentiment analysis
+- **Next.js & Vercel** - Modern web development platform
+- **FastAPI** - High-performance Python web framework
+- **VADER Sentiment** - Robust sentiment analysis
+- **Tailwind CSS** - Utility-first CSS framework
+- **React & TypeScript** - Modern frontend development
 
 ---
 
@@ -404,8 +317,5 @@ Portfolio: https://tahmidchowdhury.github.io/ | GitHub: https://github.com/Tahmi
 
 ---
 
-<div align="center">
-  <h3>From Social Sentiment to Smart Investment Decisions</h3>
-  <p><strong>Star this repo if StockScope Pro helped your investment research!</strong></p>
-  <p><em>Built with Live Data, AI Analysis, and Coffee</em></p>
-</div>
+**From Social Sentiment to Smart Investment Decisions**  
+*Built with Next.js, FastAPI, and Modern Web Technologies*

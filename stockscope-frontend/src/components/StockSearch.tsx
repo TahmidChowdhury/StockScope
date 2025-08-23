@@ -21,6 +21,9 @@ export default function StockSearch({ onAnalyze, isLoading = false }: StockSearc
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
   const debounceRef = useRef<NodeJS.Timeout>()
 
+  // Get API URL from environment variables with fallback
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
   // Fetch suggestions from your FastAPI backend
   const fetchSuggestions = async (searchQuery: string) => {
     if (!searchQuery.trim()) {
@@ -30,7 +33,7 @@ export default function StockSearch({ onAnalyze, isLoading = false }: StockSearc
 
     setIsLoadingSuggestions(true)
     try {
-      const response = await fetch(`http://localhost:8000/api/stocks/suggestions?q=${encodeURIComponent(searchQuery)}`)
+      const response = await fetch(`${API_BASE_URL}/api/stocks/suggestions?q=${encodeURIComponent(searchQuery)}`)
       const data = await response.json()
       setSuggestions(data)
     } catch (error) {

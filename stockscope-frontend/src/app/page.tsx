@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react'
 import StockSearch from '@/components/StockSearch'
 import StockDashboard from '@/components/StockDashboard'
 
+// Get API URL from environment variables
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
 type View = 'search' | 'dashboard'
 
 export default function Home() {
@@ -17,7 +20,7 @@ export default function Home() {
     setAnalysisStatus(`Starting analysis for ${symbol}...`)
 
     try {
-      const response = await fetch('http://localhost:8000/api/stocks/analyze', {
+      const response = await fetch(`${API_BASE_URL}/api/stocks/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -36,7 +39,7 @@ export default function Home() {
         // Check if data already exists and show dashboard
         setTimeout(async () => {
           try {
-            const checkResponse = await fetch(`http://localhost:8000/api/stocks/${symbol}`)
+            const checkResponse = await fetch(`${API_BASE_URL}/api/stocks/${symbol}`)
             if (checkResponse.ok) {
               setSelectedStock(symbol)
               setCurrentView('dashboard')
@@ -150,7 +153,7 @@ function PortfolioView({ onViewDashboard }: { onViewDashboard: (symbol: string) 
 
   const fetchAvailableStocks = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/stocks')
+      const response = await fetch(`${API_BASE_URL}/api/stocks`)
       if (response.ok) {
         const data = await response.json()
         setStocks(data.stocks || [])

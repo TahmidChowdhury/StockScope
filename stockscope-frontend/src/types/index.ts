@@ -5,7 +5,7 @@ export interface StockMetadata {
   total_posts: number
   avg_sentiment: number
   last_updated: string
-  sources: string[]
+  sources: string[] // This endpoint returns simple strings
 }
 
 export interface StockSuggestion {
@@ -22,17 +22,40 @@ export interface SentimentData {
   content?: string
 }
 
-export interface StockAnalysis {
-  symbol: string
-  total_posts: number
+// Backend returns SourceAnalysis objects for the analysis endpoint
+export interface SourceAnalysis {
+  source: string
+  count: number
   avg_sentiment: number
-  positive_posts: number
-  negative_posts: number
-  neutral_posts: number
+  latest_update: string
+}
+
+export interface SentimentMetrics {
+  avg_sentiment: number
+  sentiment_distribution: {
+    positive: number
+    neutral: number
+    negative: number
+  }
+  confidence_score: number
+  trend: string
+}
+
+export interface StockAnalysis {
+  ticker: string // Backend uses 'ticker' not 'symbol'
+  total_posts: number
+  sentiment_metrics: SentimentMetrics
+  sources: SourceAnalysis[] // This endpoint returns SourceAnalysis objects
   last_updated: string
-  sources: string[]
-  recent_posts: SentimentData[]
-  sentiment_over_time: SentimentData[]
+  data_quality_score: number
+  // Legacy fields for backward compatibility
+  symbol?: string
+  avg_sentiment?: number
+  positive_posts?: number
+  negative_posts?: number
+  neutral_posts?: number
+  recent_posts?: SentimentData[]
+  sentiment_over_time?: SentimentData[]
 }
 
 export interface InvestmentAdvice {

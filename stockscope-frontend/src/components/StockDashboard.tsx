@@ -88,29 +88,28 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
     )
   }
 
-  // Prepare chart data
-  const sourceData = stockData.sources.reduce((acc, source) => {
-    acc[source] = (acc[source] || 0) + 1
-    return acc
-  }, {} as Record<string, number>)
-
-  const chartData = Object.entries(sourceData).map(([source, count]) => ({
-    source,
-    count,
-    color: source === 'Reddit' ? '#FF4500' : source === 'News' ? '#1DA1F2' : '#6366F1'
+  // Prepare chart data - now using SourceAnalysis objects
+  const chartData = stockData.sources.map(sourceAnalysis => ({
+    source: sourceAnalysis.source,
+    count: sourceAnalysis.count,
+    color: sourceAnalysis.source === 'Reddit' ? '#FF4500' : 
+           sourceAnalysis.source === 'News' ? '#1DA1F2' : '#6366F1'
   }))
 
-  // Safe access to avg_sentiment with fallback to 0
-  const avgSentiment = stockData.avg_sentiment ?? 0
+  // Get sentiment from either new structure or legacy fallback
+  const avgSentiment = stockData.sentiment_metrics?.avg_sentiment ?? stockData.avg_sentiment ?? 0
   const sentimentColor = avgSentiment > 0.1 ? '#10B981' : 
                         avgSentiment < -0.1 ? '#EF4444' : '#F59E0B'
 
   const sentimentEmoji = avgSentiment > 0.1 ? '🟢' : 
                         avgSentiment < -0.1 ? '🔴' : '🟡'
 
-  // Calculate counts for each source type
-  const redditCount = stockData.sources.filter(source => source === 'Reddit').length
-  const newsCount = stockData.sources.filter(source => source === 'News').length
+  // Calculate counts for each source type using SourceAnalysis objects
+  const redditData = stockData.sources.find(s => s.source === 'Reddit')
+  const newsData = stockData.sources.find(s => s.source === 'News')
+  
+  const redditCount = redditData?.count ?? 0
+  const newsCount = newsData?.count ?? 0
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
@@ -205,13 +204,19 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
                     cy="50%"
                     outerRadius={80}
                     dataKey="count"
-                    label={({ source, count }) => `${source}: ${count}`}
+                    label={false}
+                    labelLine={false}
                   >
                     {chartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
                   <Tooltip 
+                    formatter={(value, name, props) => [
+                      `${value} posts`,
+                      props.payload.source
+                    ]}
+                    labelFormatter={() => "Data Source"}
                     contentStyle={{ 
                       backgroundColor: 'rgba(0,0,0,0.8)', 
                       border: 'none', 
@@ -221,6 +226,20 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
                   />
                 </PieChart>
               </ResponsiveContainer>
+            </div>
+            {/* Custom Legend */}
+            <div className="flex flex-wrap justify-center gap-4 mt-4">
+              {chartData.map((entry, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <div 
+                    className="w-3 h-3 rounded-full" 
+                    style={{ backgroundColor: entry.color }}
+                  />
+                  <span className="text-white text-sm">
+                    {entry.source}: {entry.count}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -248,6 +267,53 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
                 </BarChart>
               </ResponsiveContainer>
             </div>
+          </div>
+        </div>
+
+        {/* Source Details Table */}
+        <div className="mt-6 bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+          <h3 className="text-xl font-semibold text-white mb-4">Source Details</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-white">
+              <thead>
+                <tr className="border-b border-white/20">
+                  <th className="text-left py-2">Source</th>
+                  <th className="text-right py-2">Posts</th>
+                  <th className="text-right py-2">Avg Sentiment</th>
+                  <th className="text-right py-2">Last Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stockData.sources.map((source) => (
+                  <tr key={source.source} className="border-b border-white/10">
+                    <td className="py-3">
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-3 h-3 rounded-full" 
+                          style={{ 
+                            backgroundColor: source.source === 'Reddit' ? '#FF4500' : 
+                                           source.source === 'News' ? '#1DA1F2' : '#6366F1' 
+                          }}
+                        />
+                        {source.source}
+                      </div>
+                    </td>
+                    <td className="text-right py-3">{source.count.toLocaleString()}</td>
+                    <td className="text-right py-3">
+                      <span style={{ 
+                        color: source.avg_sentiment > 0.1 ? '#10B981' : 
+                               source.avg_sentiment < -0.1 ? '#EF4444' : '#F59E0B' 
+                      }}>
+                        {source.avg_sentiment.toFixed(3)}
+                      </span>
+                    </td>
+                    <td className="text-right py-3 text-white/60">
+                      {new Date(source.latest_update).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
 

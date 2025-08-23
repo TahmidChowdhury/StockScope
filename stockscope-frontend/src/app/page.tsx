@@ -46,7 +46,7 @@ export default function Home() {
             } else {
               setAnalysisStatus(`🎉 Analysis completed for ${symbol}!`)
             }
-          } catch (error) {
+          } catch {
             setAnalysisStatus(`🎉 Analysis completed for ${symbol}!`)
           }
           setIsAnalyzing(false)

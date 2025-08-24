@@ -3,23 +3,55 @@
 import { useState, useEffect } from 'react'
 import StockSearch from '@/components/StockSearch'
 import StockDashboard from '@/components/StockDashboard'
-import type { ViewType, StockMetadata } from '@/types'
+import LoginForm from '@/components/LoginForm'
+import type { ViewType, StockMetadata, AuthState } from '@/types'
 
 // Get API URL from environment variables
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export default function Home() {
+  const [authState, setAuthState] = useState<AuthState>({
+    isAuthenticated: false
+  })
   const [currentView, setCurrentView] = useState<ViewType>('search')
   const [selectedStock, setSelectedStock] = useState<string>('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisStatus, setAnalysisStatus] = useState<string | null>(null)
 
+  // Check for existing authentication on component mount
+  useEffect(() => {
+    const isAuthenticated = localStorage.getItem('stockscope_authenticated') === 'true'
+    if (isAuthenticated) {
+      setAuthState({ isAuthenticated: true })
+    }
+  }, [])
+
+  const handleLoginSuccess = () => {
+    setAuthState({ isAuthenticated: true })
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('stockscope_authenticated')
+    localStorage.removeItem('stockscope_password')
+    setAuthState({ isAuthenticated: false })
+    setCurrentView('search')
+    setSelectedStock('')
+    setAnalysisStatus(null)
+  }
+
+  const getPasswordParam = () => {
+    const password = localStorage.getItem('stockscope_password')
+    return password ? `?password=${encodeURIComponent(password)}` : ''
+  }
+
   const handleAnalyze = async (symbol: string) => {
+    if (!authState.isAuthenticated) return
+    
     setIsAnalyzing(true)
     setAnalysisStatus(`Starting analysis for ${symbol}...`)
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stocks/analyze`, {
+      const response = await fetch(`${API_BASE_URL}/api/stocks/analyze${getPasswordParam()}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -30,6 +62,11 @@ export default function Home() {
         }),
       })
 
+      if (response.status === 401) {
+        handleLogout()
+        return
+      }
+
       const data = await response.json()
       
       if (response.ok) {
@@ -38,7 +75,7 @@ export default function Home() {
         // Check if data already exists and show dashboard
         setTimeout(async () => {
           try {
-            const checkResponse = await fetch(`${API_BASE_URL}/api/stocks/${symbol}`)
+            const checkResponse = await fetch(`${API_BASE_URL}/api/stocks/${symbol}${getPasswordParam()}`)
             if (checkResponse.ok) {
               setSelectedStock(symbol)
               setCurrentView('dashboard')
@@ -72,6 +109,11 @@ export default function Home() {
     setAnalysisStatus(null)
   }
 
+  // Show login form if not authenticated
+  if (!authState.isAuthenticated) {
+    return <LoginForm onLoginSuccess={handleLoginSuccess} />
+  }
+
   if (currentView === 'dashboard' && selectedStock) {
     return <StockDashboard symbol={selectedStock} onBack={handleBackToSearch} />
   }
@@ -79,14 +121,24 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       <div className="container mx-auto px-4 py-16">
-        {/* Header */}
-        <div className="text-center mb-12">
+        {/* Header with logout */}
+        <div className="text-center mb-12 relative">
+          <button
+            onClick={handleLogout}
+            className="absolute top-0 right-0 bg-red-500/20 hover:bg-red-500/30 text-red-300 px-4 py-2 rounded-lg border border-red-500/50 transition-all duration-200"
+          >
+            🔓 Logout
+          </button>
+          
           <h1 className="text-5xl font-bold text-white mb-4">
             📊 StockScope Pro
           </h1>
           <p className="text-xl text-white/80 max-w-2xl mx-auto">
             AI-Powered Stock Sentiment Analysis with Real-Time Data from Reddit, News, and SEC Filings
           </p>
+          <div className="mt-4 text-sm text-green-400">
+            🔒 Secure Session Active
+          </div>
         </div>
 
         {/* Stock Search */}
@@ -109,7 +161,7 @@ export default function Home() {
         )}
 
         {/* Portfolio Section */}
-        <PortfolioView onViewDashboard={handleViewDashboard} />
+        <PortfolioView onViewDashboard={handleViewDashboard} passwordParam={getPasswordParam()} />
 
         {/* Features */}
         <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
@@ -142,17 +194,20 @@ export default function Home() {
 }
 
 // Portfolio component to show existing analyzed stocks
-function PortfolioView({ onViewDashboard }: { onViewDashboard: (symbol: string) => void }) {
+function PortfolioView({ onViewDashboard, passwordParam }: { 
+  onViewDashboard: (symbol: string) => void
+  passwordParam: string
+}) {
   const [stocks, setStocks] = useState<StockMetadata[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchAvailableStocks()
-  }, [])
+  }, [passwordParam])
 
   const fetchAvailableStocks = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stocks`)
+      const response = await fetch(`${API_BASE_URL}/api/stocks${passwordParam}`)
       if (response.ok) {
         const data = await response.json()
         // Handle both old format (array of strings) and new format (array of objects)

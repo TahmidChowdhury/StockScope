@@ -13,13 +13,19 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
   // Get API URL from environment variables
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
+  // Get password for API calls
+  const getPasswordParam = () => {
+    const password = localStorage.getItem('stockscope_password')
+    return password ? `?password=${encodeURIComponent(password)}` : ''
+  }
+
   useEffect(() => {
     const fetchStockData = async () => {
       try {
         setLoading(true)
         setError(null)
         
-        const response = await fetch(`${API_BASE_URL}/api/stocks/${symbol}`)
+        const response = await fetch(`${API_BASE_URL}/api/stocks/${symbol}${getPasswordParam()}`)
         
         if (!response.ok) {
           throw new Error(`Failed to fetch data for ${symbol}`)
@@ -43,7 +49,7 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
       setLoading(true)
       setError(null)
       
-      const response = await fetch(`${API_BASE_URL}/api/stocks/${symbol}`)
+      const response = await fetch(`${API_BASE_URL}/api/stocks/${symbol}${getPasswordParam()}`)
       
       if (!response.ok) {
         throw new Error(`Failed to fetch data for ${symbol}`)

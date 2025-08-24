@@ -111,6 +111,81 @@ This will start:
 
 ---
 
+## 🔐 Secure Authentication Setup
+
+StockScope Pro now includes secure authentication to protect your investment analysis. **Only you will have access** with your chosen password.
+
+### Initial Setup
+
+1. **Generate your authentication credentials**:
+   ```bash
+   # Activate virtual environment
+   source venv/bin/activate
+   
+   # Run the secure setup script
+   python setup_auth.py
+   ```
+
+2. **Choose a strong master password** when prompted
+   - Minimum 8 characters
+   - This will be your only way to access StockScope
+   - The script will generate a secure hash (never stores the actual password)
+
+3. **Set environment variables** with the generated values:
+   ```bash
+   # Option 1: Export in your terminal session
+   export STOCKSCOPE_PASSWORD_HASH='your_generated_hash'
+   export SECRET_KEY='your_generated_secret'
+   
+   # Option 2: Create a .env file (recommended)
+   cp .env.example .env
+   # Edit .env with your generated values
+   ```
+
+### Security Features
+
+- ✅ **JWT-based authentication** with configurable expiration
+- ✅ **Bcrypt password hashing** (industry standard)
+- ✅ **Environment variable protection** (never commit secrets)
+- ✅ **Automatic token expiration** (60-minute sessions)
+- ✅ **Protected API endpoints** (all require authentication)
+- ✅ **Secure logout** functionality
+
+### Development Workflow
+
+```bash
+# 1. Set up authentication (one time)
+python setup_auth.py
+
+# 2. Set environment variables
+export STOCKSCOPE_PASSWORD_HASH='your_hash'
+export SECRET_KEY='your_secret'
+
+# 3. Start development servers
+./dev-start.sh
+```
+
+### Production Deployment
+
+For production deployment, ensure environment variables are set securely:
+
+```bash
+# Docker Compose
+docker-compose up -d
+
+# Make sure to set environment variables in your deployment platform
+# Never include secrets in docker-compose.yml or Dockerfile
+```
+
+## 🚨 Security Warnings
+
+- **NEVER** commit `.env` files or password hashes to git
+- **NEVER** share your master password or generated hash
+- **ALWAYS** use the setup script to generate new credentials
+- **STORE** your password securely (password manager recommended)
+
+---
+
 ## API Endpoints
 
 ### Stock Analysis

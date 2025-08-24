@@ -1,8 +1,8 @@
 """
-Optimized FastAPI backend for StockScope with caching, proper error handling, and efficient data access
+Optimized FastAPI backend for StockScope with caching, proper error handling, efficient data access, and simple authentication
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Query
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -15,10 +15,54 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 import logging
 from enum import Enum
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Multi-level password authentication
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "StockScope_Master_2025_SecureAccess!#7")
+DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "StockScope_Demo_2025_Preview") 
+GUEST_PASSWORD = os.getenv("GUEST_PASSWORD", "StockScope_Guest_View_Only")
+
+# For backward compatibility
+MASTER_PASSWORD = os.getenv("STOCKSCOPE_PASSWORD", ADMIN_PASSWORD)
+
+def get_user_role(password: str) -> str:
+    """Determine user role based on password"""
+    if password == ADMIN_PASSWORD:
+        return "admin"
+    elif password == DEMO_PASSWORD:
+        return "demo"
+    elif password == GUEST_PASSWORD:
+        return "guest"
+    elif password == MASTER_PASSWORD:
+        return "admin"  # Backward compatibility
+    else:
+        return None
+
+async def authenticate_user(password: str) -> tuple[bool, str]:
+    """Simple password authentication with role detection"""
+    role = get_user_role(password)
+    if role:
+        logger.info(f"Authentication successful - {role} access granted")
+        return True, role
+    return False, None
+
+# Dependency for authentication with role
+async def verify_password_with_role(password: str = Query(..., description="Password")):
+    """Password verification with role detection"""
+    is_valid, role = await authenticate_user(password)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid password"
+        )
+    return role
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -151,6 +195,14 @@ class CacheManager:
                 del self._timestamps[key]
 
 cache = CacheManager()
+
+# Simple authentication models
+class LoginRequest(BaseModel):
+    password: str = Field(..., min_length=1, description="Master password for StockScope access")
+
+class SimpleAuthResponse(BaseModel):
+    success: bool
+    message: str
 
 # Enhanced Pydantic models with validation
 class DataSource(str, Enum):
@@ -314,8 +366,44 @@ async def root():
         }
     }
 
+# Authentication Endpoints
+
+@app.post("/api/auth/login", response_model=SimpleAuthResponse, tags=["Authentication"])
+async def login(login_request: LoginRequest):
+    """Authenticate with master password"""
+    try:
+        is_valid, role = await authenticate_user(login_request.password)
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid password"
+            )
+        
+        logger.info("Successful authentication - access granted")
+        
+        return SimpleAuthResponse(
+            success=True,
+            message=f"Authentication successful - Role: {role}"
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        raise HTTPException(status_code=500, detail="Authentication service error")
+
+@app.get("/api/auth/status", tags=["Authentication"])
+async def auth_status():
+    """Get authentication status and requirements"""
+    return {
+        "authentication_required": True,
+        "message": "Authentication required for all API endpoints"
+    }
+
+# Apply authentication to all protected endpoints
 @app.get("/api/stocks/suggestions", response_model=List[StockSuggestion], tags=["Search"])
 async def get_stock_suggestions(
+    current_user: str = Depends(verify_password_with_role),
     q: str = Query("", description="Search query for stock symbols or names"),
     limit: int = Query(10, ge=1, le=50, description="Maximum number of suggestions"),
     _: None = Depends(rate_limit_dependency)
@@ -356,7 +444,7 @@ async def get_stock_suggestions(
         raise HTTPException(status_code=500, detail="Failed to fetch suggestions")
 
 @app.get("/api/stocks", tags=["Portfolio"])
-async def get_available_stocks():
+async def get_available_stocks(current_user: str = Depends(verify_password_with_role)):
     """Get list of analyzed stocks with metadata"""
     cache_key = "available_stocks"
     cached_result = cache.get(cache_key)
@@ -394,7 +482,7 @@ async def get_available_stocks():
         raise HTTPException(status_code=500, detail="Failed to fetch stock portfolio")
 
 @app.get("/api/stocks/{symbol}", response_model=EnhancedAnalysisResult, tags=["Analysis"])
-async def get_stock_analysis(symbol: str) -> EnhancedAnalysisResult:
+async def get_stock_analysis(symbol: str, current_user: str = Depends(verify_password_with_role)) -> EnhancedAnalysisResult:
     """Get comprehensive analysis for a specific stock with caching"""
     symbol = symbol.upper()
     
@@ -447,7 +535,7 @@ async def get_stock_analysis(symbol: str) -> EnhancedAnalysisResult:
         raise HTTPException(status_code=500, detail=f"Analysis failed for {symbol}")
 
 @app.post("/api/stocks/analyze", tags=["Analysis"])
-async def analyze_stock(request: StockRequest, background_tasks: BackgroundTasks):
+async def analyze_stock(request: StockRequest, background_tasks: BackgroundTasks, current_user: str = Depends(verify_password_with_role)):
     """Start optimized analysis for a new stock with status tracking"""
     symbol = request.symbol.upper()
     
@@ -476,7 +564,7 @@ async def analyze_stock(request: StockRequest, background_tasks: BackgroundTasks
     }
 
 @app.get("/api/stocks/{symbol}/status", response_model=AnalysisStatus, tags=["Analysis"])
-async def get_analysis_status(symbol: str):
+async def get_analysis_status(symbol: str, current_user: str = Depends(verify_password_with_role)):
     """Get real-time analysis status"""
     symbol = symbol.upper()
     
@@ -500,7 +588,7 @@ async def get_analysis_status(symbol: str):
     return analysis_status[symbol]
 
 @app.get("/api/stocks/{symbol}/investment-advice", response_model=InvestmentRecommendation, tags=["Investment"])
-async def get_investment_advice(symbol: str):
+async def get_investment_advice(symbol: str, current_user: str = Depends(verify_password_with_role)):
     """Get AI-powered investment recommendation"""
     symbol = symbol.upper()
     
@@ -541,7 +629,7 @@ async def get_investment_advice(symbol: str):
         raise HTTPException(status_code=500, detail="Failed to generate investment advice")
 
 @app.get("/api/stocks/{symbol}/quantitative", tags=["Analysis"])
-async def get_quantitative_analysis(symbol: str):
+async def get_quantitative_analysis(symbol: str, current_user: str = Depends(verify_password_with_role)):
     """Get quantitative strategy analysis"""
     symbol = symbol.upper()
     
@@ -564,7 +652,7 @@ async def get_quantitative_analysis(symbol: str):
         raise HTTPException(status_code=500, detail="Failed to run quantitative analysis")
 
 @app.delete("/api/cache", tags=["Admin"])
-async def clear_cache(pattern: Optional[str] = None):
+async def clear_cache(pattern: Optional[str] = None, current_user: str = Depends(verify_password_with_role)):
     """Clear API cache (admin endpoint)"""
     try:
         if pattern:

@@ -16,6 +16,10 @@ export interface AuthState {
 
 export interface StockMetadata {
   symbol: string
+  companyName?: string
+  currentPrice?: number
+  priceChange?: number
+  priceChangePercent?: number
   total_posts: number
   avg_sentiment: number
   last_updated: string

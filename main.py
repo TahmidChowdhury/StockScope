@@ -7,10 +7,11 @@ from sentiment.analyzer import analyze_sentiment
 from datetime import datetime
 import json
 import os
+import asyncio
 
-def run_pipeline(ticker: str, limit=20):
+async def run_pipeline(ticker: str, limit=20):
     """Run the complete data pipeline for Reddit data"""
-    posts = fetch_reddit_posts(ticker, limit=limit)
+    posts = await fetch_reddit_posts(ticker, limit=limit)
     enriched_posts = []
 
     def classify_sentiment(compound):
@@ -36,13 +37,13 @@ def run_pipeline(ticker: str, limit=20):
 
     return output_path  # return the path so Streamlit can load it
 
-def run_full_pipeline(ticker: str, reddit_limit=20, twitter_limit=50, sec_limit=10):
-    """Run the complete data pipeline for all sources"""
+async def run_full_pipeline_async(ticker: str, reddit_limit=20, twitter_limit=50, sec_limit=10):
+    """Run the complete data pipeline for all sources (async version)"""
     results = {}
     
-    # Fetch Reddit data
+    # Fetch Reddit data (now async)
     try:
-        reddit_path = run_pipeline(ticker, limit=reddit_limit)
+        reddit_path = await run_pipeline(ticker, limit=reddit_limit)
         results['reddit'] = reddit_path
         print(f"[SUCCESS] Reddit data saved to {reddit_path}")
     except Exception as e:
@@ -62,7 +63,7 @@ def run_full_pipeline(ticker: str, reddit_limit=20, twitter_limit=50, sec_limit=
     print("[WARNING] Twitter API disabled - upgrade to paid access to enable Twitter sentiment analysis")
     results['twitter'] = None
     
-    # Fetch SEC data
+    # Fetch SEC data (keeping sync for now)
     try:
         sec_path = fetch_sec_sentiment(ticker, limit=sec_limit)
         results['sec'] = sec_path
@@ -73,3 +74,7 @@ def run_full_pipeline(ticker: str, reddit_limit=20, twitter_limit=50, sec_limit=
         results['sec'] = None
     
     return results
+
+def run_full_pipeline(ticker: str, reddit_limit=20, twitter_limit=50, sec_limit=10):
+    """Synchronous wrapper for the async pipeline (for backward compatibility)"""
+    return asyncio.run(run_full_pipeline_async(ticker, reddit_limit, twitter_limit, sec_limit))

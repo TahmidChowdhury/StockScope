@@ -27,3 +27,9 @@ pycoingecko
 newsapi-python
 polygon-api-client
 alpaca-trade-api
+# Authentication and security dependencies
+fastapi
+uvicorn
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart

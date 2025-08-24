@@ -1224,6 +1224,12 @@ async def run_optimized_analysis(symbol: str, sources: List[str]):
         analysis_status[symbol].status = "failed"
         analysis_status[symbol].message = f"Analysis failed: {str(e)}"
 
+# Add health endpoint for Railway
+@app.get("/health", tags=["Health"])
+async def simple_health():
+    """Simple health check for Railway deployment"""
+    return {"status": "ok", "timestamp": datetime.now()}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(

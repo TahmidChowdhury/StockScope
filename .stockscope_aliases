@@ -1,0 +1,28 @@
+# StockScope Development Aliases
+# Add these to your ~/.zshrc file for quick access
+
+# Quick development commands
+alias ss-dev="cd /Users/tahmid/Projects/StockScope && ./dev-env.sh dev"
+alias ss-backend="cd /Users/tahmid/Projects/StockScope && ./dev-env.sh backend"  
+alias ss-frontend="cd /Users/tahmid/Projects/StockScope && ./dev-env.sh frontend"
+alias ss-shell="cd /Users/tahmid/Projects/StockScope && ./dev-env.sh shell"
+alias ss-test="cd /Users/tahmid/Projects/StockScope && ./dev-env.sh test"
+alias ss-install="cd /Users/tahmid/Projects/StockScope && ./dev-env.sh install"
+
+# Navigation aliases
+alias ss="cd /Users/tahmid/Projects/StockScope"
+alias ss-fe="cd /Users/tahmid/Projects/StockScope/stockscope-frontend"
+alias ss-be="cd /Users/tahmid/Projects/StockScope/backend"
+
+# Git aliases for the project
+alias ss-deploy="cd /Users/tahmid/Projects/StockScope && git checkout deploy"
+alias ss-main="cd /Users/tahmid/Projects/StockScope && git checkout main"
+
+echo "📝 StockScope aliases loaded!"
+echo "💡 Quick commands:"
+echo "   ss-dev      - Start full development environment"
+echo "   ss-backend  - Start backend only"
+echo "   ss-frontend - Start frontend only"  
+echo "   ss-shell    - Open shell with activated Python environment"
+echo "   ss-test     - Run tests"
+echo "   ss          - Navigate to project directory"

@@ -12,6 +12,7 @@
 - **TypeScript** for type safety and developer experience
 - **Tailwind CSS 4** for responsive, modern UI design
 - **Headless UI** for accessible component primitives
+- **React Query** for efficient data fetching and caching
 
 ### Backend
 - **FastAPI** with async/await for high-performance API endpoints
@@ -19,6 +20,7 @@
 - **Pydantic** for data validation and serialization
 - **In-memory caching** with TTL for optimized response times
 - **Background task processing** for long-running analysis
+- **Multi-level authentication** with role-based access
 
 ### Data Sources
 - **Reddit API** - Community sentiment from financial subreddits
@@ -111,82 +113,75 @@ This will start:
 
 ---
 
-## 🔐 Secure Authentication Setup
+## Authentication System
 
-StockScope Pro now includes secure authentication to protect your investment analysis. **Only you will have access** with your chosen password.
+StockScope Pro includes a secure multi-level authentication system to protect your investment analysis. The system supports three access levels with different capabilities.
 
-### Initial Setup
+### Authentication Levels
 
-1. **Generate your authentication credentials**:
-   ```bash
-   # Activate virtual environment
-   source venv/bin/activate
-   
-   # Run the secure setup script
-   python setup_auth.py
-   ```
+1. **Admin Access** - Full access to all features and data
+2. **Demo Access** - Read-only access for demonstrations
+3. **Guest Access** - Limited public access
 
-2. **Choose a strong master password** when prompted
-   - Minimum 8 characters
-   - This will be your only way to access StockScope
-   - The script will generate a secure hash (never stores the actual password)
+### Setup Authentication
 
-3. **Set environment variables** with the generated values:
-   ```bash
-   # Option 1: Export in your terminal session
-   export STOCKSCOPE_PASSWORD_HASH='your_generated_hash'
-   export SECRET_KEY='your_generated_secret'
-   
-   # Option 2: Create a .env file (recommended)
-   cp .env.example .env
-   # Edit .env with your generated values
-   ```
+1. **Configure passwords in your .env file**:
+```bash
+# Authentication - Multiple Access Levels
+ADMIN_PASSWORD=your_secure_admin_password
+DEMO_PASSWORD=your_demo_password  
+GUEST_PASSWORD=your_guest_password
+
+# Set the active password (determines current access level)
+STOCKSCOPE_PASSWORD=your_secure_admin_password
+```
+
+2. **Development Mode** (optional):
+```bash
+# Enable development mode for testing
+STOCKSCOPE_DEV_MODE=true
+ENVIRONMENT=development
+```
 
 ### Security Features
 
-- ✅ **JWT-based authentication** with configurable expiration
-- ✅ **Bcrypt password hashing** (industry standard)
-- ✅ **Environment variable protection** (never commit secrets)
-- ✅ **Automatic token expiration** (60-minute sessions)
-- ✅ **Protected API endpoints** (all require authentication)
-- ✅ **Secure logout** functionality
+- **Multi-level password authentication** with role detection
+- **API endpoint protection** (all endpoints require authentication)
+- **Environment variable protection** (credentials never hardcoded)
+- **Role-based access control** (admin/demo/guest permissions)
+- **Development mode** for testing without API keys
 
-### Development Workflow
-
-```bash
-# 1. Set up authentication (one time)
-python setup_auth.py
-
-# 2. Set environment variables
-export STOCKSCOPE_PASSWORD_HASH='your_hash'
-export SECRET_KEY='your_secret'
-
-# 3. Start development servers
-./dev-start.sh
-```
-
-### Production Deployment
-
-For production deployment, ensure environment variables are set securely:
+### Authentication Workflow
 
 ```bash
-# Docker Compose
-docker-compose up -d
+# 1. Set your authentication credentials in .env
+ADMIN_PASSWORD=StockScope_Master_2025_SecureAccess!#7
+STOCKSCOPE_PASSWORD=StockScope_Master_2025_SecureAccess!#7
 
-# Make sure to set environment variables in your deployment platform
-# Never include secrets in docker-compose.yml or Dockerfile
+# 2. Start the application
+cd stockscope-frontend
+npm run full-app
+
+# 3. Login with your password through the web interface
 ```
 
-## 🚨 Security Warnings
+### API Authentication
 
-- **NEVER** commit `.env` files or password hashes to git
-- **NEVER** share your master password or generated hash
-- **ALWAYS** use the setup script to generate new credentials
-- **STORE** your password securely (password manager recommended)
+All API endpoints require password authentication via query parameter:
+
+```bash
+# Example API calls
+GET /api/stocks?password=your_password
+POST /api/stocks/analyze?password=your_password
+```
 
 ---
 
 ## API Endpoints
+
+### Authentication
+- `POST /api/auth/login` - Authenticate with password
+- `GET /api/auth/status` - Check authentication requirements
 
 ### Stock Analysis
 - `GET /api/stocks` - List all analyzed stocks with metadata
@@ -203,7 +198,7 @@ docker-compose up -d
 - `GET /api/health` - System health and metrics
 
 ### Administration
-- `DELETE /api/cache` - Clear API cache (admin)
+- `DELETE /api/cache` - Clear API cache (admin only)
 
 ---
 
@@ -228,16 +223,26 @@ npm run setup      # Install all dependencies
 ```
 StockScope/
 ├── backend/
-│   └── api.py              # FastAPI application with caching
+│   └── api.py              # FastAPI application with authentication
 ├── stockscope-frontend/
 │   ├── src/
 │   │   ├── app/            # Next.js app router
-│   │   └── components/     # React components
+│   │   ├── components/     # React components
+│   │   └── types/          # TypeScript definitions
 │   └── package.json
 ├── analysis/               # AI analysis modules
+│   ├── investment_advisor.py
+│   └── quantitative_strategies.py
 ├── scraping/              # Data collection scripts
+│   ├── news_scraper.py
+│   ├── reddit_scraper.py
+│   └── sec_scraper.py
+├── sentiment/             # Sentiment analysis
+│   └── analyzer.py
 ├── data/                  # Sentiment analysis results
-└── requirements.txt       # Python dependencies
+├── main.py               # Core pipeline orchestrator
+├── setup_auth.py         # Authentication setup utility
+└── requirements.txt      # Python dependencies
 ```
 
 ---
@@ -250,6 +255,8 @@ StockScope/
 # Build and run with Docker Compose
 docker-compose up --build
 ```
+
+The project includes optimized Dockerfiles for both frontend and backend components.
 
 ### Recommended Hosting
 
@@ -272,9 +279,15 @@ NEXT_PUBLIC_API_URL=https://your-api-domain.com
 
 **Production Backend**:
 ```env
+ADMIN_PASSWORD=your_secure_admin_password
+DEMO_PASSWORD=your_demo_password
+GUEST_PASSWORD=your_guest_password
+STOCKSCOPE_PASSWORD=your_active_password
+
+# Optional API keys for enhanced features
 REDDIT_CLIENT_ID=your_reddit_client_id
+REDDIT_CLIENT_SECRET=your_reddit_client_secret
 NEWS_API_KEY=your_news_api_key
-# ... other API keys
 ```
 
 ---
@@ -285,6 +298,7 @@ NEWS_API_KEY=your_news_api_key
 - **API Response Caching** with configurable TTL
 - **Smart Cache Invalidation** when new data arrives
 - **Memory-efficient** storage with automatic cleanup
+- **Multi-layer caching** for different data types
 
 ### Optimization
 - **Background Task Processing** for analysis operations
@@ -328,9 +342,9 @@ NEWS_API_KEY=your_news_api_key
 ## Security & Privacy
 
 ### Data Protection
-- **Environment Variables**: All API keys secured in .env files
+- **Environment Variables**: All credentials secured in .env files
 - **Git Security**: Sensitive files excluded from version control
-- **API Rate Limiting**: Protection against abuse
+- **API Authentication**: Password protection on all endpoints
 - **Input Validation**: Comprehensive request sanitization
 
 ### Best Practices
@@ -353,9 +367,21 @@ cd StockScope
 # Create a feature branch
 git checkout -b feature/your-feature-name
 
-# Make your changes and test
+# Set up environment
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cd stockscope-frontend && npm install && cd ..
+
+# Configure authentication
+cp .env.example .env
+# Edit .env with your passwords
+
+# Start development
+cd stockscope-frontend
 npm run full-app
 
+# Make your changes and test
 # Commit and push
 git commit -m "Add your feature description"
 git push origin feature/your-feature-name

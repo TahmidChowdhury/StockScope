@@ -11,6 +11,10 @@ export default function StockSearch({ onAnalyze, isLoading = false }: StockSearc
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
 
+  // New state for validation feedback
+  const [validationError, setValidationError] = useState<string | null>(null)
+  const [isShaking, setIsShaking] = useState(false)
+
   // Get API URL from environment variables with fallback
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -57,10 +61,38 @@ export default function StockSearch({ onAnalyze, isLoading = false }: StockSearc
     }
   }, [query, API_BASE_URL])
 
-  const handleAnalyze = (symbol: string) => {
-    setQuery('')
-    setSuggestions([])
-    onAnalyze(symbol)
+  const handleAnalyze = async (symbol: string) => {
+    // Clear any previous errors
+    setValidationError(null)
+    setIsShaking(false)
+    
+    // First validate the symbol
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/stocks/validate/${symbol}${getPasswordParam()}`)
+      const validation = await response.json()
+      
+      if (!validation.valid) {
+        // Trigger shake animation
+        setIsShaking(true)
+        setValidationError(validation.message)
+        
+        // Reset shake after animation
+        setTimeout(() => setIsShaking(false), 600)
+        return
+      }
+      
+      // If valid, proceed with analysis
+      setQuery('')
+      setSuggestions([])
+      setValidationError(null)
+      onAnalyze(symbol)
+      
+    } catch (error) {
+      console.error('Error validating symbol:', error)
+      setIsShaking(true)
+      setValidationError('Failed to validate stock symbol. Please try again.')
+      setTimeout(() => setIsShaking(false), 600)
+    }
   }
 
   return (
@@ -69,7 +101,7 @@ export default function StockSearch({ onAnalyze, isLoading = false }: StockSearc
         <Combobox value="" onChange={(value) => value && handleAnalyze(value)}>
           <div className="relative">
             {/* Search Input */}
-            <div className="relative">
+            <div className={`relative ${isShaking ? 'animate-shake' : ''}`}>
               <Combobox.Input
                 className="w-full rounded-xl border-0 bg-white/10 backdrop-blur-sm py-4 pl-12 pr-32 text-white placeholder:text-white/60 ring-1 ring-white/20 focus:ring-2 focus:ring-blue-500 text-lg shadow-lg transition-all duration-200"
                 placeholder="Type stock symbol (e.g., AAPL, META, TSLA)..."
@@ -100,6 +132,11 @@ export default function StockSearch({ onAnalyze, isLoading = false }: StockSearc
                 Analyze
               </button>
             </div>
+
+            {/* Validation Error */}
+            {validationError && (
+              <p className="mt-2 text-sm text-red-600">{validationError}</p>
+            )}
 
             {/* Suggestions Dropdown */}
             {(suggestions.length > 0 || isLoadingSuggestions) && (

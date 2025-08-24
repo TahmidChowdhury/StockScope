@@ -105,52 +105,67 @@ class InvestmentAdvisor:
         if self.data is None or len(self.data) < 50:
             return {}
         
-        close = self.data['Close'].values
-        high = self.data['High'].values
-        low = self.data['Low'].values
-        volume = self.data['Volume'].values
-        
-        # Calculate indicators
-        sma_20 = talib.SMA(close, timeperiod=20)
-        sma_50 = talib.SMA(close, timeperiod=50)
-        rsi = talib.RSI(close, timeperiod=14)
-        macd, macd_signal, _ = talib.MACD(close)
-        bb_upper, bb_middle, bb_lower = talib.BBANDS(close, timeperiod=20)
-        
-        # Current values
-        current_price = close[-1]
-        current_rsi = rsi[-1] if not np.isnan(rsi[-1]) else 50
-        current_macd = macd[-1] if not np.isnan(macd[-1]) else 0
-        current_macd_signal = macd_signal[-1] if not np.isnan(macd_signal[-1]) else 0
-        
-        # Price momentum
-        price_change_5d = (close[-1] - close[-6]) / close[-6] if len(close) >= 6 else 0
-        price_change_20d = (close[-1] - close[-21]) / close[-21] if len(close) >= 21 else 0
-        
-        # Moving average signals
-        ma_signal = 0
-        if not np.isnan(sma_20[-1]) and not np.isnan(sma_50[-1]):
-            if current_price > sma_20[-1] > sma_50[-1]:
-                ma_signal = 1  # Bullish
-            elif current_price < sma_20[-1] < sma_50[-1]:
-                ma_signal = -1  # Bearish
-        
-        # Bollinger Band position
-        bb_position = 0.5  # Default to middle
-        if not np.isnan(bb_upper[-1]) and not np.isnan(bb_lower[-1]):
-            bb_position = (current_price - bb_lower[-1]) / (bb_upper[-1] - bb_lower[-1])
-        
-        return {
-            "price_momentum": (price_change_5d + price_change_20d) / 2,
-            "rsi": current_rsi,
-            "macd_signal": 1 if current_macd > current_macd_signal else -1,
-            "ma_signal": ma_signal,
-            "bb_position": bb_position,
-            "support_resistance": {
-                "support": float(bb_lower[-1]) if not np.isnan(bb_lower[-1]) else current_price * 0.95,
-                "resistance": float(bb_upper[-1]) if not np.isnan(bb_upper[-1]) else current_price * 1.05
+        # Ensure data is properly converted to float64 for TA-Lib
+        try:
+            close = self.data['Close'].astype('float64').values
+            high = self.data['High'].astype('float64').values
+            low = self.data['Low'].astype('float64').values
+            volume = self.data['Volume'].astype('float64').values
+            
+            # Validate data
+            if len(close) == 0 or np.all(np.isnan(close)):
+                return {}
+            
+            # Calculate indicators with error handling
+            try:
+                sma_20 = talib.SMA(close, timeperiod=20)
+                sma_50 = talib.SMA(close, timeperiod=50)
+                rsi = talib.RSI(close, timeperiod=14)
+                macd, macd_signal, _ = talib.MACD(close)
+                bb_upper, bb_middle, bb_lower = talib.BBANDS(close, timeperiod=20)
+            except Exception as e:
+                print(f"Error calculating technical indicators: {e}")
+                return {}
+            
+            # Current values with safe access
+            current_price = close[-1] if len(close) > 0 else 0
+            current_rsi = rsi[-1] if len(rsi) > 0 and not np.isnan(rsi[-1]) else 50
+            current_macd = macd[-1] if len(macd) > 0 and not np.isnan(macd[-1]) else 0
+            current_macd_signal = macd_signal[-1] if len(macd_signal) > 0 and not np.isnan(macd_signal[-1]) else 0
+            
+            # Price momentum with bounds checking
+            price_change_5d = (close[-1] - close[-6]) / close[-6] if len(close) >= 6 and close[-6] != 0 else 0
+            price_change_20d = (close[-1] - close[-21]) / close[-21] if len(close) >= 21 and close[-21] != 0 else 0
+            
+            # Moving average signals with safe access
+            ma_signal = 0
+            if len(sma_20) > 0 and len(sma_50) > 0 and not np.isnan(sma_20[-1]) and not np.isnan(sma_50[-1]):
+                if current_price > sma_20[-1] > sma_50[-1]:
+                    ma_signal = 1  # Bullish
+                elif current_price < sma_20[-1] < sma_50[-1]:
+                    ma_signal = -1  # Bearish
+            
+            # Bollinger Band position with safe access
+            bb_position = 0.5  # Default to middle
+            if (len(bb_upper) > 0 and len(bb_lower) > 0 and 
+                not np.isnan(bb_upper[-1]) and not np.isnan(bb_lower[-1]) and
+                bb_upper[-1] != bb_lower[-1]):
+                bb_position = (current_price - bb_lower[-1]) / (bb_upper[-1] - bb_lower[-1])
+            
+            return {
+                "price_momentum": (price_change_5d + price_change_20d) / 2,
+                "rsi": current_rsi,
+                "macd_signal": 1 if current_macd > current_macd_signal else -1,
+                "ma_signal": ma_signal,
+                "bb_position": bb_position,
+                "support_resistance": {
+                    "support": float(bb_lower[-1]) if len(bb_lower) > 0 and not np.isnan(bb_lower[-1]) else current_price * 0.95,
+                    "resistance": float(bb_upper[-1]) if len(bb_upper) > 0 and not np.isnan(bb_upper[-1]) else current_price * 1.05
+                }
             }
-        }
+        except Exception as e:
+            print(f"Error in _calculate_technical_metrics: {e}")
+            return {}
     
     def _calculate_investment_risk(self):
         """Calculate investment risk metrics."""
@@ -323,42 +338,52 @@ class InvestmentAdvisor:
         if self.data is None or len(self.data) < 50:
             return {}
         
-        close = self.data['Close'].values
-        high = self.data['High'].values
-        low = self.data['Low'].values
-        volume = self.data['Volume'].values
-        
-        # Trend Indicators
-        self.technical_indicators['SMA_20'] = talib.SMA(close, timeperiod=20)
-        self.technical_indicators['SMA_50'] = talib.SMA(close, timeperiod=50)
-        self.technical_indicators['EMA_12'] = talib.EMA(close, timeperiod=12)
-        self.technical_indicators['EMA_26'] = talib.EMA(close, timeperiod=26)
-        
-        # MACD
-        macd, signal, hist = talib.MACD(close, fastperiod=12, slowperiod=26, signalperiod=9)
-        self.technical_indicators['MACD'] = macd
-        self.technical_indicators['MACD_Signal'] = signal
-        self.technical_indicators['MACD_Hist'] = hist
-        
-        # Bollinger Bands
-        bb_upper, bb_middle, bb_lower = talib.BBANDS(close, timeperiod=20, nbdevup=2, nbdevdn=2)
-        self.technical_indicators['BB_Upper'] = bb_upper
-        self.technical_indicators['BB_Middle'] = bb_middle
-        self.technical_indicators['BB_Lower'] = bb_lower
-        
-        # Momentum Indicators
-        self.technical_indicators['RSI'] = talib.RSI(close, timeperiod=14)
-        self.technical_indicators['Stoch_K'], self.technical_indicators['Stoch_D'] = talib.STOCH(high, low, close)
-        self.technical_indicators['Williams_R'] = talib.WILLR(high, low, close, timeperiod=14)
-        
-        # Volume Indicators
-        self.technical_indicators['OBV'] = talib.OBV(close, volume)
-        self.technical_indicators['AD'] = talib.AD(high, low, close, volume)
-        
-        # Volatility Indicators
-        self.technical_indicators['ATR'] = talib.ATR(high, low, close, timeperiod=14)
-        
-        return self.technical_indicators
+        try:
+            # Ensure data is properly converted to float64 for TA-Lib
+            close = self.data['Close'].astype('float64').values
+            high = self.data['High'].astype('float64').values
+            low = self.data['Low'].astype('float64').values
+            volume = self.data['Volume'].astype('float64').values
+            
+            # Validate data
+            if len(close) == 0 or np.all(np.isnan(close)):
+                return {}
+            
+            # Trend Indicators
+            self.technical_indicators['SMA_20'] = talib.SMA(close, timeperiod=20)
+            self.technical_indicators['SMA_50'] = talib.SMA(close, timeperiod=50)
+            self.technical_indicators['EMA_12'] = talib.EMA(close, timeperiod=12)
+            self.technical_indicators['EMA_26'] = talib.EMA(close, timeperiod=26)
+            
+            # MACD
+            macd, signal, hist = talib.MACD(close, fastperiod=12, slowperiod=26, signalperiod=9)
+            self.technical_indicators['MACD'] = macd
+            self.technical_indicators['MACD_Signal'] = signal
+            self.technical_indicators['MACD_Hist'] = hist
+            
+            # Bollinger Bands
+            bb_upper, bb_middle, bb_lower = talib.BBANDS(close, timeperiod=20, nbdevup=2, nbdevdn=2)
+            self.technical_indicators['BB_Upper'] = bb_upper
+            self.technical_indicators['BB_Middle'] = bb_middle
+            self.technical_indicators['BB_Lower'] = bb_lower
+            
+            # Momentum Indicators
+            self.technical_indicators['RSI'] = talib.RSI(close, timeperiod=14)
+            self.technical_indicators['Stoch_K'], self.technical_indicators['Stoch_D'] = talib.STOCH(high, low, close)
+            self.technical_indicators['Williams_R'] = talib.WILLR(high, low, close, timeperiod=14)
+            
+            # Volume Indicators
+            self.technical_indicators['OBV'] = talib.OBV(close, volume)
+            self.technical_indicators['AD'] = talib.AD(high, low, close, volume)
+            
+            # Volatility Indicators
+            self.technical_indicators['ATR'] = talib.ATR(high, low, close, timeperiod=14)
+            
+            return self.technical_indicators
+            
+        except Exception as e:
+            print(f"Error calculating technical indicators: {e}")
+            return {}
     
     def calculate_risk_metrics(self):
         """Calculate comprehensive risk metrics"""

@@ -1,5 +1,19 @@
 // Core data types for StockScope Pro
 
+// Simplified authentication types
+export interface LoginRequest {
+  password: string
+}
+
+export interface SimpleAuthResponse {
+  success: boolean
+  message: string
+}
+
+export interface AuthState {
+  isAuthenticated: boolean
+}
+
 export interface StockMetadata {
   symbol: string
   total_posts: number

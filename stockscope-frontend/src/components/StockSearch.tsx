@@ -14,6 +14,12 @@ export default function StockSearch({ onAnalyze, isLoading = false }: StockSearc
   // Get API URL from environment variables with fallback
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
+  // Get password for API calls
+  const getPasswordParam = () => {
+    const password = localStorage.getItem('stockscope_password')
+    return password ? `?password=${encodeURIComponent(password)}` : ''
+  }
+
   // Debounced search - prevents too many API calls while typing
   useEffect(() => {
     // Fetch suggestions from your FastAPI backend
@@ -25,7 +31,7 @@ export default function StockSearch({ onAnalyze, isLoading = false }: StockSearc
 
       setIsLoadingSuggestions(true)
       try {
-        const response = await fetch(`${API_BASE_URL}/api/stocks/suggestions?q=${encodeURIComponent(searchQuery)}`)
+        const response = await fetch(`${API_BASE_URL}/api/stocks/suggestions${getPasswordParam()}&q=${encodeURIComponent(searchQuery)}`)
         const data = await response.json()
         setSuggestions(data)
       } catch (error) {

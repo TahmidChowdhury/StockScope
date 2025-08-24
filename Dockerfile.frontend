@@ -3,11 +3,14 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+# Install libc6-compat for better compatibility with native modules
+RUN apk add --no-cache libc6-compat
+
 # Copy package files
 COPY stockscope-frontend/package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install ALL dependencies (including dev dependencies needed for build)
+RUN npm ci
 
 # Copy frontend code
 COPY stockscope-frontend/ .

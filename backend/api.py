@@ -458,10 +458,11 @@ app = FastAPI(
 # Enhanced CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://stockscope.vercel.app"],
+    allow_origins=["http://localhost:3000", "https://stockscope.vercel.app", "*"],  # Add wildcard for development
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Explicitly include OPTIONS
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Dependency for rate limiting (placeholder - would use Redis in production)
@@ -675,14 +676,25 @@ async def root():
 async def login(login_request: LoginRequest):
     """Authenticate with master password"""
     try:
-        is_valid, role = await authenticate_user(login_request.password)
+        logger.info(f"Login attempt received - password length: {len(login_request.password)}")
+        
+        # Additional validation
+        if not login_request.password or len(login_request.password.strip()) == 0:
+            logger.warning("Empty password provided")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password cannot be empty"
+            )
+        
+        is_valid, role = await authenticate_user(login_request.password.strip())
         if not is_valid:
+            logger.warning(f"Authentication failed for password: {login_request.password[:5]}...")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid password"
             )
         
-        logger.info("Successful authentication - access granted")
+        logger.info(f"Successful authentication - {role} access granted")
         
         return SimpleAuthResponse(
             success=True,

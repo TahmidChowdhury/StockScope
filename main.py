@@ -78,3 +78,15 @@ async def run_full_pipeline_async(ticker: str, reddit_limit=20, twitter_limit=50
 def run_full_pipeline(ticker: str, reddit_limit=20, twitter_limit=50, sec_limit=10):
     """Synchronous wrapper for the async pipeline (for backward compatibility)"""
     return asyncio.run(run_full_pipeline_async(ticker, reddit_limit, twitter_limit, sec_limit))
+
+# Add this section to start the API server when main.py is run directly
+if __name__ == "__main__":
+    print("🚀 Starting StockScope API server...")
+    import uvicorn
+    from backend.api import app
+    
+    # Get port from environment variable (Railway sets this)
+    port = int(os.environ.get("PORT", 8000))
+    
+    print(f"📡 Starting server on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)

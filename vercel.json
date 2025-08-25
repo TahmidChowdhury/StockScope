@@ -1,5 +1,0 @@
-{
-  "buildCommand": "cd stockscope-frontend && npm run build",
-  "outputDirectory": "stockscope-frontend/.next",
-  "installCommand": "cd stockscope-frontend && npm install"
-}

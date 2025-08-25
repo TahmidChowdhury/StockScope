@@ -1,22 +1,3 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "stockscope-frontend/package.json",
-      "use": "@vercel/next",
-      "config": {
-        "distDir": ".next"
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/stockscope-frontend/$1"
-    }
-  ],
-  "buildCommand": "cd stockscope-frontend && npm run build",
-  "outputDirectory": "stockscope-frontend/.next",
-  "installCommand": "cd stockscope-frontend && npm install",
   "framework": "nextjs"
 }

@@ -23,7 +23,7 @@ Thumbs.db
 # Data output
 data/
 *.csv
-*.json
+data/*.json
 
 # Environment variables (CRITICAL - keeps secrets safe)
 .env

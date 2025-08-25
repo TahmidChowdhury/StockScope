@@ -24,13 +24,21 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Multi-level password authentication
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "StockScope_Master_2025_SecureAccess!#7")
-DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "StockScope_Demo_2025_Preview") 
-GUEST_PASSWORD = os.getenv("GUEST_PASSWORD", "StockScope_Guest_View_Only")
+# Multi-level password authentication - SECURE VERSION
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+DEMO_PASSWORD = os.getenv("DEMO_PASSWORD") 
+GUEST_PASSWORD = os.getenv("GUEST_PASSWORD")
 
 # For backward compatibility
 MASTER_PASSWORD = os.getenv("STOCKSCOPE_PASSWORD", ADMIN_PASSWORD)
+
+# Validate that passwords are set
+if not ADMIN_PASSWORD:
+    raise ValueError("ADMIN_PASSWORD environment variable must be set")
+if not DEMO_PASSWORD:
+    raise ValueError("DEMO_PASSWORD environment variable must be set")  
+if not GUEST_PASSWORD:
+    raise ValueError("GUEST_PASSWORD environment variable must be set")
 
 def get_user_role(password: str) -> str:
     """Determine user role based on password"""

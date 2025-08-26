@@ -203,23 +203,24 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <div className="container mx-auto px-4 py-16">
-        {/* Header with logout and navigation */}
-        <div className="text-center mb-12 relative">
+      <div className="container mx-auto px-3 sm:px-4 py-8 sm:py-16">
+        {/* Header with logout - Mobile optimized */}
+        <div className="text-center mb-8 sm:mb-12 relative">
           <button
             onClick={handleLogout}
-            className="absolute top-0 right-0 bg-red-500/20 hover:bg-red-500/30 text-red-300 px-4 py-2 rounded-lg border border-red-500/50 transition-all duration-200"
+            className="absolute top-0 right-0 bg-red-500/20 hover:bg-red-500/30 text-red-300 px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg border border-red-500/50 transition-all duration-200 text-xs sm:text-sm"
           >
-            🔓 Logout
+            <span className="hidden sm:inline">🔓 Logout</span>
+            <span className="sm:hidden">🔓</span>
           </button>
           
-          <h1 className="text-5xl font-bold text-white mb-4">
+          <h1 className="text-3xl sm:text-5xl font-bold text-white mb-2 sm:mb-4 pr-16 sm:pr-0">
             📊 StockScope Pro
           </h1>
-          <p className="text-xl text-white/80 max-w-2xl mx-auto">
+          <p className="text-base sm:text-xl text-white/80 max-w-2xl mx-auto px-2">
             AI-Powered Stock Sentiment Analysis with Real-Time Data from Reddit, News, and SEC Filings
           </p>
-          <div className="mt-4 text-sm text-green-400">
+          <div className="mt-2 sm:mt-4 text-xs sm:text-sm text-green-400">
             🔒 Secure Session Active
           </div>
         </div>
@@ -281,17 +282,17 @@ export default function Home() {
         </div>
 
         {/* Stock Search */}
-        <div className="mb-8">
+        <div className="mb-6 sm:mb-8">
           <StockSearch onAnalyze={handleAnalyze} isLoading={isAnalyzing} />
         </div>
 
         {/* Analysis Status */}
         {analysisStatus && (
-          <div className="max-w-2xl mx-auto mb-8">
-            <div className="rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 p-6 text-center">
-              <p className="text-white text-lg">{analysisStatus}</p>
+          <div className="max-w-2xl mx-auto mb-6 sm:mb-8">
+            <div className="rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 p-4 sm:p-6 text-center mx-2 sm:mx-0">
+              <p className="text-white text-sm sm:text-lg">{analysisStatus}</p>
               {isAnalyzing && (
-                <div className="mt-4 w-full bg-white/20 rounded-full h-2">
+                <div className="mt-3 sm:mt-4 w-full bg-white/20 rounded-full h-2">
                   <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full animate-pulse" style={{ width: '70%' }}></div>
                 </div>
               )}
@@ -302,37 +303,37 @@ export default function Home() {
         {/* Portfolio Section */}
         <PortfolioView onViewDashboard={handleViewDashboard} passwordParam={getPasswordParam()} />
 
-        {/* Features */}
-        <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-          <div className="text-center p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
-            <div className="text-4xl mb-4">🔍</div>
-            <h3 className="text-xl font-semibold text-white mb-2">Real-Time Search</h3>
-            <p className="text-white/70">Instant autocomplete with 70+ popular stocks and custom symbol support</p>
+        {/* Features - Mobile optimized grid */}
+        <div className="mt-12 sm:mt-16 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-8 max-w-6xl mx-auto px-2 sm:px-0">
+          <div className="text-center p-4 sm:p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
+            <div className="text-3xl sm:text-4xl mb-2 sm:mb-4">🔍</div>
+            <h3 className="text-lg sm:text-xl font-semibold text-white mb-1 sm:mb-2">Real-Time Search</h3>
+            <p className="text-sm sm:text-base text-white/70">Instant autocomplete with 70+ popular stocks and custom symbol support</p>
           </div>
           
-          <div className="text-center p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
-            <div className="text-4xl mb-4">🤖</div>
-            <h3 className="text-xl font-semibold text-white mb-2">AI Analysis</h3>
-            <p className="text-white/70">Advanced sentiment analysis from multiple data sources with ML insights</p>
+          <div className="text-center p-4 sm:p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
+            <div className="text-3xl sm:text-4xl mb-2 sm:mb-4">🤖</div>
+            <h3 className="text-lg sm:text-xl font-semibold text-white mb-1 sm:mb-2">AI Analysis</h3>
+            <p className="text-sm sm:text-base text-white/70">Advanced sentiment analysis from multiple data sources with ML insights</p>
           </div>
           
-          <div className="text-center p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
-            <div className="text-4xl mb-4">📈</div>
-            <h3 className="text-xl font-semibold text-white mb-2">Investment Insights</h3>
-            <p className="text-white/70">Get BUY/SELL/HOLD recommendations with confidence scores and risk analysis</p>
+          <div className="text-center p-4 sm:p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10 sm:col-span-2 lg:col-span-1">
+            <div className="text-3xl sm:text-4xl mb-2 sm:mb-4">📈</div>
+            <h3 className="text-lg sm:text-xl font-semibold text-white mb-1 sm:mb-2">Investment Insights</h3>
+            <p className="text-sm sm:text-base text-white/70">Get BUY/SELL/HOLD recommendations with confidence scores and risk analysis</p>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="mt-16 text-center text-white/60">
-          <p>Built with Next.js + Turbopack ⚡ FastAPI + Python 🐍</p>
+        <div className="mt-12 sm:mt-16 text-center text-white/60 px-2">
+          <p className="text-sm sm:text-base">Built with Next.js + Turbopack ⚡ FastAPI + Python 🐍</p>
         </div>
       </div>
     </div>
   )
 }
 
-// Portfolio component to show existing analyzed stocks
+// Portfolio component to show existing analyzed stocks - Mobile optimized
 function PortfolioView({ onViewDashboard, passwordParam }: { 
   onViewDashboard: (symbol: string) => void
   passwordParam: string
@@ -524,10 +525,10 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto mb-12">
+      <div className="max-w-4xl mx-auto mb-8 sm:mb-12 px-2 sm:px-0">
         <div className="text-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white mx-auto mb-2" />
-          <p className="text-white/60">Loading your portfolio...</p>
+          <div className="h-6 w-6 sm:h-8 sm:w-8 animate-spin rounded-full border-2 border-white/30 border-t-white mx-auto mb-2" />
+          <p className="text-white/60 text-sm sm:text-base">Loading your portfolio...</p>
         </div>
       </div>
     )
@@ -535,68 +536,76 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
 
   if (stocks.length === 0) {
     return (
-      <div className="max-w-4xl mx-auto mb-12 text-center">
-        <div className="bg-white/5 backdrop-blur-sm rounded-xl p-8 border border-white/10">
-          <div className="text-4xl mb-4">📈</div>
-          <h3 className="text-xl font-semibold text-white mb-2">No Stocks Analyzed Yet</h3>
-          <p className="text-white/70">Use the search above to analyze your first stock and start building your portfolio</p>
+      <div className="max-w-4xl mx-auto mb-8 sm:mb-12 text-center px-2 sm:px-0">
+        <div className="bg-white/5 backdrop-blur-sm rounded-xl p-6 sm:p-8 border border-white/10">
+          <div className="text-3xl sm:text-4xl mb-2 sm:mb-4">📈</div>
+          <h3 className="text-lg sm:text-xl font-semibold text-white mb-1 sm:mb-2">No Stocks Analyzed Yet</h3>
+          <p className="text-sm sm:text-base text-white/70">Use the search above to analyze your first stock and start building your portfolio</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-4xl mx-auto mb-12">
-      {/* Portfolio Header with Controls */}
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-white">📊 Your Portfolio</h2>
+    <div className="max-w-4xl mx-auto mb-8 sm:mb-12 px-2 sm:px-0">
+      {/* Portfolio Header with Controls - Mobile optimized */}
+      <div className="flex items-center justify-between mb-4 sm:mb-6">
+        <h2 className="text-xl sm:text-2xl font-bold text-white">📊 Portfolio</h2>
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {isSelectionMode ? (
             <>
-              <span className="text-white/70 text-sm">
-                {selectedStocks.size} of {stocks.length} selected
+              <span className="text-white/70 text-xs sm:text-sm">
+                <span className="hidden sm:inline">{selectedStocks.size} of {stocks.length} selected</span>
+                <span className="sm:hidden">{selectedStocks.size}/{stocks.length}</span>
               </span>
               <button
                 onClick={handleSelectAll}
-                className="text-blue-400 hover:text-blue-300 text-sm"
+                className="text-blue-400 hover:text-blue-300 text-xs sm:text-sm"
               >
-                {selectedStocks.size === stocks.length ? 'Deselect All' : 'Select All'}
+                <span className="hidden sm:inline">{selectedStocks.size === stocks.length ? 'Deselect All' : 'Select All'}</span>
+                <span className="sm:hidden">All</span>
               </button>
               <button
                 onClick={handleBulkDelete}
                 disabled={selectedStocks.size === 0 || isDeleting}
-                className="bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2"
+                className="bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm transition-colors flex items-center gap-1 sm:gap-2"
               >
                 {isDeleting ? (
                   <>
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                    Deleting...
+                    <div className="h-3 w-3 sm:h-4 sm:w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    <span className="hidden sm:inline">Deleting...</span>
                   </>
                 ) : (
-                  <>🗑️ Delete Selected ({selectedStocks.size})</>
+                  <>
+                    🗑️ 
+                    <span className="hidden sm:inline">Delete ({selectedStocks.size})</span>
+                    <span className="sm:hidden">({selectedStocks.size})</span>
+                  </>
                 )}
               </button>
               <button
                 onClick={exitSelectionMode}
-                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm transition-colors"
+                className="bg-gray-600 hover:bg-gray-700 text-white px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm transition-colors"
               >
-                Cancel
+                <span className="hidden sm:inline">Cancel</span>
+                <span className="sm:hidden">✕</span>
               </button>
             </>
           ) : (
             <button
               onClick={() => setIsSelectionMode(true)}
-              className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg text-sm transition-colors border border-white/20"
+              className="bg-white/10 hover:bg-white/20 text-white px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm transition-colors border border-white/20"
             >
-              ✏️ Manage Portfolio
+              <span className="hidden sm:inline">✏️ Manage Portfolio</span>
+              <span className="sm:hidden">✏️</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Portfolio Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+      {/* Portfolio Grid - Mobile optimized */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-4">
         {stocks.map((stock) => (
           <div key={stock.symbol} className="relative group">
             {/* Selection Mode Overlay */}
@@ -605,92 +614,81 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
                 className="absolute inset-0 z-10 bg-black/50 rounded-lg flex items-center justify-center cursor-pointer"
                 onClick={() => handleStockSelection(stock.symbol)}
               >
-                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full border-2 flex items-center justify-center ${
                   selectedStocks.has(stock.symbol) 
                     ? 'bg-blue-500 border-blue-500' 
                     : 'border-white bg-transparent'
                 }`}>
                   {selectedStocks.has(stock.symbol) && (
-                    <span className="text-white text-sm">✓</span>
+                    <span className="text-white text-xs sm:text-sm">✓</span>
                   )}
                 </div>
               </div>
             )}
 
-            {/* Stock Card */}
-            <div className="relative">
-              <button
-                onClick={() => !isSelectionMode && onViewDashboard(stock.symbol)}
-                disabled={isSelectionMode}
-                className="w-full bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg p-4 border border-white/20 transition-all duration-200 hover:scale-105 disabled:hover:scale-100 disabled:cursor-default"
-              >
-                <div className="text-center">
-                  <div className="text-lg font-bold text-white mb-1">{stock.symbol}</div>
-                  
-                  {/* Company Name */}
-                  {stock.companyName && stock.companyName !== stock.symbol && (
-                    <div className="text-xs text-white/60 mb-2 truncate" title={stock.companyName}>
-                      {stock.companyName}
+            {/* Stock Card - Mobile optimized */}
+            <button
+              onClick={() => !isSelectionMode && onViewDashboard(stock.symbol)}
+              disabled={isSelectionMode}
+              className="w-full bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg p-2 sm:p-4 border border-white/20 transition-all duration-200 hover:scale-105 disabled:hover:scale-100 disabled:cursor-default"
+            >
+              <div className="text-center">
+                <div className="text-sm sm:text-lg font-bold text-white mb-1">{stock.symbol}</div>
+                
+                {/* Company Name - More compact on mobile */}
+                {stock.companyName && stock.companyName !== stock.symbol && (
+                  <div className="text-xs text-white/60 mb-1 sm:mb-2 truncate" title={stock.companyName}>
+                    {stock.companyName}
+                  </div>
+                )}
+                
+                {/* Current Price - Responsive sizing */}
+                {stock.currentPrice && stock.currentPrice > 0 ? (
+                  <div className="mb-1 sm:mb-2">
+                    <div className="text-sm sm:text-lg font-semibold text-white">
+                      ${stock.currentPrice.toFixed(2)}
                     </div>
-                  )}
-                  
-                  {/* Current Price */}
-                  {stock.currentPrice && stock.currentPrice > 0 ? (
-                    <div className="mb-2">
-                      <div className="text-lg font-semibold text-white">
-                        ${stock.currentPrice.toFixed(2)}
+                    
+                    {/* Price Change - More compact on mobile */}
+                    {stock.priceChange !== undefined && stock.priceChangePercent !== undefined && (
+                      <div className={`text-xs flex items-center justify-center gap-1 ${
+                        stock.priceChange > 0 ? 'text-green-400' : 
+                        stock.priceChange < 0 ? 'text-red-400' : 'text-white/60'
+                      }`}>
+                        <span>
+                          {stock.priceChange > 0 ? '↗' : stock.priceChange < 0 ? '↘' : '→'}
+                        </span>
+                        <span className="hidden sm:inline">
+                          {stock.priceChange > 0 ? '+' : ''}{stock.priceChange.toFixed(2)} 
+                          ({stock.priceChangePercent > 0 ? '+' : ''}{stock.priceChangePercent.toFixed(1)}%)
+                        </span>
+                        <span className="sm:hidden">
+                          {stock.priceChangePercent > 0 ? '+' : ''}{stock.priceChangePercent.toFixed(1)}%
+                        </span>
                       </div>
-                      
-                      {/* Price Change */}
-                      {stock.priceChange !== undefined && stock.priceChangePercent !== undefined && (
-                        <div className={`text-xs flex items-center justify-center gap-1 ${
-                          stock.priceChange > 0 ? 'text-green-400' : 
-                          stock.priceChange < 0 ? 'text-red-400' : 'text-white/60'
-                        }`}>
-                          <span>
-                            {stock.priceChange > 0 ? '↗' : stock.priceChange < 0 ? '↘' : '→'}
-                          </span>
-                          <span>
-                            {stock.priceChange > 0 ? '+' : ''}{stock.priceChange.toFixed(2)} 
-                            ({stock.priceChangePercent > 0 ? '+' : ''}{stock.priceChangePercent.toFixed(1)}%)
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-white/60 mb-2">
-                      {stock.total_posts > 0 ? `${stock.total_posts} posts` : 'View Dashboard'}
-                    </div>
-                  )}
-                  
-                  {/* Sentiment */}
-                  {stock.avg_sentiment !== 0 && (
-                    <div className={`text-xs ${
-                      stock.avg_sentiment > 0.1 ? 'text-green-400' : 
-                      stock.avg_sentiment < -0.1 ? 'text-red-400' : 'text-yellow-400'
-                    }`}>
-                      {stock.avg_sentiment > 0 ? '📈' : stock.avg_sentiment < 0 ? '📉' : '➡️'} 
-                      Sentiment: {(stock.avg_sentiment * 100).toFixed(0)}%
-                    </div>
-                  )}
-                </div>
-              </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-xs sm:text-sm text-white/60 mb-1 sm:mb-2">
+                    {stock.total_posts > 0 ? `${stock.total_posts} posts` : 'View Dashboard'}
+                  </div>
+                )}
+                
+                {/* Sentiment - Compact on mobile */}
+                {stock.avg_sentiment !== 0 && (
+                  <div className={`text-xs ${
+                    stock.avg_sentiment > 0.1 ? 'text-green-400' : 
+                    stock.avg_sentiment < -0.1 ? 'text-red-400' : 'text-yellow-400'
+                  }`}>
+                    {stock.avg_sentiment > 0 ? '📈' : stock.avg_sentiment < 0 ? '📉' : '➡️'} 
+                    <span className="hidden sm:inline">Sentiment: </span>
+                    {(stock.avg_sentiment * 100).toFixed(0)}%
+                  </div>
+                )}
+              </div>
+            </button>
 
-              {/* Quick Actions - only visible when not in selection mode */}
-              {!isSelectionMode && (
-                <div className="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <a
-                    href={`/fundamentals/${stock.symbol}`}
-                    className="block w-full bg-blue-600/80 hover:bg-blue-600 text-white text-xs py-1 px-2 rounded text-center transition-colors"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    📊 Fundamentals
-                  </a>
-                </div>
-              )}
-            </div>
-
-            {/* Individual Delete Button (only visible on hover when not in selection mode) */}
+            {/* Individual Delete Button - Adjusted for mobile */}
             {!isSelectionMode && (
               <button
                 onClick={(e) => {
@@ -698,11 +696,11 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
                   handleDeleteStock(stock.symbol)
                 }}
                 disabled={deletingStock === stock.symbol}
-                className="absolute -top-2 -right-2 bg-red-600 hover:bg-red-700 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 bg-red-600 hover:bg-red-700 text-white rounded-full w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
                 title={`Delete ${stock.symbol}`}
               >
                 {deletingStock === stock.symbol ? (
-                  <div className="h-3 w-3 animate-spin rounded-full border border-white/30 border-t-white" />
+                  <div className="h-2.5 w-2.5 sm:h-3 sm:w-3 animate-spin rounded-full border border-white/30 border-t-white" />
                 ) : (
                   '×'
                 )}
@@ -714,8 +712,9 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
 
       {/* Bulk Selection Help Text */}
       {isSelectionMode && (
-        <div className="mt-4 text-center text-white/60 text-sm">
-          Click on stocks to select them for bulk deletion, or use &ldquo;Select All&rdquo; to choose all stocks.
+        <div className="mt-3 sm:mt-4 text-center text-white/60 text-xs sm:text-sm px-2">
+          <span className="hidden sm:inline">Click on stocks to select them for bulk deletion, or use "Select All" to choose all stocks.</span>
+          <span className="sm:hidden">Tap stocks to select for deletion</span>
         </div>
       )}
     </div>

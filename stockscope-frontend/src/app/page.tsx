@@ -713,7 +713,7 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
       {/* Bulk Selection Help Text */}
       {isSelectionMode && (
         <div className="mt-3 sm:mt-4 text-center text-white/60 text-xs sm:text-sm px-2">
-          <span className="hidden sm:inline">Click on stocks to select them for bulk deletion, or use "Select All" to choose all stocks.</span>
+          <span className="hidden sm:inline">Click on stocks to select them for bulk deletion, or use &quot;Select All&quot; to choose all stocks.</span>
           <span className="sm:hidden">Tap stocks to select for deletion</span>
         </div>
       )}

@@ -9,7 +9,7 @@ asyncpraw
 tweepy
 vaderSentiment
 wordcloud
-yfinance
+yfinance>=0.2.40
 scikit-learn
 scipy
 TA-Lib
@@ -33,3 +33,7 @@ uvicorn
 passlib[bcrypt]
 python-jose[cryptography]
 python-multipart
+# Fundamentals analytics dependencies
+pydantic>=2.0.0
+cachetools
+pytest

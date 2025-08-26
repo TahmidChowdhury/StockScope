@@ -44,8 +44,9 @@ export default function LoginForm({ onLoginSuccess }: LoginFormProps) {
       } else {
         throw new Error(authData.message || 'Authentication failed')
       }
-    } catch (err) {
-      setError('Invalid password. Access denied.')
+    } catch (error) {
+      console.error('Login failed:', error)
+      setError('Login failed. Please check your password and try again.')
     } finally {
       setIsLoading(false)
     }

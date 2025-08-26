@@ -20,10 +20,13 @@ Thumbs.db
 # Jupyter / IPython (if used)
 .ipynb_checkpoints/
 
-# Data output
+# Data output (top-level data directory with generated sentiment data)
 data/
 *.csv
-data/*.json
+# But allow backend/data/ structure files
+!backend/data/
+!backend/data/**/*.py
+!backend/data/**/*.json
 
 # Environment variables (CRITICAL - keeps secrets safe)
 .env

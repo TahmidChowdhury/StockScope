@@ -396,7 +396,7 @@ export default function ScreenerPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {screener.data.results.map((company, index) => (
+                      {screener.data.results.map((company) => (
                         <tr key={company.ticker} className="border-b border-white/10 hover:bg-white/5 transition-colors">
                           <td className="px-6 py-4">
                             <div className="font-medium text-white">{company.ticker}</div>

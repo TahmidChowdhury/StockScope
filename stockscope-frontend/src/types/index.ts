@@ -135,3 +135,91 @@ export interface AnalysisStatus {
   progress?: number
   message?: string
 }
+
+export interface StockData {
+  symbol: string;
+  price: number;
+  change: number;
+  changePercent: number;
+}
+
+export interface AnalysisResult {
+  ticker: string;
+  total_posts: number;
+  sentiment_metrics: {
+    avg_sentiment: number;
+    sentiment_distribution: {
+      positive: number;
+      neutral: number;
+      negative: number;
+    };
+    confidence_score: number;
+    trend: string;
+  };
+  sources: Array<{
+    source: string;
+    count: number;
+    avg_sentiment: number;
+    latest_update: string;
+  }>;
+  last_updated: string;
+  data_quality_score: number;
+}
+
+// Fundamentals Analytics Types
+export interface FundamentalPoint {
+  date: string;
+  value: number | null;
+}
+
+export interface FundamentalsSeries {
+  revenue_q: FundamentalPoint[];
+  operating_income_q: FundamentalPoint[];
+  operating_margin_q: FundamentalPoint[];
+  fcf_q: FundamentalPoint[];
+  fcf_margin_q: FundamentalPoint[];
+  ebitda_q: FundamentalPoint[];
+}
+
+export interface FundamentalsTTM {
+  ticker: string;
+  revenue_ttm: number | null;
+  operating_income_ttm: number | null;
+  operating_margin_ttm: number | null;
+  fcf_ttm: number | null;
+  fcf_margin_ttm: number | null;
+  ebitda_ttm: number | null;
+  revenue_growth_yoy: number | null;
+  fcf_growth_yoy: number | null;
+  ebitda_growth_yoy: number | null;
+  margin_growth_yoy_pp: number | null;
+  debt_to_cash: number | null;
+  insufficient_data: boolean;
+}
+
+export interface FundamentalsResponse {
+  ttm: FundamentalsTTM;
+  series: FundamentalsSeries;
+}
+
+export interface CompareRequest {
+  tickers: string[];
+}
+
+export interface ScreenerRequest {
+  universe?: string[];
+  min_revenue_growth_yoy?: number;
+  min_fcf_growth_yoy?: number;
+  min_margin_growth_yoy_pp?: number;
+  min_ebitda_growth_yoy?: number;
+  max_debt_to_cash?: number;
+  limit?: number;
+  sort_by?: string;
+  sort_dir?: string;
+}
+
+export interface ScreenerResponse {
+  results: FundamentalsTTM[];
+  total_screened: number;
+  filters_applied: Record<string, string | number | boolean | null | undefined>;
+}

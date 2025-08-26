@@ -1,249 +1,277 @@
-# StockScope Pro - Advanced Stock Sentiment Analysis Platform
+# StockScope Pro - Advanced Stock Analytics & Sentiment Analysis Platform
 
-**StockScope Pro** is a comprehensive real-time stock sentiment analysis platform that combines social media sentiment, financial news analysis, and SEC filings to provide AI-powered investment recommendations. Built with a modern Next.js frontend and optimized FastAPI backend for professional-grade performance.
+**StockScope Pro** is a comprehensive financial analysis platform that combines real-time sentiment analysis with fundamental stock analytics. The platform aggregates data from social media, financial news, and SEC filings while providing deep fundamental analysis including company comparisons, stock screening, and AI-powered investment recommendations.
+
+---
+
+## 🚀 New Features
+
+### Fundamentals Analytics Suite
+- **📊 Individual Company Analysis** - Deep dive into company fundamentals with interactive charts
+- **⚖️ Multi-Company Comparison** - Side-by-side analysis of financial metrics
+- **🔍 Advanced Stock Screener** - Filter stocks by financial criteria and performance metrics
+- **📈 Interactive Charting** - Quarterly revenue, margins, cash flow, and profitability trends
+- **🤖 AI Investment Recommendations** - Intelligent BUY/SELL/HOLD suggestions with reasoning
+
+### Enhanced User Experience
+- **🎯 Intuitive Navigation** - Easy access to all analytics features from the main dashboard
+- **⚡ Real-time Updates** - Live data synchronization across all components
+- **📱 Responsive Design** - Optimized for desktop, tablet, and mobile devices
+- **🔒 Secure Authentication** - Multi-level access control with role-based permissions
+
+---
+
+## 🏗️ How StockScope Pro Works Now
+
+### 1. **Multi-Source Data Collection**
+```
+Social Media → Reddit API → Sentiment Analysis
+Financial News → NewsAPI → Content Processing  
+SEC Filings → SEC API → Document Analysis
+Stock Data → yFinance → Fundamental Metrics
+```
+
+### 2. **Integrated Analytics Pipeline**
+```
+Raw Data → AI Processing → Sentiment Scores
+↓
+Fundamental Data → Financial Analysis → Key Metrics
+↓
+Combined Intelligence → Investment Recommendations
+```
+
+### 3. **User Journey & Features**
+
+#### **Main Dashboard**
+- **Portfolio Overview**: View all analyzed stocks with real-time prices
+- **Quick Actions**: Direct access to fundamentals from stock cards
+- **Navigation Hub**: Easy access to comparison, screening, and analysis tools
+
+#### **Sentiment Analysis** (Original Core Feature)
+1. **Search & Analyze**: Enter any stock symbol (AAPL, TSLA, etc.)
+2. **Real-time Processing**: Background analysis of Reddit, news, and SEC data
+3. **Comprehensive Dashboard**: Sentiment trends, source breakdown, and insights
+4. **Investment Advice**: AI-powered recommendations with confidence scores
+
+#### **Fundamentals Analytics** (New Features)
+1. **Individual Analysis**: `/fundamentals/AAPL`
+   - Revenue trends and growth rates
+   - Profitability margins (FCF, Operating, EBITDA)
+   - Quarterly performance charts
+   - Year-over-year comparisons
+
+2. **Company Comparison**: `/compare`
+   - Select multiple companies for side-by-side analysis
+   - Compare financial metrics across time periods
+   - Visual performance comparisons
+   - Relative valuation analysis
+
+3. **Stock Screener**: `/screener`
+   - Filter by market cap, sector, performance
+   - Advanced financial criteria screening
+   - Real-time filtering with instant results
+   - Export and save screening results
 
 ---
 
 ## Architecture
 
-### Frontend
-- **Next.js 15** with Turbopack for blazing-fast development
-- **React 19** with modern hooks and state management
-- **TypeScript** for type safety and developer experience
-- **Tailwind CSS 4** for responsive, modern UI design
-- **Headless UI** for accessible component primitives
-- **React Query** for efficient data fetching and caching
+### Frontend (Next.js 15)
+- **React Query Integration** - Efficient data fetching and caching
+- **TypeScript Throughout** - Full type safety across all components
+- **Tailwind CSS 4** - Modern, responsive UI design
+- **Recharts Integration** - Interactive financial charting
+- **Client-side Routing** - Fast navigation between features
 
-### Backend
-- **FastAPI** with async/await for high-performance API endpoints
-- **Python 3.9+** with comprehensive data analysis libraries
-- **Pydantic** for data validation and serialization
-- **In-memory caching** with TTL for optimized response times
-- **Background task processing** for long-running analysis
-- **Multi-level authentication** with role-based access
+### Backend (FastAPI)
+- **Modular Router System** - Separate endpoints for sentiment and fundamentals
+- **Async Processing** - Non-blocking operations for better performance
+- **Multi-level Caching** - Optimized response times with intelligent cache management
+- **Comprehensive API** - RESTful endpoints for all features
 
-### Data Sources
-- **Reddit API** - Community sentiment from financial subreddits
-- **NewsAPI** - Professional financial news analysis
-- **SEC API** - Official regulatory document processing
-- **VADER NLP** - Advanced sentiment analysis engine
+### New Backend Structure
+```
+backend/
+├── api.py                 # Main FastAPI application
+├── routers/
+│   └── fundamentals.py    # Fundamentals analytics endpoints
+├── services/
+│   └── fundamentals.py    # Business logic for financial analysis
+├── models/
+│   └── fundamentals.py    # Data models and schemas
+└── core/
+    └── cache.py          # Caching utilities
+```
 
 ---
 
-## Key Features
+## 🔥 Key Features
 
-### Real-Time Analysis
-- **Live sentiment tracking** from multiple data sources
-- **Background processing** with real-time status updates
-- **Intelligent caching** for sub-second response times
-- **Auto-refresh capabilities** with configurable intervals
+### Real-Time Sentiment Analysis
+- **Multi-source Aggregation**: Reddit, news, SEC filings
+- **VADER NLP Processing**: Advanced sentiment scoring
+- **Live Updates**: Real-time analysis with progress tracking
+- **Historical Trends**: Track sentiment changes over time
+
+### Advanced Fundamentals Analytics
+- **Financial Metrics**: Revenue, margins, cash flow, profitability
+- **Growth Analysis**: YoY comparisons and trend identification
+- **Interactive Charts**: Quarterly data visualization
+- **Comparative Analysis**: Multi-company side-by-side comparisons
 
 ### AI-Powered Insights
-- **Investment recommendations** with confidence scores
-- **Risk assessment** and trend analysis
-- **Multi-source sentiment aggregation**
-- **Quantitative strategy integration**
+- **Investment Recommendations**: BUY/SELL/HOLD with confidence scores
+- **Risk Assessment**: Volatility and trend analysis
+- **Reasoning Engine**: Detailed explanations for all recommendations
+- **Quantitative Strategies**: Multiple analysis approaches
 
-### Professional Dashboard
-- **Modern dark theme** optimized for financial professionals
-- **Responsive design** that works on all devices
-- **Interactive charts** with real-time data updates
-- **Portfolio management** with bulk operations
-
-### Developer Experience
-- **One-command startup** for development environment
-- **Hot reloading** for both frontend and backend
-- **TypeScript integration** with full type safety
-- **Comprehensive error handling** and logging
+### Professional Tools
+- **Stock Screening**: Advanced filtering capabilities
+- **Portfolio Management**: Bulk operations and organization
+- **Data Export**: Download analysis results
+- **Real-time Updates**: Live price and sentiment data
 
 ---
 
-## Quick Start
+## 📊 API Endpoints
+
+### Sentiment Analysis (Original)
+- `GET /api/stocks` - Portfolio overview with metadata
+- `POST /api/stocks/analyze` - Start sentiment analysis
+- `GET /api/stocks/{symbol}` - Get sentiment analysis results
+- `GET /api/stocks/{symbol}/investment-advice` - AI recommendations
+
+### Fundamentals Analytics (New)
+- `GET /fundamentals/{ticker}` - Individual company fundamentals
+- `POST /fundamentals/compare` - Multi-company comparison
+- `POST /fundamentals/screener` - Advanced stock screening
+- `GET /api/stocks/{symbol}/info` - Company information
+
+### Utility Endpoints
+- `GET /api/stocks/suggestions` - Stock symbol autocomplete
+- `POST /api/auth/login` - Authentication
+- `GET /api/health` - System status
+
+---
+
+## 🛠️ Development Setup
 
 ### Prerequisites
 - **Node.js 18+** and npm
 - **Python 3.9+** and pip
 - **Git** for version control
 
-### Installation
+### Quick Start
 
 ```bash
-# Clone the repository
+# 1. Clone repository
 git clone https://github.com/TahmidChowdhury/StockScope.git
 cd StockScope
 
-# Install Python dependencies
+# 2. Setup Python environment
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-# Install Node.js dependencies
+# 3. Setup frontend
 cd stockscope-frontend
 npm install
 cd ..
-```
 
-### Environment Setup
-
-1. **Backend Environment** (optional - works with sample data):
-```bash
+# 4. Configure authentication
 cp .env.example .env
-# Edit .env with your API keys if desired
+# Edit .env with your passwords:
+ADMIN_PASSWORD=your_secure_password
+STOCKSCOPE_PASSWORD=your_secure_password
+
+# 5. Start development servers
+cd stockscope-frontend
+npm run dev &
+cd .. && python backend/api.py
 ```
 
-2. **Frontend Environment**:
-```bash
-cd stockscope-frontend
-cp .env.example .env.local
-# API URL is pre-configured for local development
-```
+### One-Command Development
 
-### Run the Application
+For the best development experience, use the custom development script:
 
-**Single Command** (recommended):
 ```bash
-cd stockscope-frontend
+# From the root directory
+./dev-env.sh
+
+# Or from frontend directory
 npm run full-app
 ```
 
-This will start:
-- **Backend API** on http://localhost:8000
-- **Frontend App** on http://localhost:3000
-- **API Documentation** on http://localhost:8000/docs
+This starts both backend (port 8000) and frontend (port 3000) with hot reloading.
 
 ---
 
-## Authentication System
+## 🎯 How to Use StockScope Pro
 
-StockScope Pro includes a secure multi-level authentication system to protect your investment analysis. The system supports three access levels with different capabilities.
+### 1. **Getting Started**
+- Navigate to `http://localhost:3000`
+- Login with your configured password
+- Explore the main dashboard
 
-### Authentication Levels
+### 2. **Sentiment Analysis Workflow**
+```
+Search Stock → Start Analysis → View Results → Get Recommendations
+```
+- Use the search bar to find stocks
+- Click "Analyze" to start sentiment processing
+- Monitor real-time progress
+- Review comprehensive sentiment dashboard
 
-1. **Admin Access** - Full access to all features and data
-2. **Demo Access** - Read-only access for demonstrations
-3. **Guest Access** - Limited public access
-
-### Setup Authentication
-
-1. **Configure passwords in your .env file**:
-```bash
-# Authentication - Multiple Access Levels
-ADMIN_PASSWORD=your_secure_admin_password
-DEMO_PASSWORD=your_demo_password  
-GUEST_PASSWORD=your_guest_password
-
-# Set the active password (determines current access level)
-STOCKSCOPE_PASSWORD=your_secure_admin_password
+### 3. **Fundamentals Analytics Workflow**
+```
+Main Dashboard → Choose Tool → Analyze → Compare → Make Decisions
 ```
 
-2. **Development Mode** (optional):
-```bash
-# Enable development mode for testing
-STOCKSCOPE_DEV_MODE=true
-ENVIRONMENT=development
-```
+#### **Individual Analysis**
+- Click navigation card "Company Analysis"
+- Search for any stock symbol
+- View detailed fundamental metrics
+- Analyze trends and performance
 
-### Security Features
+#### **Company Comparison**
+- Click "⚖️ Compare Companies"
+- Add multiple companies to comparison
+- View side-by-side metrics
+- Identify relative strengths/weaknesses
 
-- **Multi-level password authentication** with role detection
-- **API endpoint protection** (all endpoints require authentication)
-- **Environment variable protection** (credentials never hardcoded)
-- **Role-based access control** (admin/demo/guest permissions)
-- **Development mode** for testing without API keys
+#### **Stock Screening**
+- Click "🔍 Stock Screener"
+- Set filtering criteria
+- Browse filtered results
+- Deep dive into interesting companies
 
-### Authentication Workflow
-
-```bash
-# 1. Set your authentication credentials in .env
-ADMIN_PASSWORD=StockScope_Master_2025_SecureAccess!#7
-STOCKSCOPE_PASSWORD=StockScope_Master_2025_SecureAccess!#7
-
-# 2. Start the application
-cd stockscope-frontend
-npm run full-app
-
-# 3. Login with your password through the web interface
-```
-
-### API Authentication
-
-All API endpoints require password authentication via query parameter:
-
-```bash
-# Example API calls
-GET /api/stocks?password=your_password
-POST /api/stocks/analyze?password=your_password
-```
+### 4. **Portfolio Management**
+- View all analyzed stocks on main dashboard
+- Quick access to fundamentals via hover buttons
+- Bulk delete operations for portfolio cleanup
+- Real-time price updates for tracked stocks
 
 ---
 
-## API Endpoints
+## 🔒 Authentication System
 
-### Authentication
-- `POST /api/auth/login` - Authenticate with password
-- `GET /api/auth/status` - Check authentication requirements
+StockScope Pro uses a secure multi-level authentication system:
 
-### Stock Analysis
-- `GET /api/stocks` - List all analyzed stocks with metadata
-- `GET /api/stocks/{symbol}` - Get comprehensive analysis for a stock
-- `POST /api/stocks/analyze` - Start analysis for a new stock
-- `GET /api/stocks/{symbol}/status` - Real-time analysis progress
+### Access Levels
+1. **Admin** - Full access to all features including data deletion
+2. **Demo** - Read-only access for demonstrations
+3. **Guest** - Limited public access
 
-### Investment Insights
-- `GET /api/stocks/{symbol}/investment-advice` - AI-powered recommendations
-- `GET /api/stocks/{symbol}/quantitative` - Quantitative strategy analysis
-
-### Search & Discovery
-- `GET /api/stocks/suggestions` - Smart stock symbol autocomplete
-- `GET /api/health` - System health and metrics
-
-### Administration
-- `DELETE /api/cache` - Clear API cache (admin only)
-
----
-
-## Development Workflow
-
-### Available Commands
-
+### Setup
 ```bash
-# Development (run both servers)
-npm run full-app
-
-# Individual servers
-npm run backend    # FastAPI only
-npm run frontend   # Next.js only
-
-# Utilities
-npm run setup      # Install all dependencies
+# In your .env file
+ADMIN_PASSWORD=StockScope_Admin_2025_Secure!
+DEMO_PASSWORD=StockScope_Demo_2025
+GUEST_PASSWORD=StockScope_Guest_2025
+STOCKSCOPE_PASSWORD=StockScope_Admin_2025_Secure!  # Active password
 ```
 
-### Code Structure
-
-```
-StockScope/
-├── backend/
-│   └── api.py              # FastAPI application with authentication
-├── stockscope-frontend/
-│   ├── src/
-│   │   ├── app/            # Next.js app router
-│   │   ├── components/     # React components
-│   │   └── types/          # TypeScript definitions
-│   └── package.json
-├── analysis/               # AI analysis modules
-│   ├── investment_advisor.py
-│   └── quantitative_strategies.py
-├── scraping/              # Data collection scripts
-│   ├── news_scraper.py
-│   ├── reddit_scraper.py
-│   └── sec_scraper.py
-├── sentiment/             # Sentiment analysis
-│   └── analyzer.py
-├── data/                  # Sentiment analysis results
-├── main.py               # Core pipeline orchestrator
-├── setup_auth.py         # Authentication setup utility
-└── requirements.txt      # Python dependencies
-```
+All API endpoints require password authentication for security.
 
 ---
 
@@ -419,4 +447,4 @@ Portfolio: https://tahmidchowdhury.github.io/ | GitHub: https://github.com/Tahmi
 ---
 
 **From Social Sentiment to Smart Investment Decisions**  
-*Built with Next.js, FastAPI, and Modern Web Technologies*
+*Built with Next.js 15, FastAPI, React Query, and Modern Financial Analytics*

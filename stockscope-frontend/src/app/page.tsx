@@ -204,7 +204,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       <div className="container mx-auto px-4 py-16">
-        {/* Header with logout */}
+        {/* Header with logout and navigation */}
         <div className="text-center mb-12 relative">
           <button
             onClick={handleLogout}
@@ -221,6 +221,62 @@ export default function Home() {
           </p>
           <div className="mt-4 text-sm text-green-400">
             🔒 Secure Session Active
+          </div>
+        </div>
+
+        {/* Navigation Menu */}
+        <div className="max-w-4xl mx-auto mb-8">
+          <div className="bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10">
+            <h2 className="text-xl font-semibold text-white mb-4 text-center">📈 Fundamentals Analytics</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Company Comparison */}
+              <a
+                href="/compare"
+                className="group bg-gradient-to-r from-blue-600/20 to-purple-600/20 hover:from-blue-600/30 hover:to-purple-600/30 border border-blue-500/30 rounded-lg p-6 transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-blue-500/20"
+              >
+                <div className="text-center">
+                  <div className="text-3xl mb-3">⚖️</div>
+                  <h3 className="text-lg font-semibold text-white mb-2">Compare Companies</h3>
+                  <p className="text-sm text-white/70 mb-3">
+                    Side-by-side comparison of financial metrics and performance
+                  </p>
+                  <span className="inline-flex items-center text-blue-300 text-sm group-hover:text-blue-200">
+                    Launch Comparison Tool →
+                  </span>
+                </div>
+              </a>
+
+              {/* Stock Screener */}
+              <a
+                href="/screener"
+                className="group bg-gradient-to-r from-green-600/20 to-emerald-600/20 hover:from-green-600/30 hover:to-emerald-600/30 border border-green-500/30 rounded-lg p-6 transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-green-500/20"
+              >
+                <div className="text-center">
+                  <div className="text-3xl mb-3">🔍</div>
+                  <h3 className="text-lg font-semibold text-white mb-2">Stock Screener</h3>
+                  <p className="text-sm text-white/70 mb-3">
+                    Advanced filtering to find stocks matching your criteria
+                  </p>
+                  <span className="inline-flex items-center text-green-300 text-sm group-hover:text-green-200">
+                    Open Screener →
+                  </span>
+                </div>
+              </a>
+
+              {/* Individual Analysis */}
+              <div className="group bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 rounded-lg p-6">
+                <div className="text-center">
+                  <div className="text-3xl mb-3">📊</div>
+                  <h3 className="text-lg font-semibold text-white mb-2">Company Analysis</h3>
+                  <p className="text-sm text-white/70 mb-3">
+                    Deep dive into individual company fundamentals
+                  </p>
+                  <span className="text-purple-300 text-sm">
+                    Use search below or click portfolio stocks ↓
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -288,49 +344,49 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
   const [isDeleting, setIsDeleting] = useState(false)
   const [deletingStock, setDeletingStock] = useState<string | null>(null)
 
-  const fetchAvailableStocks = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/stocks${passwordParam}`)
-      if (response.ok) {
-        const data = await response.json()
-        // Handle both old format (array of strings) and new format (array of objects)
-        if (Array.isArray(data.stocks)) {
-          if (data.stocks.length > 0 && typeof data.stocks[0] === 'string') {
-            // Old format: convert strings to objects
-            setStocks(data.stocks.map((symbol: string) => ({
-              symbol,
-              total_posts: 0,
-              avg_sentiment: 0,
-              last_updated: '',
-              sources: []
-            })))
-          } else {
-            // New format: use objects directly
-            setStocks(data.stocks || [])
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/stocks${passwordParam}`)
+        if (response.ok) {
+          const data = await response.json()
+          // Handle both old format (array of strings) and new format (array of objects)
+          if (Array.isArray(data.stocks)) {
+            if (data.stocks.length > 0 && typeof data.stocks[0] === 'string') {
+              // Old format: convert strings to objects
+              setStocks(data.stocks.map((symbol: string) => ({
+                symbol,
+                total_posts: 0,
+                avg_sentiment: 0,
+                last_updated: '',
+                sources: []
+              })))
+            } else {
+              // New format: use objects directly
+              setStocks(data.stocks || [])
+            }
           }
         }
+      } catch (error) {
+        console.error('Failed to fetch stocks:', error)
+      } finally {
+        setLoading(false)
       }
-    } catch (error) {
-      console.error('Failed to fetch stocks:', error)
-    } finally {
-      setLoading(false)
     }
-  }
-
-  useEffect(() => {
-    fetchAvailableStocks()
+    
+    fetchData()
     
     // Set up periodic refresh to catch newly completed analyses, but only when no analysis is running
     const interval = setInterval(() => {
       // Only refresh if we're not currently analyzing anything
       const isAnalyzing = localStorage.getItem('stockscope_analyzing') === 'true'
       if (!isAnalyzing) {
-        fetchAvailableStocks()
+        fetchData()
       }
     }, 30000) // Refresh every 30 seconds instead of 10
     
     return () => clearInterval(interval)
-  }, [passwordParam]) // Remove fetchAvailableStocks from dependencies to prevent recreation
+  }, [passwordParam])
 
   const handleStockSelection = (symbol: string) => {
     const newSelected = new Set(selectedStocks)
@@ -364,7 +420,24 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
       if (response.ok) {
         const result = await response.json()
         alert(`Successfully deleted ${result.deleted_files.length} files for ${symbol}`)
-        await fetchAvailableStocks() // Refresh the list
+        // Refresh the list by refetching data
+        const refreshResponse = await fetch(`${API_BASE_URL}/api/stocks${passwordParam}`)
+        if (refreshResponse.ok) {
+          const data = await refreshResponse.json()
+          if (Array.isArray(data.stocks)) {
+            if (data.stocks.length > 0 && typeof data.stocks[0] === 'string') {
+              setStocks(data.stocks.map((s: string) => ({
+                symbol: s,
+                total_posts: 0,
+                avg_sentiment: 0,
+                last_updated: '',
+                sources: []
+              })))
+            } else {
+              setStocks(data.stocks || [])
+            }
+          }
+        }
       } else {
         const error = await response.json()
         throw new Error(error.detail || 'Failed to delete stock')
@@ -416,7 +489,25 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
       // Reset selection and refresh
       setSelectedStocks(new Set())
       setIsSelectionMode(false)
-      await fetchAvailableStocks()
+      
+      // Refresh the list by refetching data
+      const refreshResponse = await fetch(`${API_BASE_URL}/api/stocks${passwordParam}`)
+      if (refreshResponse.ok) {
+        const data = await refreshResponse.json()
+        if (Array.isArray(data.stocks)) {
+          if (data.stocks.length > 0 && typeof data.stocks[0] === 'string') {
+            setStocks(data.stocks.map((s: string) => ({
+              symbol: s,
+              total_posts: 0,
+              avg_sentiment: 0,
+              last_updated: '',
+              sources: []
+            })))
+          } else {
+            setStocks(data.stocks || [])
+          }
+        }
+      }
 
     } catch (error) {
       console.error('Error in bulk delete:', error)
@@ -527,62 +618,77 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
             )}
 
             {/* Stock Card */}
-            <button
-              onClick={() => !isSelectionMode && onViewDashboard(stock.symbol)}
-              disabled={isSelectionMode}
-              className="w-full bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg p-4 border border-white/20 transition-all duration-200 hover:scale-105 disabled:hover:scale-100 disabled:cursor-default"
-            >
-              <div className="text-center">
-                <div className="text-lg font-bold text-white mb-1">{stock.symbol}</div>
-                
-                {/* Company Name */}
-                {stock.companyName && stock.companyName !== stock.symbol && (
-                  <div className="text-xs text-white/60 mb-2 truncate" title={stock.companyName}>
-                    {stock.companyName}
-                  </div>
-                )}
-                
-                {/* Current Price */}
-                {stock.currentPrice && stock.currentPrice > 0 ? (
-                  <div className="mb-2">
-                    <div className="text-lg font-semibold text-white">
-                      ${stock.currentPrice.toFixed(2)}
+            <div className="relative">
+              <button
+                onClick={() => !isSelectionMode && onViewDashboard(stock.symbol)}
+                disabled={isSelectionMode}
+                className="w-full bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg p-4 border border-white/20 transition-all duration-200 hover:scale-105 disabled:hover:scale-100 disabled:cursor-default"
+              >
+                <div className="text-center">
+                  <div className="text-lg font-bold text-white mb-1">{stock.symbol}</div>
+                  
+                  {/* Company Name */}
+                  {stock.companyName && stock.companyName !== stock.symbol && (
+                    <div className="text-xs text-white/60 mb-2 truncate" title={stock.companyName}>
+                      {stock.companyName}
                     </div>
-                    
-                    {/* Price Change */}
-                    {stock.priceChange !== undefined && stock.priceChangePercent !== undefined && (
-                      <div className={`text-xs flex items-center justify-center gap-1 ${
-                        stock.priceChange > 0 ? 'text-green-400' : 
-                        stock.priceChange < 0 ? 'text-red-400' : 'text-white/60'
-                      }`}>
-                        <span>
-                          {stock.priceChange > 0 ? '↗' : stock.priceChange < 0 ? '↘' : '→'}
-                        </span>
-                        <span>
-                          {stock.priceChange > 0 ? '+' : ''}{stock.priceChange.toFixed(2)} 
-                          ({stock.priceChangePercent > 0 ? '+' : ''}{stock.priceChangePercent.toFixed(1)}%)
-                        </span>
+                  )}
+                  
+                  {/* Current Price */}
+                  {stock.currentPrice && stock.currentPrice > 0 ? (
+                    <div className="mb-2">
+                      <div className="text-lg font-semibold text-white">
+                        ${stock.currentPrice.toFixed(2)}
                       </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-sm text-white/60 mb-2">
-                    {stock.total_posts > 0 ? `${stock.total_posts} posts` : 'View Dashboard'}
-                  </div>
-                )}
-                
-                {/* Sentiment */}
-                {stock.avg_sentiment !== 0 && (
-                  <div className={`text-xs ${
-                    stock.avg_sentiment > 0.1 ? 'text-green-400' : 
-                    stock.avg_sentiment < -0.1 ? 'text-red-400' : 'text-yellow-400'
-                  }`}>
-                    {stock.avg_sentiment > 0 ? '📈' : stock.avg_sentiment < 0 ? '📉' : '➡️'} 
-                    Sentiment: {(stock.avg_sentiment * 100).toFixed(0)}%
-                  </div>
-                )}
-              </div>
-            </button>
+                      
+                      {/* Price Change */}
+                      {stock.priceChange !== undefined && stock.priceChangePercent !== undefined && (
+                        <div className={`text-xs flex items-center justify-center gap-1 ${
+                          stock.priceChange > 0 ? 'text-green-400' : 
+                          stock.priceChange < 0 ? 'text-red-400' : 'text-white/60'
+                        }`}>
+                          <span>
+                            {stock.priceChange > 0 ? '↗' : stock.priceChange < 0 ? '↘' : '→'}
+                          </span>
+                          <span>
+                            {stock.priceChange > 0 ? '+' : ''}{stock.priceChange.toFixed(2)} 
+                            ({stock.priceChangePercent > 0 ? '+' : ''}{stock.priceChangePercent.toFixed(1)}%)
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-white/60 mb-2">
+                      {stock.total_posts > 0 ? `${stock.total_posts} posts` : 'View Dashboard'}
+                    </div>
+                  )}
+                  
+                  {/* Sentiment */}
+                  {stock.avg_sentiment !== 0 && (
+                    <div className={`text-xs ${
+                      stock.avg_sentiment > 0.1 ? 'text-green-400' : 
+                      stock.avg_sentiment < -0.1 ? 'text-red-400' : 'text-yellow-400'
+                    }`}>
+                      {stock.avg_sentiment > 0 ? '📈' : stock.avg_sentiment < 0 ? '📉' : '➡️'} 
+                      Sentiment: {(stock.avg_sentiment * 100).toFixed(0)}%
+                    </div>
+                  )}
+                </div>
+              </button>
+
+              {/* Quick Actions - only visible when not in selection mode */}
+              {!isSelectionMode && (
+                <div className="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <a
+                    href={`/fundamentals/${stock.symbol}`}
+                    className="block w-full bg-blue-600/80 hover:bg-blue-600 text-white text-xs py-1 px-2 rounded text-center transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    📊 Fundamentals
+                  </a>
+                </div>
+              )}
+            </div>
 
             {/* Individual Delete Button (only visible on hover when not in selection mode) */}
             {!isSelectionMode && (

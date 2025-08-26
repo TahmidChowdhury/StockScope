@@ -81,6 +81,9 @@ from scraping.news_scraper import fetch_news_sentiment
 from analysis.investment_advisor import InvestmentAdvisor
 from analysis.quantitative_strategies import QuantitativeStrategies
 
+# Import fundamentals router
+from backend.routers.fundamentals import router as fundamentals_router
+
 # Add utility functions directly to replace the removed ones
 def get_available_tickers():
     """Get list of available stock tickers from data files"""
@@ -454,6 +457,9 @@ app = FastAPI(
     version="2.0.0",
     description="Optimized API for stock sentiment analysis with caching and advanced features"
 )
+
+# Include fundamentals router
+app.include_router(fundamentals_router)
 
 # Enhanced CORS configuration
 app.add_middleware(
@@ -1249,6 +1255,60 @@ async def run_optimized_analysis(symbol: str, sources: List[str]):
 async def simple_health():
     """Simple health check for Railway deployment"""
     return {"status": "ok", "timestamp": datetime.now()}
+
+@app.get("/api/sentiment/{symbol}", tags=["Sentiment"])
+async def get_sentiment_analysis(symbol: str, current_user: str = Depends(verify_password_with_role)):
+    """Get sentiment analysis for a stock symbol"""
+    symbol = symbol.upper()
+    
+    cache_key = f"sentiment_{symbol}"
+    cached_result = cache.get(cache_key)
+    if cached_result:
+        return cached_result
+    
+    try:
+        df = load_dataframes(symbol)
+        
+        if df.empty:
+            raise HTTPException(status_code=404, detail=f"No sentiment data found for {symbol}")
+        
+        # Calculate enhanced metrics
+        enhanced_metrics = calculate_enhanced_metrics(df)
+        
+        # Create source analysis
+        sources = []
+        for source in df['source'].unique():
+            source_df = df[df['source'] == source]
+            sources.append({
+                "source": source,
+                "count": len(source_df),
+                "avg_sentiment": source_df['compound'].mean(),
+                "latest_update": source_df['created_utc'].max().isoformat() if 'created_utc' in source_df.columns else datetime.now().isoformat()
+            })
+        
+        result = {
+            "ticker": symbol,
+            "total_posts": len(df),
+            "sentiment_metrics": {
+                "avg_sentiment": enhanced_metrics.avg_sentiment,
+                "sentiment_distribution": enhanced_metrics.sentiment_distribution,
+                "confidence_score": enhanced_metrics.confidence_score,
+                "trend": enhanced_metrics.trend
+            },
+            "sources": sources,
+            "last_updated": datetime.now().isoformat(),
+            "data_quality_score": min(1.0, len(df) / 100)
+        }
+        
+        # Cache for 30 minutes
+        cache.set(cache_key, result, ttl=1800)
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting sentiment analysis for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch sentiment analysis")
 
 if __name__ == "__main__":
     import uvicorn

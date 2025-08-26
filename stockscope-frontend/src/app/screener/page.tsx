@@ -28,6 +28,8 @@ export default function ScreenerPage() {
     limit: 50
   })
 
+  const [useTestUniverse, setUseTestUniverse] = useState(false)
+
   const screener = useScreener()
 
   const handleFilterChange = (key: keyof FilterState, value: string | number | undefined) => {
@@ -42,7 +44,9 @@ export default function ScreenerPage() {
       min_fcf_growth_yoy: filters.min_fcf_growth_yoy || undefined,
       min_margin_growth_yoy_pp: filters.min_margin_growth_yoy_pp || undefined,
       min_ebitda_growth_yoy: filters.min_ebitda_growth_yoy || undefined,
-      max_debt_to_cash: filters.max_debt_to_cash || undefined
+      max_debt_to_cash: filters.max_debt_to_cash || undefined,
+      // Add test universe if enabled
+      universe: useTestUniverse ? ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'NFLX', 'ADBE', 'CRM'] : undefined
     }
     screener.mutate(request)
   }
@@ -60,16 +64,16 @@ export default function ScreenerPage() {
     })
   }
 
-  const formatPercent = (value: number | null) => {
-    if (value === null) return 'N/A'
+  const formatPercent = (value: number | null | undefined) => {
+    if (value === null || value === undefined || isNaN(value)) return 'N/A'
     return new Intl.NumberFormat('en-US', { 
       style: 'percent', 
       maximumFractionDigits: 1 
     }).format(value)
   }
 
-  const formatCurrency = (value: number | null, compact = true) => {
-    if (value === null) return 'N/A'
+  const formatCurrency = (value: number | null | undefined, compact = true) => {
+    if (value === null || value === undefined || isNaN(value)) return 'N/A'
     if (compact && Math.abs(value) >= 1e9) {
       return `$${(value / 1e9).toFixed(1)}B`
     } else if (compact && Math.abs(value) >= 1e6) {
@@ -80,6 +84,16 @@ export default function ScreenerPage() {
       currency: 'USD',
       maximumFractionDigits: 0
     }).format(value)
+  }
+
+  const formatNumber = (value: number | null | undefined, decimals = 2) => {
+    if (value === null || value === undefined || isNaN(value)) return 'N/A'
+    return value.toFixed(decimals)
+  }
+
+  const getChangeColor = (value: number | null | undefined) => {
+    if (value === null || value === undefined || isNaN(value)) return 'text-white/60'
+    return value > 0 ? 'text-green-400' : value < 0 ? 'text-red-400' : 'text-white/60'
   }
 
   const sortOptions = [
@@ -252,6 +266,19 @@ export default function ScreenerPage() {
             </div>
           </div>
 
+          {/* Test Universe Option */}
+          <div className="flex items-center gap-2 mb-8">
+            <input
+              type="checkbox"
+              checked={useTestUniverse}
+              onChange={(e) => setUseTestUniverse(e.target.checked)}
+              className="h-4 w-4 text-blue-600 bg-white/10 border-white/30 rounded focus:ring-blue-500"
+            />
+            <label className="text-sm font-medium text-white/70">
+              Use Test Universe (AAPL, MSFT, GOOGL, AMZN, NVDA, TSLA, META, NFLX, ADBE, CRM)
+            </label>
+          </div>
+
           {/* Action Buttons */}
           <div className="flex gap-4">
             <button
@@ -351,7 +378,9 @@ export default function ScreenerPage() {
                 <div className="px-6 py-4 border-b border-white/20">
                   <h3 className="text-xl font-semibold text-white">🏆 Screening Results</h3>
                 </div>
-                <div className="overflow-x-auto">
+                
+                {/* Desktop Table */}
+                <div className="hidden lg:block overflow-x-auto">
                   <table className="min-w-full">
                     <thead className="bg-white/5">
                       <tr>
@@ -376,55 +405,28 @@ export default function ScreenerPage() {
                             {formatCurrency(company.revenue_ttm)}
                           </td>
                           <td className="px-6 py-4">
-                            <div className={`flex items-center gap-1 font-medium ${
-                              company.revenue_growth_yoy && company.revenue_growth_yoy > 0 
-                                ? 'text-green-400' 
-                                : 'text-red-400'
-                            }`}>
-                              {company.revenue_growth_yoy && company.revenue_growth_yoy > 0 ? (
-                                <ChartBarIcon className="h-4 w-4" />
-                              ) : (
-                                <ArrowTrendingDownIcon className="h-4 w-4" />
-                              )}
+                            <div className={`font-medium ${getChangeColor(company.revenue_growth_yoy)}`}>
                               {formatPercent(company.revenue_growth_yoy)}
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-white">
+                          <td className="px-6 py-4 text-white font-medium">
                             {formatPercent(company.fcf_margin_ttm)}
                           </td>
                           <td className="px-6 py-4">
-                            <div className={`flex items-center gap-1 font-medium ${
-                              company.fcf_growth_yoy && company.fcf_growth_yoy > 0 
-                                ? 'text-green-400' 
-                                : 'text-red-400'
-                            }`}>
-                              {company.fcf_growth_yoy && company.fcf_growth_yoy > 0 ? (
-                                <ChartBarIcon className="h-4 w-4" />
-                              ) : (
-                                <ArrowTrendingDownIcon className="h-4 w-4" />
-                              )}
+                            <div className={`font-medium ${getChangeColor(company.fcf_growth_yoy)}`}>
                               {formatPercent(company.fcf_growth_yoy)}
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-white">
+                          <td className="px-6 py-4 text-white font-medium">
                             {formatPercent(company.operating_margin_ttm)}
                           </td>
                           <td className="px-6 py-4">
-                            <div className={`flex items-center gap-1 font-medium ${
-                              company.ebitda_growth_yoy && company.ebitda_growth_yoy > 0 
-                                ? 'text-green-400' 
-                                : 'text-red-400'
-                            }`}>
-                              {company.ebitda_growth_yoy && company.ebitda_growth_yoy > 0 ? (
-                                <ChartBarIcon className="h-4 w-4" />
-                              ) : (
-                                <ArrowTrendingDownIcon className="h-4 w-4" />
-                              )}
+                            <div className={`font-medium ${getChangeColor(company.ebitda_growth_yoy)}`}>
                               {formatPercent(company.ebitda_growth_yoy)}
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-white">
-                            {company.debt_to_cash ? company.debt_to_cash.toFixed(2) : 'N/A'}
+                          <td className="px-6 py-4 text-white font-medium">
+                            {formatNumber(company.debt_to_cash)}
                           </td>
                           <td className="px-6 py-4">
                             <Link 
@@ -438,6 +440,41 @@ export default function ScreenerPage() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+                
+                {/* Mobile Card View */}
+                <div className="lg:hidden space-y-4 p-4">
+                  {screener.data.results.map((company, index) => (
+                    <div key={company.ticker} className="bg-white/5 rounded-lg p-4 space-y-3">
+                      <div className="flex justify-between items-center">
+                        <h4 className="text-lg font-bold text-white">{company.ticker}</h4>
+                        <Link 
+                          href={`/fundamentals/${company.ticker}`}
+                          className="text-blue-400 text-sm font-medium"
+                        >
+                          View →
+                        </Link>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="text-white/60">Revenue TTM:</span>
+                          <span className="text-white font-medium ml-2">{formatCurrency(company.revenue_ttm)}</span>
+                        </div>
+                        <div>
+                          <span className="text-white/60">FCF Margin:</span>
+                          <span className="text-white font-medium ml-2">{formatPercent(company.fcf_margin_ttm)}</span>
+                        </div>
+                        <div>
+                          <span className="text-white/60">Op Margin:</span>
+                          <span className="text-white font-medium ml-2">{formatPercent(company.operating_margin_ttm)}</span>
+                        </div>
+                        <div>
+                          <span className="text-white/60">Debt/Cash:</span>
+                          <span className="text-white font-medium ml-2">{formatNumber(company.debt_to_cash)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ) : (

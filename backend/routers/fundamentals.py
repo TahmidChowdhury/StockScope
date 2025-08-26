@@ -2,7 +2,8 @@
 
 from typing import List, Dict, Any
 import time
-from fastapi import APIRouter, Depends, HTTPException, Query
+import os
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from backend.core.cache import cached
 from backend.services.fundamentals import compute_ttm_metrics, compute_quarterly_series, compact
@@ -17,8 +18,6 @@ router = APIRouter()
 # Use the exact same authentication logic as the main API
 async def verify_password_dependency(password: str = Query(..., description="Password")):
     """Use the same authentication logic as the main API for consistency"""
-    import os
-    from fastapi import HTTPException, status
     
     # Load the same password variables as main API
     ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")

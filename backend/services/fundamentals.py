@@ -270,9 +270,13 @@ def compute_ttm_metrics(ticker: str) -> FundamentalsTTM:
     if total_debt is not None and cash_eq is not None:
         net_debt = total_debt - cash_eq
 
-    # Insufficient data flag
-    insufficient = (not _exists(q["revenue"]) or not _exists(q["op_inc"]) or
-                    q["revenue"].shape[0] < 3 or q["op_inc"].shape[0] < 3)
+    # Check for insufficient data - protect against None values
+    insufficient = (
+        not _exists(q["revenue"]) or 
+        not _exists(q["op_inc"]) or
+        (q["revenue"] is not None and q["revenue"].shape[0] < 3) or
+        (q["op_inc"] is not None and q["op_inc"].shape[0] < 3)
+    )
 
     # Build result dict with only available fields
     result_dict = {

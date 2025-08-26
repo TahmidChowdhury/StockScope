@@ -284,16 +284,14 @@ export default function ComparePage() {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <div className={`flex items-center gap-1 ${
+                          <div className={`flex items-center gap-1 font-medium ${
                             company.fcf_growth_yoy && company.fcf_growth_yoy > 0 
                               ? 'text-green-400' 
                               : 'text-red-400'
                           }`}>
-                            {company.fcf_growth_yoy && company.fcf_growth_yoy > 0 ? (
-                              <ArrowTrendingDownIcon className="h-4 w-4" />
-                            ) : (
-                              <ArrowTrendingDownIcon className="h-4 w-4" />
-                            )}
+                            <span className="h-4 w-4">
+                              {company.fcf_growth_yoy && company.fcf_growth_yoy > 0 ? '↗️' : '↘️'}
+                            </span>
                             {formatPercent(company.fcf_growth_yoy)}
                           </div>
                         </td>

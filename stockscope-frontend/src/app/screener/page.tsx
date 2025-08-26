@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useScreener } from '@/hooks/useFundamentals'
-import { FunnelIcon, ArrowLeftIcon, MagnifyingGlassIcon, ArrowTrendingDownIcon, ChartBarIcon } from '@heroicons/react/24/outline'
+import { FunnelIcon, ArrowLeftIcon, MagnifyingGlassIcon, ChartBarIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 
 interface FilterState {

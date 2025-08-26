@@ -458,8 +458,8 @@ app = FastAPI(
     description="Optimized API for stock sentiment analysis with caching and advanced features"
 )
 
-# Include fundamentals router
-app.include_router(fundamentals_router)
+# Include fundamentals router with correct path prefix
+app.include_router(fundamentals_router, prefix="/api/fundamentals", tags=["Fundamentals"])
 
 # Enhanced CORS configuration
 app.add_middleware(

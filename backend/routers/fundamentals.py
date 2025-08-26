@@ -1,116 +1,115 @@
-"""FastAPI router for fundamentals endpoints."""
+"""Fundamentals API endpoints for financial metrics analysis."""
 
-import json
-import os
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Query
-from fastapi.responses import JSONResponse
-import asyncio
+from typing import List, Dict, Any
 import time
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from backend.core.cache import cached
+from backend.services.fundamentals import compute_ttm_metrics, compute_quarterly_series, compact
 from backend.models.fundamentals import (
-    FundamentalsResponse,
-    FundamentalsTTM,
-    FundamentalsSeries,
-    CompareRequest,
-    ScreenerRequest,
-    ScreenerResponse
+    FundamentalsTTM, FundamentalsSeries, FundamentalsResponse,
+    CompareRequest, ScreenerRequest, ScreenerResponse
 )
-from backend.services.fundamentals import (
-    compute_ttm_metrics,
-    compute_quarterly_series
-)
+from backend.data.universe.sp500 import load_sp500_universe
 
-# Import authentication dependency
-# We need to import this from the main api module
-def verify_password_dependency(password: str = Query(..., description="Password")):
-    """Simple password verification for fundamentals routes"""
+router = APIRouter()
+
+# Use the exact same authentication logic as the main API
+async def verify_password_dependency(password: str = Query(..., description="Password")):
+    """Use the same authentication logic as the main API for consistency"""
     import os
     from fastapi import HTTPException, status
     
+    # Load the same password variables as main API
     ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
     DEMO_PASSWORD = os.getenv("DEMO_PASSWORD") 
     GUEST_PASSWORD = os.getenv("GUEST_PASSWORD")
     MASTER_PASSWORD = os.getenv("STOCKSCOPE_PASSWORD", ADMIN_PASSWORD)
     
-    valid_passwords = [ADMIN_PASSWORD, DEMO_PASSWORD, GUEST_PASSWORD, MASTER_PASSWORD]
-    valid_passwords = [p for p in valid_passwords if p]  # Remove None values
+    def get_user_role(password: str) -> str:
+        """Determine user role based on password - same logic as main API"""
+        if password == ADMIN_PASSWORD:
+            return "admin"
+        elif password == DEMO_PASSWORD:
+            return "demo"
+        elif password == GUEST_PASSWORD:
+            return "guest"
+        elif password == MASTER_PASSWORD:
+            return "admin"  # Backward compatibility
+        else:
+            return None
     
-    if password not in valid_passwords:
+    role = get_user_role(password)
+    if not role:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid password"
         )
-    return password
-
-router = APIRouter(prefix="/api/fundamentals", tags=["fundamentals"])
-
-def load_sp500_universe() -> List[str]:
-    """Load S&P 500 universe from JSON file."""
-    try:
-        sp500_path = os.path.join(os.path.dirname(__file__), "..", "data", "universe", "sp500.json")
-        with open(sp500_path, 'r') as f:
-            return json.load(f)
-    except Exception:
-        # Fallback to a small set if file not found
-        return ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA"]
+    return role
 
 
-@router.get("/{ticker}/ttm", response_model=FundamentalsTTM)
+@cached
+def _compute_ttm_cached(ticker: str) -> dict:
+    """Cached TTM computation."""
+    ttm_data = compute_ttm_metrics(ticker)
+    # Convert to dict and compact (exclude None values)
+    ttm_dict = ttm_data.model_dump(exclude_none=True) if hasattr(ttm_data, 'model_dump') else ttm_data.__dict__
+    return compact(ttm_dict)
+
+
+@cached
+def _compute_series_cached(ticker: str) -> dict:
+    """Cached series computation."""
+    series_data = compute_quarterly_series(ticker)
+    # Convert to dict and compact (exclude None/empty values)
+    series_dict = series_data.model_dump(exclude_none=True) if hasattr(series_data, 'model_dump') else series_data.__dict__
+    return compact(series_dict)
+
+
+@cached
+def _compute_full_cached(ticker: str) -> dict:
+    """Cached full fundamentals computation."""
+    from backend.services.fundamentals import get_service
+    service = get_service()
+    return service.get_fundamentals_data(ticker)
+
+
+@router.get("/{ticker}/ttm")
 async def get_ttm_fundamentals(ticker: str, current_user: str = Depends(verify_password_dependency)):
-    """Get TTM fundamentals data for a single ticker."""
+    """Get TTM fundamentals data for a single ticker - returns only available fields."""
     try:
-        ticker = ticker.upper()
-        ttm_data = compute_ttm_metrics(ticker)
-        return ttm_data
+        result = _compute_ttm_cached(ticker.upper())
+        return result
         
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error fetching TTM fundamentals for {ticker}: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error fetching TTM data: {str(e)}")
 
 
-@router.get("/{ticker}/series", response_model=FundamentalsSeries)
+@router.get("/{ticker}/series")
 async def get_series_fundamentals(ticker: str, current_user: str = Depends(verify_password_dependency)):
-    """Get series fundamentals data for a single ticker."""
+    """Get series fundamentals data for a single ticker - returns only available series."""
     try:
-        ticker = ticker.upper()
-        series_data = compute_quarterly_series(ticker)
-        return series_data
+        result = _compute_series_cached(ticker.upper())
+        return result
         
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error fetching series fundamentals for {ticker}: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error fetching series data: {str(e)}")
 
 
 @router.get("/{ticker}", response_model=FundamentalsResponse)
 async def get_fundamentals(ticker: str, current_user: str = Depends(verify_password_dependency)):
-    """Get fundamentals data (TTM and series) for a single ticker."""
+    """Get fundamentals data (TTM and series) for a single ticker - compact format."""
     try:
-        ticker = ticker.upper()
-        
-        # Compute TTM and series data
-        ttm_data = compute_ttm_metrics(ticker)
-        series_data = compute_quarterly_series(ticker)
-        
-        return FundamentalsResponse(
-            ttm=ttm_data,
-            series=series_data
-        )
+        result = _compute_full_cached(ticker.upper())
+        return result
         
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error fetching fundamentals for {ticker}: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error fetching fundamentals: {str(e)}")
 
 
-@router.post("/compare", response_model=List[FundamentalsTTM])
+@router.post("/compare")
 async def compare_fundamentals(request: CompareRequest, current_user: str = Depends(verify_password_dependency)):
-    """Compare TTM fundamentals across multiple tickers."""
+    """Compare TTM fundamentals across multiple tickers - returns compacted data."""
     try:
         if not request.tickers:
             raise HTTPException(status_code=400, detail="No tickers provided")
@@ -122,8 +121,10 @@ async def compare_fundamentals(request: CompareRequest, current_user: str = Depe
         for ticker in request.tickers:
             ticker = ticker.upper()
             try:
-                ttm_data = compute_ttm_metrics(ticker)
-                results.append(ttm_data)
+                # Use cached computation
+                compacted = _compute_ttm_cached(ticker)
+                if compacted:  # Only include if we got some data
+                    results.append(compacted)
                 # Small delay to respect rate limits
                 time.sleep(0.1)
             except Exception as e:
@@ -131,24 +132,21 @@ async def compare_fundamentals(request: CompareRequest, current_user: str = Depe
                 print(f"Error processing {ticker}: {e}")
                 continue
         
-        # Sort by revenue_ttm (descending)
-        results.sort(
-            key=lambda x: x.revenue_ttm if x.revenue_ttm else 0,
-            reverse=True
-        )
+        # Sort by revenue_ttm (descending) if available
+        def sort_key(x):
+            return x.get("revenue_ttm", 0) if x.get("revenue_ttm") is not None else 0
+        
+        results.sort(key=sort_key, reverse=True)
         
         return results
         
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error comparing fundamentals: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error comparing fundamentals: {str(e)}")
 
 
 @router.post("/screener", response_model=ScreenerResponse)
 async def screen_fundamentals(request: ScreenerRequest, current_user: str = Depends(verify_password_dependency)):
-    """Screen stocks based on fundamental criteria."""
+    """Screen stocks based on fundamental criteria - returns compacted results."""
     try:
         # Use provided universe or load S&P 500
         universe = request.universe if request.universe else load_sp500_universe()
@@ -165,48 +163,49 @@ async def screen_fundamentals(request: ScreenerRequest, current_user: str = Depe
         for ticker in universe:
             try:
                 ticker = ticker.upper()
-                ttm_data = compute_ttm_metrics(ticker)
+                # Use cached computation
+                compacted = _compute_ttm_cached(ticker)
                 total_screened += 1
                 
                 # Skip if insufficient data
-                if ttm_data.insufficient_data:
+                if compacted.get("insufficient_data", True):
                     continue
                 
-                # Apply filters
+                # Apply filters - only check fields that exist
                 passed_filters = True
                 
                 # Revenue growth filter
                 if (request.min_revenue_growth_yoy is not None and
-                    (ttm_data.revenue_growth_yoy is None or 
-                     ttm_data.revenue_growth_yoy < request.min_revenue_growth_yoy)):
+                    (compacted.get("revenue_growth_yoy") is None or 
+                     compacted.get("revenue_growth_yoy") < request.min_revenue_growth_yoy)):
                     passed_filters = False
                 
                 # FCF growth filter
                 if (request.min_fcf_growth_yoy is not None and
-                    (ttm_data.fcf_growth_yoy is None or 
-                     ttm_data.fcf_growth_yoy < request.min_fcf_growth_yoy)):
+                    (compacted.get("fcf_growth_yoy") is None or 
+                     compacted.get("fcf_growth_yoy") < request.min_fcf_growth_yoy)):
                     passed_filters = False
                 
                 # Margin growth filter (percentage points)
                 if (request.min_margin_growth_yoy_pp is not None and
-                    (ttm_data.margin_growth_yoy_pp is None or 
-                     ttm_data.margin_growth_yoy_pp < request.min_margin_growth_yoy_pp)):
+                    (compacted.get("margin_growth_yoy_pp") is None or 
+                     compacted.get("margin_growth_yoy_pp") < request.min_margin_growth_yoy_pp)):
                     passed_filters = False
                 
                 # EBITDA growth filter
                 if (request.min_ebitda_growth_yoy is not None and
-                    (ttm_data.ebitda_growth_yoy is None or 
-                     ttm_data.ebitda_growth_yoy < request.min_ebitda_growth_yoy)):
+                    (compacted.get("ebitda_growth_yoy") is None or 
+                     compacted.get("ebitda_growth_yoy") < request.min_ebitda_growth_yoy)):
                     passed_filters = False
                 
                 # Debt to cash filter
                 if (request.max_debt_to_cash is not None and
-                    (ttm_data.debt_to_cash is None or 
-                     ttm_data.debt_to_cash > request.max_debt_to_cash)):
+                    (compacted.get("debt_to_cash") is None or 
+                     compacted.get("debt_to_cash") > request.max_debt_to_cash)):
                     passed_filters = False
                 
                 if passed_filters:
-                    results.append(ttm_data)
+                    results.append(compacted)
                 
                 # Small delay to respect rate limits
                 time.sleep(0.05)
@@ -224,10 +223,11 @@ async def screen_fundamentals(request: ScreenerRequest, current_user: str = Depe
         sort_field = request.sort_by if request.sort_by in valid_sort_fields else 'revenue_growth_yoy'
         sort_reverse = request.sort_dir.lower() == 'desc'
         
-        results.sort(
-            key=lambda x: getattr(x, sort_field) if getattr(x, sort_field) is not None else -999999,
-            reverse=sort_reverse
-        )
+        def sort_key(x):
+            value = x.get(sort_field)
+            return value if value is not None else -999999
+        
+        results.sort(key=sort_key, reverse=sort_reverse)
         
         # Apply limit
         limited_results = results[:request.limit]
@@ -253,9 +253,3 @@ async def screen_fundamentals(request: ScreenerRequest, current_user: str = Depe
             status_code=500,
             detail=f"Error running screener: {str(e)}"
         )
-
-
-@router.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy", "service": "fundamentals"}

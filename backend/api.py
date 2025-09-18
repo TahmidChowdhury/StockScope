@@ -983,67 +983,47 @@ async def get_investment_advice(symbol: str, current_user: str = Depends(verify_
     cached_result = cache.get(cache_key)
     if cached_result:
         return cached_result
-
+    
     try:
         df = load_dataframes(symbol)
         
         if df.empty:
             raise HTTPException(status_code=404, detail=f"No analysis data found for {symbol}")
-
+        
         # Use your existing InvestmentAdvisor with correct method name
         advisor = InvestmentAdvisor(symbol)
         
         # First fetch the stock data
         if not advisor.fetch_data():
             raise HTTPException(status_code=500, detail="Failed to fetch stock price data")
-
-        # Get the recommendation using the original comprehensive method
-        comprehensive_analysis = advisor.analyze_investment_opportunity(symbol, df)
         
-        if comprehensive_analysis.get('error'):
-            raise HTTPException(status_code=500, detail=comprehensive_analysis['error'])
+        # Get the recommendation
+        recommendation_data = advisor.get_investment_recommendation()
         
-        # Extract proper reasoning from comprehensive analysis
-        recommendation_details = comprehensive_analysis.get('recommendation', {})
-        reasoning = recommendation_details.get('reasoning', [])
+        if recommendation_data.get('error'):
+            raise HTTPException(status_code=500, detail=recommendation_data['error'])
         
-        # Fallback to technical signals if no reasoning available
+        # Map the actual return data to our API structure
+        reasoning = recommendation_data.get('signals', [])  # signals contains the reasoning
         if not reasoning:
-            # Get technical signals as additional context
-            technical_recommendation = advisor.get_investment_recommendation()
-            reasoning = technical_recommendation.get('signals', [])
+            reasoning = ["Technical analysis completed", "Risk metrics calculated"]
         
-        # Ensure we have meaningful reasoning
-        if not reasoning:
-            reasoning = [
-                "Technical analysis indicates current market position",
-                "Risk metrics have been evaluated",
-                "Sentiment analysis incorporated into recommendation"
-            ]
-        
-        # Extract risk factors from comprehensive analysis
+        # Extract risk factors from technical analysis
         risk_factors = []
-        if recommendation_details.get('risk_level') == 'HIGH':
-            risk_factors.append("High volatility detected in recent price movements")
-        
-        risk_metrics = comprehensive_analysis.get('metrics', {})
-        if risk_metrics.get('beta', 1.0) > 1.5:
-            risk_factors.append("Stock shows higher volatility than market average")
-        if risk_metrics.get('volatility', 0.3) > 0.4:
-            risk_factors.append("Elevated price volatility may increase investment risk")
-        if risk_metrics.get('sharpe_ratio', 0) < 0:
-            risk_factors.append("Poor risk-adjusted returns historically")
-            
+        if recommendation_data.get('risk_level') == 'High':
+            risk_factors.append("High volatility detected")
+        if recommendation_data.get('risk_metrics', {}).get('beta', 1.0) > 1.5:
+            risk_factors.append("Higher than market risk (Beta > 1.5)")
         if not risk_factors:
-            risk_factors = ["Standard market risks apply to this investment"]
-
-        # Enhanced recommendation structure with proper reasoning
+            risk_factors = ["Standard market risks apply"]
+        
+        # Enhanced recommendation structure
         result = InvestmentRecommendation(
             ticker=symbol,
-            recommendation=recommendation_details.get('action', 'HOLD').replace('STRONG ', '').replace('WEAK ', ''),
-            confidence=recommendation_details.get('confidence', 0.5),
-            target_price=None,  # Could be enhanced with price targets
-            reasoning=reasoning,  # Now contains actual investment reasoning
+            recommendation=recommendation_data.get('recommendation', 'HOLD'),
+            confidence=recommendation_data.get('confidence', 0.5),
+            target_price=recommendation_data.get('target_price'),
+            reasoning=reasoning,  # Use signals as reasoning
             risk_factors=risk_factors,
             generated_at=datetime.now()
         )

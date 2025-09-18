@@ -37,3 +37,9 @@ python-multipart
 pydantic>=2.0.0
 cachetools
 pytest
+
+# Personal Trading Dependencies (dev-trading branch only)
+robin-stocks  # Robinhood API integration
+pyotp  # For 2FA/MFA handling
+schedule  # For automated trading schedules
+slack-sdk  # For trade notifications

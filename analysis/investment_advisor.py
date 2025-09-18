@@ -74,7 +74,7 @@ class InvestmentAdvisor:
         sentiment_score = df['compound'].mean()
         
         # Sentiment trend (recent vs older)
-        df_sorted = df.sort_values('created_utc')
+        df_sorted = df.sort_values('created_dt')
         if len(df_sorted) >= 10:
             recent_sentiment = df_sorted.tail(len(df_sorted)//3)['compound'].mean()
             older_sentiment = df_sorted.head(len(df_sorted)//3)['compound'].mean()
@@ -83,7 +83,7 @@ class InvestmentAdvisor:
             sentiment_trend = 0
         
         # Volume trend (posting activity)
-        df['date'] = pd.to_datetime(df['created_utc']).dt.date
+        df['date'] = pd.to_datetime(df['created_dt']).dt.date
         daily_counts = df.groupby('date').size()
         if len(daily_counts) >= 3:
             recent_volume = daily_counts.tail(len(daily_counts)//3).mean()

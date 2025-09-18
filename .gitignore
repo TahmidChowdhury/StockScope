@@ -33,6 +33,7 @@ data/
 .env.local
 .env.production
 .env.staging
+.env.trading  # Personal trading credentials - NEVER COMMIT
 
 # Next.js (Frontend)
 stockscope-frontend/.next/

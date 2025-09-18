@@ -495,100 +495,33 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
           </div>
         </div>
 
-        {/* Quick Actions - Enhanced with more information */}
+        {/* Quick Actions - Mobile optimized */}
         <div className="mt-6 sm:mt-8 bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
           <h3 className="text-lg sm:text-xl font-semibold text-white mb-3 sm:mb-4">Quick Actions</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             <button 
               onClick={getInvestmentAdvice}
               disabled={loadingAdvice}
-              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 sm:p-4 rounded-lg transition-all duration-200 flex flex-col items-center justify-center gap-2 text-sm sm:text-base hover:scale-105"
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 sm:p-4 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
             >
-              <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="font-semibold">AI Investment Advice</span>
-              </div>
-              {loadingAdvice ? (
-                <span className="text-xs text-blue-200">Loading analysis...</span>
-              ) : (
-                <span className="text-xs text-blue-200">BUY/SELL/HOLD + Risk Level</span>
-              )}
+              <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" />
+              {loadingAdvice ? 'Loading...' : 'Get Investment Advice'}
             </button>
-
             <button 
               onClick={getQuantitativeAnalysis}
               disabled={loadingAnalysis}
-              className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 sm:p-4 rounded-lg transition-all duration-200 flex flex-col items-center justify-center gap-2 text-sm sm:text-base hover:scale-105"
+              className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 sm:p-4 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
             >
-              <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="font-semibold">Technical Analysis</span>
-              </div>
-              {loadingAnalysis ? (
-                <span className="text-xs text-purple-200">Computing metrics...</span>
-              ) : (
-                <span className="text-xs text-purple-200">RSI, MACD, Sharpe Ratio</span>
-              )}
+              <Activity className="h-4 w-4 sm:h-5 sm:w-5" />
+              {loadingAnalysis ? 'Loading...' : 'View Detailed Analysis'}
             </button>
-
             <button 
               onClick={showRecentPosts}
-              className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white p-3 sm:p-4 rounded-lg transition-all duration-200 flex flex-col items-center justify-center gap-2 text-sm sm:text-base hover:scale-105"
+              className="bg-green-600 hover:bg-green-700 text-white p-3 sm:p-4 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
             >
-              <div className="flex items-center gap-2">
-                <Newspaper className="h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="font-semibold">Latest Sentiment</span>
-              </div>
-              <span className="text-xs text-green-200">
-                {stockData.total_posts > 0 ? `${stockData.total_posts.toLocaleString()} posts analyzed` : 'View news & posts'}
-              </span>
+              <Newspaper className="h-4 w-4 sm:h-5 sm:w-5" />
+              Recent News & Posts
             </button>
-
-            <a
-              href={`/fundamentals/${symbol}`}
-              className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white p-3 sm:p-4 rounded-lg transition-all duration-200 flex flex-col items-center justify-center gap-2 text-sm sm:text-base hover:scale-105 text-center"
-            >
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="font-semibold">Fundamentals</span>
-              </div>
-              <span className="text-xs text-orange-200">Revenue, Margins, Cash Flow</span>
-            </a>
-          </div>
-
-          {/* Additional Quick Info Row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-            <div className="bg-white/5 rounded-lg p-3 text-center border border-white/10">
-              <div className="text-xs text-white/60 mb-1">Sentiment Trend</div>
-              <div className={`text-sm font-semibold flex items-center justify-center gap-1 ${
-                avgSentiment > 0.1 ? 'text-green-400' : 
-                avgSentiment < -0.1 ? 'text-red-400' : 'text-yellow-400'
-              }`}>
-                {avgSentiment > 0.1 ? '📈 Bullish' : 
-                 avgSentiment < -0.1 ? '📉 Bearish' : '➡️ Neutral'}
-              </div>
-            </div>
-
-            <div className="bg-white/5 rounded-lg p-3 text-center border border-white/10">
-              <div className="text-xs text-white/60 mb-1">Data Sources</div>
-              <div className="text-sm font-semibold text-white">
-                {stockData.sources.length} Active
-              </div>
-            </div>
-
-            <div className="bg-white/5 rounded-lg p-3 text-center border border-white/10">
-              <div className="text-xs text-white/60 mb-1">Last Updated</div>
-              <div className="text-sm font-semibold text-white">
-                {stockData.last_updated ? new Date(stockData.last_updated).toLocaleDateString() : 'N/A'}
-              </div>
-            </div>
-
-            <div className="bg-white/5 rounded-lg p-3 text-center border border-white/10">
-              <div className="text-xs text-white/60 mb-1">Analysis Score</div>
-              <div className="text-sm font-semibold text-white">
-                {stockData.data_quality_score ? `${(stockData.data_quality_score * 100).toFixed(0)}%` : 'N/A'}
-              </div>
-            </div>
           </div>
         </div>
 

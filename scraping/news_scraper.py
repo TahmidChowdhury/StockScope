@@ -30,12 +30,20 @@ def is_relevant_article(title, description, ticker, company_name):
     ticker_lower = ticker.lower()
     company_lower = company_name.lower() if company_name else ""
     
-    # Exclude articles about software/tech libraries
+    # Special handling for major tech/automotive stocks - be more permissive
+    major_tech_stocks = ["tsla", "aapl", "msft", "googl", "amzn", "meta", "nvda"]
+    is_major_tech = ticker_lower in major_tech_stocks
+    
+    # Exclude articles about software/tech libraries (but be less strict for major tech stocks)
     tech_exclusions = [
         "pypi", "python", "django", "library", "package", "npm", 
-        "github", "repository", "api", "framework", "software development",
-        "programming", "code", "developer", "application", "app store"
+        "github", "repository", "framework", "software development",
+        "programming", "code", "developer"
     ]
+    
+    # Only apply strict tech exclusions to non-major tech stocks
+    if not is_major_tech:
+        tech_exclusions.extend(["api", "application", "app store"])
     
     # Exclude domain/website related content
     domain_exclusions = [
@@ -50,12 +58,24 @@ def is_relevant_article(title, description, ticker, company_name):
                 continue
             return False
     
-    # Must contain either the ticker in financial context or company name
+    # For major tech stocks like Tesla, be much more permissive
+    if is_major_tech:
+        has_ticker = ticker_lower in content
+        has_company = company_lower and company_lower in content
+        
+        # If it mentions the ticker or company, likely relevant
+        if has_ticker or has_company:
+            return True
+    
+    # For other stocks, use stricter financial context requirement
     financial_indicators = [
         "stock", "share", "nasdaq", "nyse", "trading", "market", "analyst",
         "earnings", "revenue", "profit", "financial", "investor", "portfolio",
         "price target", "rating", "upgrade", "downgrade", "enterprise",
-        "corporation", "inc.", "ltd.", "company"
+        "corporation", "inc.", "ltd.", "company", "sales", "delivery",
+        "production", "manufacturing", "quarterly", "business", "valuation",
+        "automotive", "electric vehicle", "ev", "battery", "energy",
+        "gigafactory", "factory", "plant", "recall", "safety", "regulatory"
     ]
     
     has_financial_context = any(indicator in content for indicator in financial_indicators)
@@ -68,24 +88,20 @@ def is_trusted_source(source_name):
     """
     Check if the news source is a trusted financial publication.
     """
-    trusted_sources = {
-        # Tier 1 - Premium financial sources
-        "Bloomberg", "Reuters", "Wall Street Journal", "Financial Times", 
-        "MarketWatch", "Yahoo Finance", "CNBC", "Forbes",
-        
-        # Tier 2 - Reliable business sources  
-        "Business Insider", "The Motley Fool", "Seeking Alpha", "Barron's",
-        "Investor's Business Daily", "TheStreet", "Benzinga",
-        
-        # Tier 3 - General but reliable
-        "ETF Daily News", "PR Newswire", "Business Wire", "Globe Newswire"
-    }
+    # Be more permissive - if it's not obviously unreliable, allow it
+    untrusted_sources = [
+        "reddit", "twitter", "facebook", "instagram", "tiktok", "spam",
+        "blog.example", "localhost", "test", "dev", "staging"
+    ]
     
-    # Partial matches for sources with varying formats
-    for trusted in trusted_sources:
-        if trusted.lower() in source_name.lower():
-            return True
-    return False
+    # Check for obviously untrusted sources
+    source_lower = source_name.lower()
+    for untrusted in untrusted_sources:
+        if untrusted in source_lower:
+            return False
+    
+    # Allow most news sources - be more inclusive
+    return True
 
 def fetch_news_sentiment(ticker, limit=20):
     TICKER_MAP = {
@@ -127,20 +143,28 @@ def fetch_news_sentiment(ticker, limit=20):
     filtered_count = 0
     flagged_for_review = []
     
-    for article in articles:
+    print(f"📋 Processing {len(articles)} articles...")
+    
+    for i, article in enumerate(articles):
         title = article["title"]
         description = article.get("description") or ""
         source_name = article["source"]["name"]
         
+        print(f"  {i+1}. {title[:50]}... from {source_name}")
+        
         # Filter for trusted sources first
         if not is_trusted_source(source_name):
+            print(f"     ❌ Filtered: Untrusted source")
             filtered_count += 1
             continue
         
         # Filter for relevance
         if not is_relevant_article(title, description, ticker, company_name):
+            print(f"     ❌ Filtered: Not relevant")
             filtered_count += 1
             continue
+        
+        print(f"     ✅ Accepted: Relevant article")
         
         # Flag potentially questionable articles for manual review
         content = f"{title} {description}".lower()

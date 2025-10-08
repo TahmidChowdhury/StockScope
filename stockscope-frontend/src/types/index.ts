@@ -48,6 +48,52 @@ export interface SourceAnalysis {
   latest_update: string
 }
 
+// Enhanced interfaces for new components
+export interface NewsArticle {
+  title: string
+  url: string
+  publishedAt: string
+  source: {
+    name: string
+  }
+  description?: string
+  sentiment?: {
+    score: number
+    label: string
+  }
+}
+
+export interface SocialMessage {
+  id: string
+  content: string
+  author: string
+  timestamp: string
+  source: 'reddit' | 'stocktwits' | 'twitter'
+  url?: string
+  engagement?: {
+    likes?: number
+    shares?: number
+    comments?: number
+  }
+  sentiment?: {
+    score: number
+    label: string
+  }
+}
+
+export interface FilterOption {
+  id: string
+  label: string
+  icon?: string
+  enabled: boolean
+}
+
+export interface SortOption {
+  id: string
+  label: string
+  direction: 'asc' | 'desc'
+}
+
 export interface SentimentMetrics {
   avg_sentiment: number
   sentiment_distribution: {
@@ -121,6 +167,7 @@ export interface StockSearchProps {
 export interface StockDashboardProps {
   symbol: string
   onBack: () => void
+  embedded?: boolean
 }
 
 export interface PortfolioViewProps {

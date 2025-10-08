@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import StockSearch from '@/components/StockSearch'
-import StockDashboard from '@/components/StockDashboard'
+import StockAnalysisHub from '@/components/StockAnalysisHub'
+import LoadingScreen from '@/components/LoadingScreen'
 import LoginForm from '@/components/LoginForm'
+import { useAnalysisProgress } from '@/hooks/useAnalysisProgress'
 import type { ViewType, StockMetadata, AuthState } from '@/types'
 
 // Get API URL from environment variables
@@ -18,6 +20,21 @@ export default function Home() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisStatus, setAnalysisStatus] = useState<string | null>(null)
 
+  // Use the analysis progress hook
+  const { status, progress, message, currentPhase } = useAnalysisProgress({
+    symbol: selectedStock,
+    isAnalyzing,
+    onComplete: () => {
+      setIsAnalyzing(false)
+      setCurrentView('dashboard')
+      setAnalysisStatus(null)
+    },
+    onError: (error) => {
+      setIsAnalyzing(false)
+      setAnalysisStatus(`❌ ${error}`)
+    }
+  })
+
   // Check for existing authentication on component mount
   useEffect(() => {
     const isAuthenticated = localStorage.getItem('stockscope_authenticated') === 'true'
@@ -25,6 +42,28 @@ export default function Home() {
       setAuthState({ isAuthenticated: true })
     }
   }, [])
+
+  // Handle progress updates
+  useEffect(() => {
+    if (isAnalyzing && selectedStock && status) {
+      if (status.status === 'completed') {
+        setAnalysisStatus(`🎉 Analysis completed for ${selectedStock}!`)
+        setTimeout(() => {
+          setCurrentView('dashboard')
+          setIsAnalyzing(false)
+          setAnalysisStatus(null)
+        }, 1000)
+      } else if (status.status === 'error') {
+        setIsAnalyzing(false)
+        setAnalysisStatus(`❌ Analysis failed for ${selectedStock}: ${message || 'Unknown error'}`)
+        setTimeout(() => {
+          setAnalysisStatus(null)
+        }, 5000)
+      } else {
+        setAnalysisStatus(`🔄 ${message || `Analyzing ${selectedStock}...`} (${Math.round(progress)}%)`)
+      }
+    }
+  }, [status, progress, message, isAnalyzing, selectedStock])
 
   const handleLoginSuccess = () => {
     setAuthState({ isAuthenticated: true })
@@ -47,23 +86,19 @@ export default function Home() {
   const handleAnalyze = async (symbol: string) => {
     if (!authState.isAuthenticated) return
     
-    setIsAnalyzing(true)
-    setAnalysisStatus(`Starting analysis for ${symbol}...`)
-    
-    // Set analysis flag to prevent infinite polling
-    localStorage.setItem('stockscope_analyzing', 'true')
-
     try {
       // First check if data already exists
       const existingDataResponse = await fetch(`${API_BASE_URL}/api/stocks/${symbol}${getPasswordParam()}`)
       if (existingDataResponse.ok) {
         setSelectedStock(symbol)
         setCurrentView('dashboard')
-        setIsAnalyzing(false)
-        setAnalysisStatus(null)
-        localStorage.removeItem('stockscope_analyzing')
         return
       }
+
+      // Start analysis and enable progress tracking
+      setSelectedStock(symbol)
+      setIsAnalyzing(true)
+      setAnalysisStatus(`Starting analysis for ${symbol}...`)
 
       // Start new analysis
       const response = await fetch(`${API_BASE_URL}/api/stocks/analyze${getPasswordParam()}`, {
@@ -73,111 +108,29 @@ export default function Home() {
         },
         body: JSON.stringify({
           symbol: symbol,
-          sources: ['reddit', 'news', 'sec']
+          sources: ['news', 'sec']  // Removed reddit since it's not implemented
         }),
       })
 
       if (response.status === 401) {
         handleLogout()
-        localStorage.removeItem('stockscope_analyzing')
         return
       }
 
-      const data = await response.json()
-      
-      if (response.ok) {
-        setAnalysisStatus(`✅ Analysis started for ${symbol}! This may take 30-60 seconds.`)
-        
-        // Poll for completion
-        let attempts = 0
-        const maxAttempts = 20 // Maximum 2 minutes (20 * 6 seconds)
-        
-        const pollForCompletion = async () => {
-          try {
-            attempts++
-            
-            // First check if analysis data is available
-            const dataResponse = await fetch(`${API_BASE_URL}/api/stocks/${symbol}${getPasswordParam()}`)
-            if (dataResponse.ok) {
-              setAnalysisStatus(`🎉 Analysis completed for ${symbol}!`)
-              localStorage.removeItem('stockscope_analyzing')
-              setTimeout(() => {
-                setSelectedStock(symbol)
-                setCurrentView('dashboard')
-                setIsAnalyzing(false)
-                setAnalysisStatus(null)
-              }, 1000)
-              return
-            }
-            
-            // If no data yet, check status endpoint
-            const statusResponse = await fetch(`${API_BASE_URL}/api/stocks/${symbol}/status${getPasswordParam()}`)
-            if (statusResponse.ok) {
-              const statusData = await statusResponse.json()
-              if (statusData.status === 'completed') {
-                setAnalysisStatus(`🎉 Analysis completed for ${symbol}!`)
-                localStorage.removeItem('stockscope_analyzing')
-                setTimeout(() => {
-                  setSelectedStock(symbol)
-                  setCurrentView('dashboard')
-                  setIsAnalyzing(false)
-                  setAnalysisStatus(null)
-                }, 1000)
-                return
-              } else if (statusData.status === 'failed') {
-                localStorage.removeItem('stockscope_analyzing')
-                throw new Error(statusData.message || 'Analysis failed')
-              } else {
-                // Still processing, update status
-                setAnalysisStatus(`🔄 ${statusData.message || `Analyzing ${symbol}...`} (${statusData.progress || 0}%)`)
-              }
-            }
-            
-            // Continue polling if not completed and haven't exceeded max attempts
-            if (attempts < maxAttempts) {
-              setTimeout(pollForCompletion, 6000) // Poll every 6 seconds
-            } else {
-              // Timeout - try once more to check for data
-              const finalCheck = await fetch(`${API_BASE_URL}/api/stocks/${symbol}${getPasswordParam()}`)
-              if (finalCheck.ok) {
-                setAnalysisStatus(`🎉 Analysis completed for ${symbol}!`)
-                localStorage.removeItem('stockscope_analyzing')
-                setTimeout(() => {
-                  setSelectedStock(symbol)
-                  setCurrentView('dashboard')
-                  setIsAnalyzing(false)
-                  setAnalysisStatus(null)
-                }, 1000)
-              } else {
-                localStorage.removeItem('stockscope_analyzing')
-                throw new Error('Analysis timed out. Please try refreshing and check your portfolio.')
-              }
-            }
-          } catch (error) {
-            console.error('Error polling for completion:', error)
-            if (attempts >= maxAttempts) {
-              localStorage.removeItem('stockscope_analyzing')
-              setAnalysisStatus(`⚠️ Analysis may have completed for ${symbol}. Check your portfolio below or try refreshing.`)
-              setIsAnalyzing(false)
-            } else {
-              // Try again
-              setTimeout(pollForCompletion, 6000)
-            }
-          }
-        }
-        
-        // Start polling after 3 seconds
-        setTimeout(pollForCompletion, 3000)
-        
-      } else {
-        localStorage.removeItem('stockscope_analyzing')
-        throw new Error(data.detail || 'Analysis failed')
+      if (!response.ok) {
+        throw new Error('Failed to start analysis')
       }
+
+      // The progress hook will handle polling and completion
+      
     } catch (error) {
-      console.error('Analysis failed:', error)
-      localStorage.removeItem('stockscope_analyzing')
-      setAnalysisStatus(`❌ Analysis failed for ${symbol}. Please try again.`)
+      console.error('Error starting analysis:', error)
       setIsAnalyzing(false)
+      setAnalysisStatus(`❌ Failed to analyze ${symbol}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      
+      setTimeout(() => {
+        setAnalysisStatus(null)
+      }, 5000)
     }
   }
 
@@ -198,11 +151,29 @@ export default function Home() {
   }
 
   if (currentView === 'dashboard' && selectedStock) {
-    return <StockDashboard symbol={selectedStock} onBack={handleBackToSearch} />
+    return (
+      <StockAnalysisHub 
+        symbol={selectedStock} 
+        onBack={handleBackToSearch}
+        onStockSelect={(symbol) => {
+          setSelectedStock(symbol)
+          // Stay in dashboard view with new stock
+        }}
+      />
+    )
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      {/* Show loading screen when analysis is running */}
+      {isAnalyzing && (
+        <LoadingScreen 
+          progress={progress}
+          details={currentPhase}
+          message={message}
+        />
+      )}
+      
       <div className="container mx-auto px-3 sm:px-4 py-8 sm:py-16">
         {/* Header with logout - Mobile optimized */}
         <div className="text-center mb-8 sm:mb-12 relative">
@@ -218,7 +189,7 @@ export default function Home() {
             📊 StockScope Pro
           </h1>
           <p className="text-base sm:text-xl text-white/80 max-w-2xl mx-auto px-2">
-            AI-Powered Stock Sentiment Analysis with Real-Time Data from Reddit, News, and SEC Filings
+            AI-Powered Stock Sentiment Analysis with Real-Time Data from News and SEC Filings
           </p>
           <div className="mt-2 sm:mt-4 text-xs sm:text-sm text-green-400">
             🔒 Secure Session Active
@@ -302,27 +273,6 @@ export default function Home() {
 
         {/* Portfolio Section */}
         <PortfolioView onViewDashboard={handleViewDashboard} passwordParam={getPasswordParam()} />
-
-        {/* Features - Mobile optimized grid */}
-        <div className="mt-12 sm:mt-16 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-8 max-w-6xl mx-auto px-2 sm:px-0">
-          <div className="text-center p-4 sm:p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
-            <div className="text-3xl sm:text-4xl mb-2 sm:mb-4">🔍</div>
-            <h3 className="text-lg sm:text-xl font-semibold text-white mb-1 sm:mb-2">Real-Time Search</h3>
-            <p className="text-sm sm:text-base text-white/70">Instant autocomplete with 70+ popular stocks and custom symbol support</p>
-          </div>
-          
-          <div className="text-center p-4 sm:p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
-            <div className="text-3xl sm:text-4xl mb-2 sm:mb-4">🤖</div>
-            <h3 className="text-lg sm:text-xl font-semibold text-white mb-1 sm:mb-2">AI Analysis</h3>
-            <p className="text-sm sm:text-base text-white/70">Advanced sentiment analysis from multiple data sources with ML insights</p>
-          </div>
-          
-          <div className="text-center p-4 sm:p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10 sm:col-span-2 lg:col-span-1">
-            <div className="text-3xl sm:text-4xl mb-2 sm:mb-4">📈</div>
-            <h3 className="text-lg sm:text-xl font-semibold text-white mb-1 sm:mb-2">Investment Insights</h3>
-            <p className="text-sm sm:text-base text-white/70">Get BUY/SELL/HOLD recommendations with confidence scores and risk analysis</p>
-          </div>
-        </div>
 
         {/* Footer */}
         <div className="mt-12 sm:mt-16 text-center text-white/60 px-2">
@@ -626,66 +576,58 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
               </div>
             )}
 
-            {/* Stock Card - Mobile optimized */}
+            {/* Stock Card - Mobile optimized with consistent height */}
             <button
               onClick={() => !isSelectionMode && onViewDashboard(stock.symbol)}
               disabled={isSelectionMode}
-              className="w-full bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg p-2 sm:p-4 border border-white/20 transition-all duration-200 hover:scale-105 disabled:hover:scale-100 disabled:cursor-default"
+              className="w-full h-24 sm:h-32 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg p-2 sm:p-3 border border-white/20 transition-all duration-200 hover:scale-105 disabled:hover:scale-100 disabled:cursor-default flex flex-col justify-between"
             >
-              <div className="text-center">
-                <div className="text-sm sm:text-lg font-bold text-white mb-1">{stock.symbol}</div>
+              <div className="text-center flex-1 flex flex-col justify-center">
+                {/* Stock Symbol */}
+                <div className="text-sm sm:text-lg font-bold text-white mb-0.5 sm:mb-1">{stock.symbol}</div>
                 
-                {/* Company Name - More compact on mobile */}
+                {/* Company Name - Truncated to prevent overflow */}
                 {stock.companyName && stock.companyName !== stock.symbol && (
-                  <div className="text-xs text-white/60 mb-1 sm:mb-2 truncate" title={stock.companyName}>
-                    {stock.companyName}
+                  <div className="text-xs text-white/60 mb-1 truncate px-1" title={stock.companyName}>
+                    {stock.companyName.length > 15 ? `${stock.companyName.substring(0, 15)}...` : stock.companyName}
                   </div>
                 )}
                 
-                {/* Current Price - Responsive sizing */}
+                {/* Current Price OR Post Count */}
                 {stock.currentPrice && stock.currentPrice > 0 ? (
-                  <div className="mb-1 sm:mb-2">
-                    <div className="text-sm sm:text-lg font-semibold text-white">
+                  <div className="flex flex-col items-center">
+                    <div className="text-sm sm:text-base font-semibold text-white">
                       ${stock.currentPrice.toFixed(2)}
                     </div>
                     
-                    {/* Price Change - More compact on mobile */}
+                    {/* Price Change - Compact */}
                     {stock.priceChange !== undefined && stock.priceChangePercent !== undefined && (
-                      <div className={`text-xs flex items-center justify-center gap-1 ${
+                      <div className={`text-xs ${
                         stock.priceChange > 0 ? 'text-green-400' : 
                         stock.priceChange < 0 ? 'text-red-400' : 'text-white/60'
                       }`}>
-                        <span>
-                          {stock.priceChange > 0 ? '↗' : stock.priceChange < 0 ? '↘' : '→'}
-                        </span>
-                        <span className="hidden sm:inline">
-                          {stock.priceChange > 0 ? '+' : ''}{stock.priceChange.toFixed(2)} 
-                          ({stock.priceChangePercent > 0 ? '+' : ''}{stock.priceChangePercent.toFixed(1)}%)
-                        </span>
-                        <span className="sm:hidden">
-                          {stock.priceChangePercent > 0 ? '+' : ''}{stock.priceChangePercent.toFixed(1)}%
-                        </span>
+                        {stock.priceChange > 0 ? '↗' : stock.priceChange < 0 ? '↘' : '→'}
+                        {stock.priceChangePercent > 0 ? '+' : ''}{stock.priceChangePercent.toFixed(1)}%
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="text-xs sm:text-sm text-white/60 mb-1 sm:mb-2">
+                  <div className="text-xs sm:text-sm text-white/60">
                     {stock.total_posts > 0 ? `${stock.total_posts} posts` : 'View Dashboard'}
                   </div>
                 )}
-                
-                {/* Sentiment - Compact on mobile */}
-                {stock.avg_sentiment !== 0 && (
-                  <div className={`text-xs ${
-                    stock.avg_sentiment > 0.1 ? 'text-green-400' : 
-                    stock.avg_sentiment < -0.1 ? 'text-red-400' : 'text-yellow-400'
-                  }`}>
-                    {stock.avg_sentiment > 0 ? '📈' : stock.avg_sentiment < 0 ? '📉' : '➡️'} 
-                    <span className="hidden sm:inline">Sentiment: </span>
-                    {(stock.avg_sentiment * 100).toFixed(0)}%
-                  </div>
-                )}
               </div>
+              
+              {/* Sentiment Badge - Always at bottom */}
+              {stock.avg_sentiment !== 0 && (
+                <div className={`text-xs mt-1 ${
+                  stock.avg_sentiment > 0.1 ? 'text-green-400' : 
+                  stock.avg_sentiment < -0.1 ? 'text-red-400' : 'text-yellow-400'
+                }`}>
+                  {stock.avg_sentiment > 0 ? '📈' : stock.avg_sentiment < 0 ? '📉' : '➡️'} 
+                  {(stock.avg_sentiment * 100).toFixed(0)}%
+                </div>
+              )}
             </button>
 
             {/* Individual Delete Button - Adjusted for mobile */}

@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
-import { TrendingUp, TrendingDown, Activity, MessageSquare, Newspaper, Building2, X, AlertCircle, Target, Shield } from 'lucide-react'
+import { TrendingUp, TrendingDown, Activity, MessageSquare, Newspaper, Building2, X, AlertCircle, Target, Shield, FileText } from 'lucide-react'
 import type { StockDashboardProps, StockAnalysis, InvestmentAdvice, QuantitativeAnalysis } from '@/types'
 
-export default function StockDashboard({ symbol, onBack }: StockDashboardProps) {
+export default function StockDashboard({ symbol, onBack, embedded = false }: StockDashboardProps) {
   const [stockData, setStockData] = useState<StockAnalysis | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -240,8 +240,8 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
   const chartData = stockData.sources.map(sourceAnalysis => ({
     source: sourceAnalysis.source,
     count: sourceAnalysis.count,
-    color: sourceAnalysis.source === 'Reddit' ? '#FF4500' : 
-           sourceAnalysis.source === 'News' ? '#1DA1F2' : '#6366F1'
+    color: sourceAnalysis.source === 'News' ? '#1DA1F2' : 
+           sourceAnalysis.source === 'SEC' ? '#6366F1' : '#8B5CF6'
   }))
 
   // Get sentiment from either new structure or legacy fallback
@@ -253,31 +253,42 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
                         avgSentiment < -0.1 ? '🔴' : '🟡'
 
   // Calculate counts for each source type using SourceAnalysis objects
-  const redditData = stockData.sources.find(s => s.source === 'Reddit')
   const newsData = stockData.sources.find(s => s.source === 'News')
+  const secData = stockData.sources.find(s => s.source === 'SEC')
   
-  const redditCount = redditData?.count ?? 0
   const newsCount = newsData?.count ?? 0
+  const secCount = secData?.count ?? 0
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
-        {/* Header - Mobile optimized */}
-        <div className="flex items-center justify-between mb-6 sm:mb-8">
-          <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
-            <button
-              onClick={onBack}
-              className="bg-white/10 hover:bg-white/20 text-white p-2 rounded-lg transition-colors backdrop-blur-sm flex-shrink-0"
-            >
-              ←
-            </button>
-            <div className="min-w-0">
-              <h1 className="text-2xl sm:text-4xl font-bold text-white truncate">{companyInfo?.displayName || symbol}</h1>
-              <p className="text-white/70 text-sm sm:text-base">Sentiment Analysis Dashboard</p>
+    <div className={embedded ? "" : "min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900"}>
+      <div className={embedded ? "" : "container mx-auto px-3 sm:px-4 py-4 sm:py-8"}>
+        {/* Header - Only show when not embedded */}
+        {!embedded && (
+          <div className="flex items-center justify-between mb-6 sm:mb-8">
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
+              <button
+                onClick={onBack}
+                className="bg-white/10 hover:bg-white/20 text-white p-2 rounded-lg transition-colors backdrop-blur-sm flex-shrink-0"
+              >
+                ←
+              </button>
+              <div className="min-w-0">
+                <h1 className="text-2xl sm:text-4xl font-bold text-white truncate">{companyInfo?.displayName || symbol}</h1>
+                <p className="text-white/70 text-sm sm:text-base">Sentiment Analysis Dashboard</p>
+              </div>
             </div>
-          </div>
-          
-          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            {/* Chart View Link */}
+            <a
+              href={`/stock/${symbol.toLowerCase()}`}
+              className="bg-green-600 hover:bg-green-700 text-white px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-colors flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
+              title="View price chart and news"
+            >
+              <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Charts</span>
+            </a>
+            
             {/* Delete button - only for admin users */}
             {userRole === 'admin' && (
               <button
@@ -299,55 +310,7 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
             </button>
           </div>
         </div>
-
-        {/* Key Metrics - Mobile optimized grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white/70 text-xs sm:text-sm">Total Posts</p>
-                <p className="text-xl sm:text-3xl font-bold text-white">{(stockData.total_posts ?? 0).toLocaleString()}</p>
-              </div>
-              <MessageSquare className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
-            </div>
-          </div>
-
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white/70 text-xs sm:text-sm">Avg Sentiment</p>
-                <p className="text-xl sm:text-3xl font-bold" style={{ color: sentimentColor }}>
-                  {avgSentiment.toFixed(3)}
-                </p>
-                <p className="text-xs sm:text-sm text-white/60">{sentimentEmoji} {avgSentiment > 0 ? 'Positive' : avgSentiment < 0 ? 'Negative' : 'Neutral'}</p>
-              </div>
-              {avgSentiment > 0 ? 
-                <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 text-green-400" /> : 
-                <TrendingDown className="h-6 w-6 sm:h-8 sm:w-8 text-red-400" />
-              }
-            </div>
-          </div>
-
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white/70 text-xs sm:text-sm">Reddit Posts</p>
-                <p className="text-xl sm:text-3xl font-bold text-white">{redditCount.toLocaleString()}</p>
-              </div>
-              <MessageSquare className="h-6 w-6 sm:h-8 sm:w-8 text-orange-400" />
-            </div>
-          </div>
-
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white/70 text-xs sm:text-sm">News Articles</p>
-                <p className="text-xl sm:text-3xl font-bold text-white">{newsCount.toLocaleString()}</p>
-              </div>
-              <Newspaper className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
-            </div>
-          </div>
-        </div>
+        )}
 
         {/* Charts - Mobile stacked layout */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
@@ -469,8 +432,8 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
                         <div 
                           className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full" 
                           style={{ 
-                            backgroundColor: source.source === 'Reddit' ? '#FF4500' : 
-                                           source.source === 'News' ? '#1DA1F2' : '#6366F1' 
+                            backgroundColor: source.source === 'News' ? '#1DA1F2' : 
+                                           source.source === 'SEC' ? '#6366F1' : '#8B5CF6'
                           }}
                         />
                         <span className="text-sm sm:text-base">{source.source}</span>
@@ -492,6 +455,55 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+
+        {/* Key Metrics - Mobile optimized grid */}
+        <div className="mt-6 sm:mt-8 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white/70 text-xs sm:text-sm">Total Posts</p>
+                <p className="text-xl sm:text-3xl font-bold text-white">{(stockData.total_posts ?? 0).toLocaleString()}</p>
+              </div>
+              <MessageSquare className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
+            </div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white/70 text-xs sm:text-sm">Avg Sentiment</p>
+                <p className="text-xl sm:text-3xl font-bold" style={{ color: sentimentColor }}>
+                  {avgSentiment.toFixed(3)}
+                </p>
+                <p className="text-xs sm:text-sm text-white/60">{sentimentEmoji} {avgSentiment > 0 ? 'Positive' : avgSentiment < 0 ? 'Negative' : 'Neutral'}</p>
+              </div>
+              {avgSentiment > 0 ? 
+                <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 text-green-400" /> : 
+                <TrendingDown className="h-6 w-6 sm:h-8 sm:w-8 text-red-400" />
+              }
+            </div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white/70 text-xs sm:text-sm">News Articles</p>
+                <p className="text-xl sm:text-3xl font-bold text-white">{newsCount.toLocaleString()}</p>
+              </div>
+              <Newspaper className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
+            </div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white/70 text-xs sm:text-sm">SEC Filings</p>
+                <p className="text-xl sm:text-3xl font-bold text-white">{secCount.toLocaleString()}</p>
+              </div>
+              <FileText className="h-6 w-6 sm:h-8 sm:w-8 text-purple-400" />
+            </div>
           </div>
         </div>
 
@@ -813,8 +825,8 @@ export default function StockDashboard({ symbol, onBack }: StockDashboardProps) 
                       <div 
                         className="w-3 h-3 rounded-full" 
                         style={{ 
-                          backgroundColor: source.source === 'Reddit' ? '#FF4500' : 
-                                         source.source === 'News' ? '#1DA1F2' : '#6366F1' 
+                          backgroundColor: source.source === 'News' ? '#1DA1F2' : 
+                                         source.source === 'SEC' ? '#6366F1' : '#8B5CF6'
                         }}
                       />
                       <h3 className="text-lg font-semibold text-white">{source.source}</h3>

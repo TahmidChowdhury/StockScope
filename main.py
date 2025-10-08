@@ -11,7 +11,8 @@ import asyncio
 
 async def run_pipeline(ticker: str, limit=20):
     """Run the complete data pipeline for Reddit data"""
-    posts = await fetch_reddit_posts(ticker, limit=limit)
+    # Reddit scraper is now synchronous (web scraping)
+    posts = fetch_reddit_posts(ticker, limit=limit)
     enriched_posts = []
 
     def classify_sentiment(compound):
@@ -21,7 +22,7 @@ async def run_pipeline(ticker: str, limit=20):
             return "negative"
         else:
             return "neutral"
-
+    
     for post in posts:
         sentiment = analyze_sentiment(post["title"])
         post["sentiment"] = sentiment
@@ -37,19 +38,15 @@ async def run_pipeline(ticker: str, limit=20):
 
     return output_path  # return the path so Streamlit can load it
 
+
 async def run_full_pipeline_async(ticker: str, reddit_limit=20, twitter_limit=50, sec_limit=10):
     """Run the complete data pipeline for all sources (async version)"""
     results = {}
     
-    # Fetch Reddit data (now async)
-    try:
-        reddit_path = await run_pipeline(ticker, limit=reddit_limit)
-        results['reddit'] = reddit_path
-        print(f"[SUCCESS] Reddit data saved to {reddit_path}")
-    except Exception as e:
-        print(f"[ERROR] Reddit scraping failed: {e}")
-        results['reddit'] = None
-    
+    # Skip Reddit data collection for now
+    print("[INFO] Skipping Reddit data collection - not implemented")
+    results['reddit'] = None
+
     # Twitter data - COMMENTED OUT until paid API access
     # try:
     #     twitter_path = fetch_twitter_sentiment(ticker, max_tweets=twitter_limit)
@@ -74,6 +71,7 @@ async def run_full_pipeline_async(ticker: str, reddit_limit=20, twitter_limit=50
         results['sec'] = None
     
     return results
+
 
 def run_full_pipeline(ticker: str, reddit_limit=20, twitter_limit=50, sec_limit=10):
     """Synchronous wrapper for the async pipeline (for backward compatibility)"""

@@ -53,19 +53,56 @@ export default function LoginForm({ onLoginSuccess }: LoginFormProps) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white/10 backdrop-blur-lg rounded-xl shadow-2xl border border-white/20">
-        <div className="text-center">
-          <div className="mx-auto h-16 w-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mb-4">
-            <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center p-4">
+      <div className="max-w-4xl w-full">
+        {/* Header */}
+        <div className="text-center mb-8 lg:mb-12">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full mb-4">
+            <span className="text-2xl">📊</span>
           </div>
-          <h2 className="text-3xl font-bold text-white mb-2">StockScope Pro</h2>
-          <p className="text-gray-300 text-sm">Secure Access Required</p>
+          <h1 className="text-4xl lg:text-5xl font-bold text-white mb-4">
+            StockScope Pro
+          </h1>
+          <p className="text-xl text-gray-300 max-w-2xl mx-auto">
+            Professional stock sentiment analysis and investment insights
+          </p>
         </div>
 
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+        {/* Features Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 lg:mb-12">
+          <div className="text-center p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
+            <div className="text-3xl mb-4">🔍</div>
+            <h3 className="text-lg font-semibold text-white mb-2">Real-Time Search</h3>
+            <p className="text-sm text-gray-300">Instant autocomplete with 70+ popular stocks and custom symbol support</p>
+          </div>
+          
+          <div className="text-center p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
+            <div className="text-3xl mb-4">🤖</div>
+            <h3 className="text-lg font-semibold text-white mb-2">AI Analysis</h3>
+            <p className="text-sm text-gray-300">Advanced sentiment analysis from multiple data sources with ML insights</p>
+          </div>
+          
+          <div className="text-center p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
+            <div className="text-3xl mb-4">📈</div>
+            <h3 className="text-lg font-semibold text-white mb-2">Investment Insights</h3>
+            <p className="text-sm text-gray-300">Get BUY/SELL/HOLD recommendations with confidence scores and risk analysis</p>
+          </div>
+        </div>
+
+        {/* Login Form */}
+        <div className="max-w-md mx-auto">
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl shadow-2xl border border-white/20 p-8">
+            <div className="text-center mb-6">
+              <div className="mx-auto h-12 w-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mb-4">
+                <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-2">Secure Access</h2>
+              <p className="text-gray-300 text-sm">Enter your password to continue</p>
+            </div>
+
+        <form className="space-y-6" onSubmit={handleSubmit}>
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
               Master Password
@@ -123,10 +160,12 @@ export default function LoginForm({ onLoginSuccess }: LoginFormProps) {
           </button>
         </form>
 
-        <div className="text-center">
+        <div className="text-center mt-6">
           <p className="text-xs text-gray-400">
             🔒 This application requires authentication for security
           </p>
+        </div>
+          </div>
         </div>
       </div>
     </div>

@@ -78,6 +78,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import your existing functions
 from main import run_full_pipeline_async
 from scraping.news_scraper import fetch_news_sentiment
+from scraping.enhanced_news_scraper import fetch_enhanced_news_sentiment
 from analysis.investment_advisor import InvestmentAdvisor
 from analysis.quantitative_strategies import QuantitativeStrategies
 
@@ -401,7 +402,7 @@ class DataSource(str, Enum):
 
 class StockRequest(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=10, description="Stock symbol")
-    sources: List[DataSource] = Field(default=[DataSource.REDDIT, DataSource.NEWS, DataSource.SEC])
+    sources: List[DataSource] = Field(default=[DataSource.NEWS, DataSource.SEC])  # Removed Reddit
     
     class Config:
         use_enum_values = True
@@ -1157,6 +1158,118 @@ async def get_company_info_endpoint(symbol: str, current_user: str = Depends(ver
         logger.error(f"Error getting company info for {symbol}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch company information")
 
+@app.get("/api/stocks/{symbol}/news", tags=["Analysis"])
+async def get_stock_news(symbol: str, limit: int = 20, current_user: str = Depends(verify_password_with_role)):
+    """Get news articles for a specific stock"""
+    import os
+    import json
+    
+    symbol = symbol.upper()
+    
+    try:
+        data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
+        
+        # Look for news files for this ticker
+        news_articles = []
+        
+        for filename in os.listdir(data_dir):
+            if filename.startswith(f"{symbol}_") and 'news' in filename and filename.endswith('.json'):
+                file_path = os.path.join(data_dir, filename)
+                
+                try:
+                    with open(file_path, 'r') as f:
+                        articles = json.load(f)
+                    
+                    # Add these articles to our collection
+                    if isinstance(articles, list):
+                        news_articles.extend(articles)
+                    
+                except Exception as e:
+                    logger.warning(f"Error reading news file {filename}: {e}")
+                    continue
+        
+        # Sort by publication date (most recent first)
+        news_articles.sort(key=lambda x: x.get('publishedAt', ''), reverse=True)
+        
+        # Limit results
+        news_articles = news_articles[:limit]
+        
+        return {
+            "ticker": symbol,
+            "count": len(news_articles),
+            "articles": news_articles
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching news for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch news articles")
+
+@app.get("/api/stocks/{symbol}/price-history", tags=["Analysis"])
+async def get_price_history(
+    symbol: str, 
+    period: str = "1y",
+    interval: str = "1d",
+    current_user: str = Depends(verify_password_with_role)
+):
+    """Get historical price data for charting"""
+    symbol = symbol.upper()
+    
+    cache_key = f"price_history_{symbol}_{period}_{interval}"
+    cached_result = cache.get(cache_key)
+    if cached_result:
+        return cached_result
+    
+    try:
+        import yfinance as yf
+        
+        # Create ticker object
+        ticker = yf.Ticker(symbol)
+        
+        # Get historical data
+        hist = ticker.history(period=period, interval=interval)
+        
+        if hist.empty:
+            raise HTTPException(status_code=404, detail="No historical data found")
+        
+        # Convert to list of dictionaries for frontend consumption
+        price_data = []
+        for date, row in hist.iterrows():
+            price_data.append({
+                "date": date.strftime("%Y-%m-%d"),
+                "timestamp": int(date.timestamp() * 1000),  # JavaScript timestamp
+                "open": round(float(row['Open']), 2),
+                "high": round(float(row['High']), 2),
+                "low": round(float(row['Low']), 2),
+                "close": round(float(row['Close']), 2),
+                "volume": int(row['Volume'])
+            })
+        
+        # Get current price info
+        info = ticker.info
+        current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
+        price_change = info.get('regularMarketChange', 0)
+        price_change_percent = info.get('regularMarketChangePercent', 0)
+        
+        result = {
+            "symbol": symbol,
+            "period": period,
+            "interval": interval,
+            "currentPrice": current_price,
+            "priceChange": price_change,
+            "priceChangePercent": price_change_percent,
+            "data": price_data
+        }
+        
+        # Cache for 5 minutes (price data changes frequently)
+        cache.set(cache_key, result, ttl=300)
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting price history for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch price history")
+
 @app.delete("/api/cache", tags=["Admin"])
 async def clear_cache(pattern: Optional[str] = None, current_user: str = Depends(verify_password_with_role)):
     """Clear API cache (admin endpoint)"""
@@ -1257,15 +1370,20 @@ async def run_optimized_analysis(symbol: str, sources: List[str]):
         analysis_status[symbol].message = "Starting analysis..."
         
         # Run analysis based on sources
-        if "reddit" in sources or "sec" in sources:
+        if "sec" in sources:
             analysis_status[symbol].progress = 30
-            analysis_status[symbol].message = "Collecting Reddit and SEC data..."
+            analysis_status[symbol].message = "Collecting SEC data..."
             await run_full_pipeline_async(symbol)
         
         if "news" in sources:
             analysis_status[symbol].progress = 60
             analysis_status[symbol].message = "Fetching news sentiment..."
-            fetch_news_sentiment(symbol)
+            try:
+                # Use enhanced news scraper for better coverage
+                fetch_enhanced_news_sentiment(symbol)
+            except Exception as e:
+                print(f"Enhanced news scraper failed, falling back to basic scraper: {e}")
+                fetch_news_sentiment(symbol)
         
         # Final processing
         analysis_status[symbol].progress = 90

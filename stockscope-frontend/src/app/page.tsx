@@ -561,8 +561,18 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
             {/* Selection Mode Overlay */}
             {isSelectionMode && (
               <div
+                role="checkbox"
+                aria-checked={selectedStocks.has(stock.symbol)}
+                aria-label={`Select ${stock.symbol}`}
+                tabIndex={0}
                 className="absolute inset-0 z-10 bg-black/50 rounded-xl flex items-center justify-center cursor-pointer"
                 onClick={() => handleStockSelection(stock.symbol)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    handleStockSelection(stock.symbol)
+                  }
+                }}
               >
                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
                   selectedStocks.has(stock.symbol) 

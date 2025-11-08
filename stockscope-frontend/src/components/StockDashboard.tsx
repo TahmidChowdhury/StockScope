@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { TrendingUp, TrendingDown, Activity, MessageSquare, Newspaper, Building2, X, AlertCircle, Target, Shield, FileText } from 'lucide-react'
 import type { StockDashboardProps, StockAnalysis, InvestmentAdvice, QuantitativeAnalysis } from '@/types'
+import { getSourceColor, getSentimentColor, CHART_COLORS } from '@/constants/colors'
 
 export default function StockDashboard({ symbol, onBack, embedded = false }: StockDashboardProps) {
   const [stockData, setStockData] = useState<StockAnalysis | null>(null)
@@ -240,14 +241,12 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
   const chartData = stockData.sources.map(sourceAnalysis => ({
     source: sourceAnalysis.source,
     count: sourceAnalysis.count,
-    color: sourceAnalysis.source === 'News' ? '#1DA1F2' : 
-           sourceAnalysis.source === 'SEC' ? '#6366F1' : '#8B5CF6'
+    color: getSourceColor(sourceAnalysis.source)
   }))
 
   // Get sentiment from either new structure or legacy fallback
   const avgSentiment = stockData.sentiment_metrics?.avg_sentiment ?? stockData.avg_sentiment ?? 0
-  const sentimentColor = avgSentiment > 0.1 ? '#10B981' : 
-                        avgSentiment < -0.1 ? '#EF4444' : '#F59E0B'
+  const sentimentColor = getSentimentColor(avgSentiment)
 
   const sentimentEmoji = avgSentiment > 0.1 ? '🟢' : 
                         avgSentiment < -0.1 ? '🔴' : '🟡'
@@ -404,7 +403,7 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
                       fontSize: window.innerWidth < 640 ? '12px' : '14px'
                     }} 
                   />
-                  <Bar dataKey="count" fill="#6366F1" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="count" fill={CHART_COLORS.PRIMARY} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -432,8 +431,7 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
                         <div 
                           className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full" 
                           style={{ 
-                            backgroundColor: source.source === 'News' ? '#1DA1F2' : 
-                                           source.source === 'SEC' ? '#6366F1' : '#8B5CF6'
+                            backgroundColor: getSourceColor(source.source)
                           }}
                         />
                         <span className="text-sm sm:text-base">{source.source}</span>
@@ -442,8 +440,7 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
                     <td className="text-right py-3 text-sm sm:text-base">{source.count.toLocaleString()}</td>
                     <td className="text-right py-3 hidden sm:table-cell">
                       <span style={{ 
-                        color: source.avg_sentiment > 0.1 ? '#10B981' : 
-                               source.avg_sentiment < -0.1 ? '#EF4444' : '#F59E0B' 
+                        color: getSentimentColor(source.avg_sentiment)
                       }} className="text-sm sm:text-base">
                         {source.avg_sentiment.toFixed(3)}
                       </span>
@@ -825,8 +822,7 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
                       <div 
                         className="w-3 h-3 rounded-full" 
                         style={{ 
-                          backgroundColor: source.source === 'News' ? '#1DA1F2' : 
-                                         source.source === 'SEC' ? '#6366F1' : '#8B5CF6'
+                          backgroundColor: getSourceColor(source.source)
                         }}
                       />
                       <h3 className="text-lg font-semibold text-white">{source.source}</h3>

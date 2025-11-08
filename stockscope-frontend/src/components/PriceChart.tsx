@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { TrendingUp, TrendingDown, Calendar } from 'lucide-react'
+import { TrendingUp, TrendingDown } from 'lucide-react'
 
 interface PriceData {
   date: string
@@ -102,10 +102,10 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
     if (active && payload && payload.length) {
       const data = payload[0].payload
       return (
-        <div className="bg-white p-3 rounded-lg shadow-lg border">
-          <p className="font-semibold">{formatDate(label)}</p>
-          <p className="text-blue-600">Close: {formatPrice(data.close)}</p>
-          <p className="text-gray-600">Volume: {data.volume.toLocaleString()}</p>
+        <div className="bg-slate-900/95 backdrop-blur-sm p-3 rounded-lg shadow-lg border border-white/20">
+          <p className="font-semibold text-white">{formatDate(label)}</p>
+          <p className="text-green-400">Close: {formatPrice(data.close)}</p>
+          <p className="text-gray-300">Volume: {data.volume.toLocaleString()}</p>
         </div>
       )
     }
@@ -114,10 +114,10 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
 
   if (loading) {
     return (
-      <div className={`bg-slate-800/50 backdrop-blur-sm rounded-lg border border-purple-500/20 p-6 ${className}`}>
+      <div className={`bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-4 sm:p-6 ${className}`}>
         <div className="animate-pulse">
-          <div className="h-6 bg-slate-600 rounded w-1/4 mb-4"></div>
-          <div className="h-64 bg-slate-600 rounded"></div>
+          <div className="h-6 bg-white/10 rounded w-1/4 mb-4"></div>
+          <div className="h-48 sm:h-64 bg-white/10 rounded"></div>
         </div>
       </div>
     )
@@ -125,7 +125,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
 
   if (error) {
     return (
-      <div className={`bg-slate-800/50 backdrop-blur-sm rounded-lg border border-purple-500/20 p-6 ${className}`}>
+      <div className={`bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-4 sm:p-6 ${className}`}>
         <div className="text-center text-red-400">
           <p>Error loading price chart: {error}</p>
         </div>
@@ -141,64 +141,69 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
   const chartColor = isPositive ? '#10B981' : '#EF4444'
 
   return (
-    <div className={`bg-slate-800/50 backdrop-blur-sm rounded-lg border border-purple-500/20 p-6 ${className}`}>
-      {/* Header with current price */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h3 className="text-lg font-semibold text-white mb-1">
+    <div className={`bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-3 sm:p-6 ${className}`}>
+      {/* Header with current price - Mobile optimized */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 sm:mb-6">
+        <div className="min-w-0">
+          <h3 className="text-base sm:text-lg font-semibold text-white mb-1 truncate">
             {symbol} Stock Price
           </h3>
-          <div className="flex items-center space-x-3">
-            <span className="text-2xl font-bold text-white">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+            <span className="text-xl sm:text-2xl font-bold text-white">
               {formatPrice(priceData.currentPrice)}
             </span>
-            <div className={`flex items-center space-x-1 ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+            <div className={`flex items-center gap-1 ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
               {isPositive ? (
-                <TrendingUp className="h-4 w-4" />
+                <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4" />
               ) : (
-                <TrendingDown className="h-4 w-4" />
+                <TrendingDown className="h-3 w-3 sm:h-4 sm:w-4" />
               )}
-              <span className="font-semibold">
+              <span className="text-sm sm:text-base font-semibold">
                 {formatPrice(Math.abs(priceData.priceChange))} ({Math.abs(priceData.priceChangePercent).toFixed(2)}%)
               </span>
             </div>
           </div>
         </div>
 
-        {/* Period selector - Mobile optimized */}
-        <div className="flex items-center space-x-0.5 sm:space-x-1 bg-slate-700/50 rounded-lg p-0.5 sm:p-1 overflow-x-auto">
-          {PERIOD_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => setSelectedPeriod(option.value)}
-              className={`px-2 sm:px-3 py-1 rounded text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
-                selectedPeriod === option.value
-                  ? 'bg-purple-600 text-white'
-                  : 'text-gray-300 hover:text-white'
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
+        {/* Period selector - Better mobile layout */}
+        <div className="flex-shrink-0">
+          <div className="flex items-center bg-white/5 rounded-lg p-1 gap-1 overflow-x-auto">
+            {PERIOD_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setSelectedPeriod(option.value)}
+                className={`px-2 sm:px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap min-w-[32px] ${
+                  selectedPeriod === option.value
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-white/70 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Chart */}
-      <div className="h-64">
+      {/* Chart - Better mobile height */}
+      <div className="h-48 sm:h-64 lg:h-80 mb-4">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={priceData.data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+          <LineChart data={priceData.data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
             <XAxis 
               dataKey="date"
               tickFormatter={formatDate}
-              stroke="#9CA3AF"
-              fontSize={12}
+              stroke="rgba(255,255,255,0.7)"
+              fontSize={window.innerWidth < 640 ? 10 : 12}
+              tick={{ fill: 'rgba(255,255,255,0.7)' }}
             />
             <YAxis 
               domain={['dataMin', 'dataMax']}
               tickFormatter={(value) => `$${value.toFixed(2)}`}
-              stroke="#9CA3AF"
-              fontSize={12}
+              stroke="rgba(255,255,255,0.7)"
+              fontSize={window.innerWidth < 640 ? 10 : 12}
+              tick={{ fill: 'rgba(255,255,255,0.7)' }}
+              width={window.innerWidth < 640 ? 50 : 60}
             />
             <Tooltip content={<CustomTooltip />} />
             <Line
@@ -207,35 +212,35 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
               stroke={chartColor}
               strokeWidth={2}
               dot={false}
-              activeDot={{ r: 4, fill: chartColor }}
+              activeDot={{ r: window.innerWidth < 640 ? 3 : 4, fill: chartColor }}
             />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Key metrics */}
-      <div className="grid grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-200">
-        <div className="text-center">
-          <p className="text-sm text-gray-600">Period High</p>
-          <p className="font-semibold">
+      {/* Key metrics - Better mobile grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 pt-4 border-t border-white/10">
+        <div className="text-center bg-white/5 rounded-lg p-2 sm:p-3">
+          <p className="text-xs text-white/60 mb-1">Period High</p>
+          <p className="text-sm sm:text-base font-semibold text-white">
             {formatPrice(Math.max(...priceData.data.map(d => d.high)))}
           </p>
         </div>
-        <div className="text-center">
-          <p className="text-sm text-gray-600">Period Low</p>
-          <p className="font-semibold">
+        <div className="text-center bg-white/5 rounded-lg p-2 sm:p-3">
+          <p className="text-xs text-white/60 mb-1">Period Low</p>
+          <p className="text-sm sm:text-base font-semibold text-white">
             {formatPrice(Math.min(...priceData.data.map(d => d.low)))}
           </p>
         </div>
-        <div className="text-center">
-          <p className="text-sm text-gray-600">Avg Volume</p>
-          <p className="font-semibold">
+        <div className="text-center bg-white/5 rounded-lg p-2 sm:p-3">
+          <p className="text-xs text-white/60 mb-1">Avg Volume</p>
+          <p className="text-sm sm:text-base font-semibold text-white">
             {(priceData.data.reduce((sum, d) => sum + d.volume, 0) / priceData.data.length).toLocaleString(undefined, {maximumFractionDigits: 0})}
           </p>
         </div>
-        <div className="text-center">
-          <p className="text-sm text-gray-600">Data Points</p>
-          <p className="font-semibold">{priceData.data.length}</p>
+        <div className="text-center bg-white/5 rounded-lg p-2 sm:p-3">
+          <p className="text-xs text-white/60 mb-1">Data Points</p>
+          <p className="text-sm sm:text-base font-semibold text-white">{priceData.data.length}</p>
         </div>
       </div>
     </div>

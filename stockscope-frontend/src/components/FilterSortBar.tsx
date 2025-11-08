@@ -206,7 +206,7 @@ export default function FilterSortBar({
                 className="inline-flex items-center gap-1 px-2 py-1 bg-purple-600/20 text-purple-300 rounded-md text-xs"
               >
                 {filter.icon && <span className="text-xs">{filter.icon}</span>}
-                <span className="truncate max-w-20 sm:max-w-none">{filter.label}</span>
+                <span className="truncate max-w-[20ch] sm:max-w-none">{filter.label}</span>
                 <button
                   onClick={() => onFilterChange(filter.id, false)}
                   className="ml-1 hover:text-purple-200 transition-colors flex-shrink-0"

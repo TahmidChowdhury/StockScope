@@ -402,7 +402,7 @@ class DataSource(str, Enum):
 
 class StockRequest(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=10, description="Stock symbol")
-    sources: List[DataSource] = Field(default=[DataSource.NEWS, DataSource.SEC])  # Removed Reddit
+    sources: List[DataSource] = Field(default=[DataSource.NEWS, DataSource.SEC])  # Reddit removed from default sources due to data reliability issues
     
     class Config:
         use_enum_values = True

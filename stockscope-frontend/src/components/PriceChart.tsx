@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { TrendingUp, TrendingDown } from 'lucide-react'
+import { useWindowWidth } from '@/hooks/useWindowWidth'
 
 interface PriceData {
   date: string
@@ -45,6 +46,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedPeriod, setSelectedPeriod] = useState('1y')
+  const windowWidth = useWindowWidth()
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -194,16 +196,16 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
               dataKey="date"
               tickFormatter={formatDate}
               stroke="rgba(255,255,255,0.7)"
-              fontSize={window.innerWidth < 640 ? 10 : 12}
+              fontSize={windowWidth < 640 ? 10 : 12}
               tick={{ fill: 'rgba(255,255,255,0.7)' }}
             />
             <YAxis 
               domain={['dataMin', 'dataMax']}
               tickFormatter={(value) => `$${value.toFixed(2)}`}
               stroke="rgba(255,255,255,0.7)"
-              fontSize={window.innerWidth < 640 ? 10 : 12}
+              fontSize={windowWidth < 640 ? 10 : 12}
               tick={{ fill: 'rgba(255,255,255,0.7)' }}
-              width={window.innerWidth < 640 ? 50 : 60}
+              width={windowWidth < 640 ? 50 : 60}
             />
             <Tooltip content={<CustomTooltip />} />
             <Line
@@ -212,7 +214,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
               stroke={chartColor}
               strokeWidth={2}
               dot={false}
-              activeDot={{ r: window.innerWidth < 640 ? 3 : 4, fill: chartColor }}
+              activeDot={{ r: windowWidth < 640 ? 3 : 4, fill: chartColor }}
             />
           </LineChart>
         </ResponsiveContainer>

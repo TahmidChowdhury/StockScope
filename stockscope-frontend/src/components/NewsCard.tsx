@@ -200,13 +200,6 @@ export default function NewsCard({
       </div>
 
       {/* Full card clickable area */}
-      <a
-        href={article.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="absolute inset-0 z-10"
-        aria-label={`Read article: ${article.title}`}
-      />
     </article>
   )
 }

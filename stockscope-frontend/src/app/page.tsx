@@ -497,21 +497,21 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
   }
 
   return (
-    <div className="max-w-4xl mx-auto mb-8 sm:mb-12 px-2 sm:px-0">
+    <div className="max-w-6xl mx-auto mb-8 sm:mb-12 px-3 sm:px-4">
       {/* Portfolio Header with Controls - Mobile optimized */}
-      <div className="flex items-center justify-between mb-4 sm:mb-6">
+      <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl sm:text-2xl font-bold text-white">📊 Portfolio</h2>
         
         <div className="flex items-center gap-2 sm:gap-3">
           {isSelectionMode ? (
             <>
-              <span className="text-white/70 text-xs sm:text-sm">
+              <span className="text-white/70 text-sm">
                 <span className="hidden sm:inline">{selectedStocks.size} of {stocks.length} selected</span>
                 <span className="sm:hidden">{selectedStocks.size}/{stocks.length}</span>
               </span>
               <button
                 onClick={handleSelectAll}
-                className="text-blue-400 hover:text-blue-300 text-xs sm:text-sm"
+                className="text-blue-400 hover:text-blue-300 text-sm"
               >
                 <span className="hidden sm:inline">{selectedStocks.size === stocks.length ? 'Deselect All' : 'Select All'}</span>
                 <span className="sm:hidden">All</span>
@@ -519,11 +519,11 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
               <button
                 onClick={handleBulkDelete}
                 disabled={selectedStocks.size === 0 || isDeleting}
-                className="bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm transition-colors flex items-center gap-1 sm:gap-2"
+                className="bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2"
               >
                 {isDeleting ? (
                   <>
-                    <div className="h-3 w-3 sm:h-4 sm:w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                     <span className="hidden sm:inline">Deleting...</span>
                   </>
                 ) : (
@@ -536,7 +536,7 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
               </button>
               <button
                 onClick={exitSelectionMode}
-                className="bg-gray-600 hover:bg-gray-700 text-white px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm transition-colors"
+                className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-lg text-sm transition-colors"
               >
                 <span className="hidden sm:inline">Cancel</span>
                 <span className="sm:hidden">✕</span>
@@ -545,7 +545,7 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
           ) : (
             <button
               onClick={() => setIsSelectionMode(true)}
-              className="bg-white/10 hover:bg-white/20 text-white px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm transition-colors border border-white/20"
+              className="bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg text-sm transition-colors border border-white/20 flex items-center gap-2"
             >
               <span className="hidden sm:inline">✏️ Manage Portfolio</span>
               <span className="sm:hidden">✏️</span>
@@ -554,83 +554,87 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
         </div>
       </div>
 
-      {/* Portfolio Grid - Mobile optimized */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-4">
+      {/* Portfolio Grid - MUCH better mobile layout */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6">
         {stocks.map((stock) => (
           <div key={stock.symbol} className="relative group">
             {/* Selection Mode Overlay */}
             {isSelectionMode && (
               <div
-                className="absolute inset-0 z-10 bg-black/50 rounded-lg flex items-center justify-center cursor-pointer"
+                className="absolute inset-0 z-10 bg-black/50 rounded-xl flex items-center justify-center cursor-pointer"
                 onClick={() => handleStockSelection(stock.symbol)}
               >
-                <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full border-2 flex items-center justify-center ${
+                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
                   selectedStocks.has(stock.symbol) 
                     ? 'bg-blue-500 border-blue-500' 
                     : 'border-white bg-transparent'
                 }`}>
                   {selectedStocks.has(stock.symbol) && (
-                    <span className="text-white text-xs sm:text-sm">✓</span>
+                    <span className="text-white text-sm">✓</span>
                   )}
                 </div>
               </div>
             )}
 
-            {/* Stock Card - Mobile optimized with consistent height */}
+            {/* Stock Card - Much larger and more readable */}
             <button
               onClick={() => !isSelectionMode && onViewDashboard(stock.symbol)}
               disabled={isSelectionMode}
-              className="w-full h-24 sm:h-32 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg p-2 sm:p-3 border border-white/20 transition-all duration-200 hover:scale-105 disabled:hover:scale-100 disabled:cursor-default flex flex-col justify-between"
+              className="w-full h-36 sm:h-40 bg-gradient-to-br from-white/10 to-white/5 hover:from-white/20 hover:to-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20 transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-white/10 disabled:hover:scale-100 disabled:cursor-default flex flex-col justify-between group"
             >
-              <div className="text-center flex-1 flex flex-col justify-center">
-                {/* Stock Symbol */}
-                <div className="text-sm sm:text-lg font-bold text-white mb-0.5 sm:mb-1">{stock.symbol}</div>
+              {/* Top Section */}
+              <div className="text-center">
+                {/* Stock Symbol - Much larger */}
+                <div className="text-lg sm:text-xl font-bold text-white mb-2">{stock.symbol}</div>
                 
-                {/* Company Name - Truncated to prevent overflow */}
+                {/* Company Name - Better truncation */}
                 {stock.companyName && stock.companyName !== stock.symbol && (
-                  <div className="text-xs text-white/60 mb-1 truncate px-1" title={stock.companyName}>
-                    {stock.companyName.length > 15 ? `${stock.companyName.substring(0, 15)}...` : stock.companyName}
+                  <div className="text-xs sm:text-sm text-white/60 mb-2 line-clamp-2 leading-tight" title={stock.companyName}>
+                    {stock.companyName}
                   </div>
                 )}
-                
-                {/* Current Price OR Post Count */}
+              </div>
+
+              {/* Middle Section - Price or Post Count */}
+              <div className="text-center">
                 {stock.currentPrice && stock.currentPrice > 0 ? (
-                  <div className="flex flex-col items-center">
-                    <div className="text-sm sm:text-base font-semibold text-white">
+                  <div className="space-y-1">
+                    <div className="text-base sm:text-lg font-semibold text-white">
                       ${stock.currentPrice.toFixed(2)}
                     </div>
-                    
-                    {/* Price Change - Compact */}
+                    {/* Price Change */}
                     {stock.priceChange !== undefined && stock.priceChangePercent !== undefined && (
-                      <div className={`text-xs ${
+                      <div className={`text-sm flex items-center justify-center gap-1 ${
                         stock.priceChange > 0 ? 'text-green-400' : 
                         stock.priceChange < 0 ? 'text-red-400' : 'text-white/60'
                       }`}>
                         {stock.priceChange > 0 ? '↗' : stock.priceChange < 0 ? '↘' : '→'}
-                        {stock.priceChangePercent > 0 ? '+' : ''}{stock.priceChangePercent.toFixed(1)}%
+                        {stock.priceChange > 0 ? '+' : ''}{stock.priceChangePercent.toFixed(1)}%
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="text-xs sm:text-sm text-white/60">
-                    {stock.total_posts > 0 ? `${stock.total_posts} posts` : 'View Dashboard'}
+                  <div className="text-sm text-white/70">
+                    {stock.total_posts > 0 ? `${stock.total_posts.toLocaleString()} posts` : 'View Dashboard'}
                   </div>
                 )}
               </div>
               
-              {/* Sentiment Badge - Always at bottom */}
-              {stock.avg_sentiment !== 0 && (
-                <div className={`text-xs mt-1 ${
-                  stock.avg_sentiment > 0.1 ? 'text-green-400' : 
-                  stock.avg_sentiment < -0.1 ? 'text-red-400' : 'text-yellow-400'
-                }`}>
-                  {stock.avg_sentiment > 0 ? '📈' : stock.avg_sentiment < 0 ? '📉' : '➡️'} 
-                  {(stock.avg_sentiment * 100).toFixed(0)}%
-                </div>
-              )}
+              {/* Bottom Section - Sentiment */}
+              <div className="text-center">
+                {stock.avg_sentiment !== 0 && (
+                  <div className={`text-sm flex items-center justify-center gap-1 ${
+                    stock.avg_sentiment > 0.1 ? 'text-green-400' : 
+                    stock.avg_sentiment < -0.1 ? 'text-red-400' : 'text-yellow-400'
+                  }`}>
+                    {stock.avg_sentiment > 0.1 ? '📈 Bullish' : 
+                     stock.avg_sentiment < -0.1 ? '📉 Bearish' : '➡️ Neutral'}
+                  </div>
+                )}
+              </div>
             </button>
 
-            {/* Individual Delete Button - Adjusted for mobile */}
+            {/* Individual Delete Button - Better positioned */}
             {!isSelectionMode && (
               <button
                 onClick={(e) => {
@@ -638,11 +642,11 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
                   handleDeleteStock(stock.symbol)
                 }}
                 disabled={deletingStock === stock.symbol}
-                className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 bg-red-600 hover:bg-red-700 text-white rounded-full w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                className="absolute -top-2 -right-2 bg-red-600 hover:bg-red-700 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
                 title={`Delete ${stock.symbol}`}
               >
                 {deletingStock === stock.symbol ? (
-                  <div className="h-2.5 w-2.5 sm:h-3 sm:w-3 animate-spin rounded-full border border-white/30 border-t-white" />
+                  <div className="h-3 w-3 animate-spin rounded-full border border-white/30 border-t-white" />
                 ) : (
                   '×'
                 )}
@@ -654,7 +658,7 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
 
       {/* Bulk Selection Help Text */}
       {isSelectionMode && (
-        <div className="mt-3 sm:mt-4 text-center text-white/60 text-xs sm:text-sm px-2">
+        <div className="mt-6 text-center text-white/60 text-sm">
           <span className="hidden sm:inline">Click on stocks to select them for bulk deletion, or use "Select All" to choose all stocks.</span>
           <span className="sm:hidden">Tap stocks to select for deletion</span>
         </div>

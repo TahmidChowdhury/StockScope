@@ -1,6 +1,7 @@
 'use client'
 
-import { ReactNode } from 'react'
+import { ReactNode, useState } from 'react'
+import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline'
 
 interface DashboardLayoutProps {
   children?: ReactNode
@@ -15,18 +16,59 @@ export default function DashboardLayout({
   sidebar,
   className = '' 
 }: DashboardLayoutProps) {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
   return (
     <div className={`min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 ${className}`}>
       {/* Header */}
       {header && (
-        <div className="sticky top-0 z-20 bg-slate-800/50 backdrop-blur-sm border-b border-purple-500/20">
-          {header}
+        <div className="sticky top-0 z-30 bg-slate-800/50 backdrop-blur-sm border-b border-purple-500/20">
+          <div className="flex items-center justify-between px-4 py-3">
+            {sidebar && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden text-white p-2 rounded-lg hover:bg-white/10 transition-colors"
+              >
+                <Bars3Icon className="h-6 w-6" />
+              </button>
+            )}
+            <div className="flex-1">
+              {header}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Sidebar Overlay */}
+      {sidebar && sidebarOpen && (
+        <div className="lg:hidden">
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+            onClick={() => setSidebarOpen(false)}
+          />
+          
+          {/* Sidebar Drawer */}
+          <div className="fixed inset-y-0 left-0 z-50 w-80 max-w-[85vw] bg-slate-900/95 backdrop-blur-sm border-r border-white/10 overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b border-white/10">
+              <h2 className="text-lg font-semibold text-white">Menu</h2>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="text-white/60 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-6">
+              {sidebar}
+            </div>
+          </div>
         </div>
       )}
 
       {/* Main Layout */}
       <div className="flex min-h-[calc(100vh-4rem)]">
-        {/* Sidebar */}
+        {/* Desktop Sidebar */}
         {sidebar && (
           <div className="hidden lg:block w-80 flex-shrink-0 p-6 border-r border-white/10">
             <div className="space-y-6">
@@ -46,7 +88,7 @@ export default function DashboardLayout({
   )
 }
 
-// Grid Component for organizing dashboard sections
+// Enhanced Grid Component with better mobile handling
 interface DashboardGridProps {
   children: ReactNode
   columns?: 1 | 2 | 3
@@ -63,13 +105,13 @@ export function DashboardGrid({
   const gridCols = {
     1: 'grid-cols-1',
     2: 'grid-cols-1 lg:grid-cols-2',
-    3: 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3'
+    3: 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3'
   }
 
   const gapClasses = {
-    sm: 'gap-4',
-    md: 'gap-6',
-    lg: 'gap-8'
+    sm: 'gap-3 sm:gap-4',
+    md: 'gap-4 sm:gap-6',
+    lg: 'gap-6 sm:gap-8'
   }
 
   return (
@@ -79,7 +121,7 @@ export function DashboardGrid({
   )
 }
 
-// Section Component for organizing content areas
+// Enhanced Section Component with mobile-first design
 interface DashboardSectionProps {
   title: string
   icon?: ReactNode
@@ -87,6 +129,7 @@ interface DashboardSectionProps {
   className?: string
   headerAction?: ReactNode
   variant?: 'default' | 'prominent' | 'subtle'
+  collapsible?: boolean
 }
 
 export function DashboardSection({ 
@@ -95,8 +138,11 @@ export function DashboardSection({
   children, 
   className = '',
   headerAction,
-  variant = 'default'
+  variant = 'default',
+  collapsible = false
 }: DashboardSectionProps) {
+  const [isCollapsed, setIsCollapsed] = useState(false)
+  
   const variants = {
     default: 'bg-white/5 border-white/10',
     prominent: 'bg-gradient-to-br from-purple-600/10 to-pink-600/10 border-purple-500/20',
@@ -104,29 +150,39 @@ export function DashboardSection({
   }
 
   return (
-    <div className={`backdrop-blur-sm border rounded-2xl p-6 ${variants[variant]} ${className}`}>
+    <div className={`backdrop-blur-sm border rounded-xl sm:rounded-2xl p-4 sm:p-6 ${variants[variant]} ${className}`}>
       {/* Section Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          {icon && <div className="text-purple-400">{icon}</div>}
-          <h2 className="text-xl font-semibold text-white">{title}</h2>
-        </div>
+      <div className="flex items-center justify-between mb-4 sm:mb-6">
+        <button
+          className={`flex items-center gap-2 sm:gap-3 ${collapsible ? 'cursor-pointer hover:opacity-80 transition-opacity' : 'cursor-default'} flex-1 min-w-0`}
+          onClick={collapsible ? () => setIsCollapsed(!isCollapsed) : undefined}
+        >
+          {icon && <div className="text-purple-400 flex-shrink-0">{icon}</div>}
+          <h2 className="text-lg sm:text-xl font-semibold text-white truncate">{title}</h2>
+          {collapsible && (
+            <div className={`text-white/60 transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`}>
+              ▼
+            </div>
+          )}
+        </button>
         {headerAction && (
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 ml-2">
             {headerAction}
           </div>
         )}
       </div>
 
       {/* Section Content */}
-      <div>
-        {children}
-      </div>
+      {!isCollapsed && (
+        <div className="animate-in fade-in duration-200">
+          {children}
+        </div>
+      )}
     </div>
   )
 }
 
-// Card Component for dashboard widgets
+// Enhanced Card Component with better touch targets
 interface DashboardCardProps {
   children: ReactNode
   className?: string
@@ -142,11 +198,11 @@ export function DashboardCard({
   clickable = false,
   onClick
 }: DashboardCardProps) {
-  const baseClasses = 'bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4'
+  const baseClasses = 'bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 transition-all duration-200'
   const interactiveClasses = hover || clickable 
-    ? 'hover:bg-white/8 hover:border-white/20 transition-all duration-200'
+    ? 'hover:bg-white/8 hover:border-white/20 active:scale-[0.98] active:bg-white/12'
     : ''
-  const clickableClasses = clickable ? 'cursor-pointer' : ''
+  const clickableClasses = clickable ? 'cursor-pointer touch-manipulation' : ''
 
   return (
     <div 

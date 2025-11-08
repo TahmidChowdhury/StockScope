@@ -31,9 +31,9 @@ export default function LoadingScreen({
         {/* Animated spinner */}
         <div className="relative mb-8">
           <div className="h-16 w-16 mx-auto">
-            <div className="absolute inset-0 rounded-full border-4 border-white/20"></div>
-            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-purple-400 animate-spin"></div>
-            <div className="absolute inset-2 rounded-full border-2 border-transparent border-t-white animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
+            {/* Minimal clean spinner */}
+            <div className="absolute inset-0 rounded-full border-3 border-white/5"></div>
+            <div className="absolute inset-0 rounded-full border-3 border-transparent border-t-purple-400 animate-spin"></div>
           </div>
         </div>
 

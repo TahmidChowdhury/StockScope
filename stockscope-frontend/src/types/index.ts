@@ -162,6 +162,7 @@ export interface APIResponse<T> {
 export interface StockSearchProps {
   onAnalyze: (symbol: string) => void
   isLoading?: boolean
+  compact?: boolean
 }
 
 export interface StockDashboardProps {

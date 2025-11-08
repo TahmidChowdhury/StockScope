@@ -22,7 +22,7 @@ body {
   font-family: var(--font-geist-sans), var(--font-inter), Arial, Helvetica, sans-serif;
 }
 
-/* Custom shake animation for input validation errors */
+/* Enhanced Mobile Animations & Interactions */
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   10%, 30%, 50%, 70%, 90% { transform: translateX(-8px); }
@@ -34,6 +34,53 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes slideDown {
+  from { 
+    opacity: 0; 
+    transform: translateY(-10px); 
+    max-height: 0;
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+    max-height: 500px;
+  }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0; 
+    transform: translateY(10px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+@keyframes bounceIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cardHover {
+  0% { transform: translateY(0) scale(1); }
+  100% { transform: translateY(-2px) scale(1.02); }
+}
+
 .animate-shake {
   animation: shake 0.6s ease-in-out;
 }
@@ -42,63 +89,139 @@ body {
   animation: fadeIn 0.3s ease-out;
 }
 
-/* Mobile-specific improvements */
-@media (max-width: 640px) {
-  /* Improve touch targets */
-  button {
+.animate-slideDown {
+  animation: slideDown 0.3s ease-out;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.3s ease-out;
+}
+
+.animate-bounceIn {
+  animation: bounceIn 0.5s ease-out;
+}
+
+.animate-cardHover {
+  animation: cardHover 0.2s ease-out forwards;
+}
+
+/* Mobile-First Touch & Interaction Improvements */
+@media (max-width: 1024px) {
+  /* Enhanced touch targets */
+  .touch-manipulation {
     min-height: 44px;
+    min-width: 44px;
   }
   
-  /* Better text readability on mobile */
+  /* Better text readability */
   body {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
   
-  /* Smoother scrolling on iOS */
-  * {
+  /* Smooth momentum scrolling */
+  .overflow-scroll,
+  .overflow-y-auto,
+  .overflow-x-auto {
     -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
   }
   
-  /* Better tap highlighting */
-  button, a {
-    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.1);
+  /* Enhanced tap feedback */
+  button, 
+  [role="button"], 
+  input[type="submit"], 
+  input[type="button"] {
+    -webkit-tap-highlight-color: rgba(147, 51, 234, 0.3);
+    transform: translateZ(0);
+    transition: transform 0.1s ease;
+  }
+  
+  button:active,
+  [role="button"]:active {
+    transform: scale(0.98);
   }
   
   /* Prevent zoom on input focus */
   input[type="text"],
   input[type="email"],
   input[type="password"],
+  input[type="search"],
   textarea,
   select {
     font-size: 16px;
   }
+  
+  /* Better modal experience */
+  .modal-backdrop {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  
+  /* Enhanced card interactions */
+  .card-hover:active {
+    transform: scale(0.98);
+    transition: transform 0.1s ease;
+  }
 }
 
-/* Custom scrollbar for webkit browsers */
+/* Safe area support for notched devices */
+@supports (padding: max(0px)) {
+  .safe-top {
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+  
+  .safe-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  
+  .safe-left {
+    padding-left: max(1rem, env(safe-area-inset-left));
+  }
+  
+  .safe-right {
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+}
+
+/* Custom scrollbars - Enhanced for mobile */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
+  border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.3);
-  border-radius: 3px;
+  border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.5);
 }
 
-/* Better focus styles for accessibility */
+/* Hide scrollbar but keep functionality on mobile */
+@media (max-width: 768px) {
+  .hide-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Improved focus styles for accessibility */
 button:focus-visible,
 input:focus-visible,
-select:focus-visible {
-  outline: 2px solid #3b82f6;
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #8b5cf6;
   outline-offset: 2px;
 }
 
@@ -108,14 +231,101 @@ select:focus-visible {
   50% { opacity: 0.5; }
 }
 
+@keyframes shimmer {
+  0% {
+    background-position: -468px 0;
+  }
+  100% {
+    background-position: 468px 0;
+  }
+}
+
 .animate-pulse-slow {
   animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* Better modal backdrop for mobile */
-@media (max-width: 640px) {
-  .modal-backdrop {
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+.animate-shimmer {
+  background: linear-gradient(90deg, 
+    rgba(255, 255, 255, 0.1) 25%, 
+    rgba(255, 255, 255, 0.2) 50%, 
+    rgba(255, 255, 255, 0.1) 75%
+  );
+  background-size: 468px 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Pull-to-refresh visual feedback */
+@keyframes pullToRefresh {
+  0% {
+    transform: translateY(-40px) rotate(0deg);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) rotate(180deg);
+    opacity: 1;
+  }
+}
+
+.pull-refresh-indicator {
+  animation: pullToRefresh 0.3s ease-out;
+}
+
+/* Enhanced portfolio card animations */
+.portfolio-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.portfolio-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 
+              0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+@media (max-width: 768px) {
+  .portfolio-card:active {
+    transform: scale(0.98);
+  }
+  
+  .portfolio-card:hover {
+    transform: none; /* Disable hover effects on mobile */
+  }
+}
+
+/* Text truncation helpers */
+.line-clamp-1 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.line-clamp-2 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.line-clamp-3 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+/* Mobile-optimized backdrop filters */
+@supports (backdrop-filter: blur(10px)) {
+  .backdrop-blur-mobile {
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+}
+
+@supports not (backdrop-filter: blur(10px)) {
+  .backdrop-blur-mobile {
+    background: rgba(0, 0, 0, 0.8);
   }
 }

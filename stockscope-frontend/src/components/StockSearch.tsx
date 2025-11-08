@@ -5,7 +5,7 @@ import { MagnifyingGlassIcon, ChartBarIcon } from '@heroicons/react/24/outline'
 import { Combobox } from '@headlessui/react'
 import type { StockSuggestion, StockSearchProps } from '@/types'
 
-export default function StockSearch({ onAnalyze, isLoading = false }: StockSearchProps) {
+export default function StockSearch({ onAnalyze, isLoading = false, compact = false }: StockSearchProps) {
   const [query, setQuery] = useState('')
   const [suggestions, setSuggestions] = useState<StockSuggestion[]>([])
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
@@ -93,6 +93,87 @@ export default function StockSearch({ onAnalyze, isLoading = false }: StockSearc
       setValidationError('Failed to validate stock symbol. Please try again.')
       setTimeout(() => setIsShaking(false), 600)
     }
+  }
+
+  if (compact) {
+    return (
+      <div className="w-full">
+        <div className="relative">
+          <Combobox value="" onChange={(value) => value && handleAnalyze(value)}>
+            <div className="relative">
+              <div className={`relative ${isShaking ? 'animate-shake' : ''}`}>
+                <Combobox.Input
+                  className="w-full rounded-lg border-0 bg-white/10 backdrop-blur-sm py-2.5 pl-8 pr-16 text-white placeholder:text-white/60 ring-1 ring-white/20 focus:ring-2 focus:ring-blue-500 text-sm shadow-lg transition-all duration-200"
+                  placeholder="Search stocks..."
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && query.trim()) {
+                      event.preventDefault()
+                      handleAnalyze(query.trim().toUpperCase())
+                    }
+                  }}
+                />
+                
+                <MagnifyingGlassIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/60" />
+                
+                <button
+                  onClick={() => query.trim() && handleAnalyze(query.trim().toUpperCase())}
+                  disabled={!query.trim() || isLoading}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center rounded-md bg-gradient-to-r from-blue-600 to-purple-600 px-2 py-1 text-xs font-medium text-white shadow-lg transition-all duration-200 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoading ? (
+                    <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  ) : (
+                    <ChartBarIcon className="h-3 w-3" />
+                  )}
+                </button>
+              </div>
+
+              {validationError && (
+                <p className="mt-1 text-xs text-red-400">{validationError}</p>
+              )}
+
+              {/* Compact Suggestions Dropdown */}
+              {(suggestions.length > 0 || isLoadingSuggestions) && (
+                <Combobox.Options className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg bg-white/95 backdrop-blur-sm shadow-xl ring-1 ring-black/10">
+                  {isLoadingSuggestions ? (
+                    <div className="flex items-center justify-center py-4">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600/30 border-t-blue-600" />
+                      <span className="ml-2 text-gray-600 text-xs">Searching...</span>
+                    </div>
+                  ) : (
+                    suggestions.slice(0, 5).map((stock) => (
+                      <Combobox.Option
+                        key={stock.symbol}
+                        value={stock.symbol}
+                        className={({ active }) =>
+                          `relative cursor-pointer select-none px-3 py-2 transition-colors ${
+                            active ? 'bg-blue-50 text-blue-900' : 'text-gray-900'
+                          }`
+                        }
+                      >
+                        <div className="flex items-center">
+                          <div className="flex h-6 w-6 items-center justify-center rounded bg-gradient-to-br from-blue-100 to-purple-100">
+                            <span className="text-xs font-bold text-blue-700">
+                              {stock.symbol.slice(0, 2)}
+                            </span>
+                          </div>
+                          <div className="ml-2 flex-1 min-w-0">
+                            <div className="text-sm font-semibold text-gray-900">{stock.symbol}</div>
+                            <div className="text-xs text-gray-500 truncate">{stock.name}</div>
+                          </div>
+                        </div>
+                      </Combobox.Option>
+                    ))
+                  )}
+                </Combobox.Options>
+              )}
+            </div>
+          </Combobox>
+        </div>
+      </div>
+    )
   }
 
   return (

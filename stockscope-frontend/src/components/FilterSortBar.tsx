@@ -182,13 +182,3 @@ export default function FilterSortBar({
     </div>
   )
 }
-
-// Close dropdowns when clicking outside
-if (typeof window !== 'undefined') {
-  document.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement
-    if (!target.closest('[data-dropdown]')) {
-      // Close all dropdowns
-    }
-  })
-}

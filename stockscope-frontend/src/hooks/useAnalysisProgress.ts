@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { getPasswordParam } from '@/utils/auth'
 
 interface AnalysisStatus {
   symbol: string
@@ -27,11 +28,6 @@ export function useAnalysisProgress({
   const [isPolling, setIsPolling] = useState(false)
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-
-  const getPasswordParam = useCallback(() => {
-    const password = localStorage.getItem('stockscope_password')
-    return password ? `?password=${encodeURIComponent(password)}` : ''
-  }, [])
 
   const pollStatus = useCallback(async () => {
     if (!symbol || !isAnalyzing) return
@@ -77,7 +73,7 @@ export function useAnalysisProgress({
       }
       // For other errors, continue polling (might be temporary network issues)
     }
-  }, [symbol, isAnalyzing, API_BASE_URL, getPasswordParam, onComplete, onError])
+  }, [symbol, isAnalyzing, API_BASE_URL, onComplete, onError])
 
   // Start polling when analysis begins
   useEffect(() => {

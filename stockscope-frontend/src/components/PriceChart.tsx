@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { TrendingUp, TrendingDown, Calendar } from 'lucide-react'
+import { getPasswordParam } from '@/utils/auth'
 
 interface PriceData {
   date: string
@@ -47,11 +48,6 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
   const [selectedPeriod, setSelectedPeriod] = useState('1y')
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-
-  const getPasswordParam = () => {
-    const password = localStorage.getItem('stockscope_password')
-    return password ? `?password=${encodeURIComponent(password)}` : ''
-  }
 
   const fetchPriceData = async (period: string) => {
     setLoading(true)

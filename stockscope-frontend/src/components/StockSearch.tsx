@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { MagnifyingGlassIcon, ChartBarIcon } from '@heroicons/react/24/outline'
 import { Combobox } from '@headlessui/react'
 import type { StockSuggestion, StockSearchProps } from '@/types'
+import { getPasswordParam } from '@/utils/auth'
 
 export default function StockSearch({ onAnalyze, isLoading = false }: StockSearchProps) {
   const [query, setQuery] = useState('')
@@ -17,12 +18,6 @@ export default function StockSearch({ onAnalyze, isLoading = false }: StockSearc
 
   // Get API URL from environment variables with fallback
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-
-  // Get password for API calls
-  const getPasswordParam = () => {
-    const password = localStorage.getItem('stockscope_password')
-    return password ? `?password=${encodeURIComponent(password)}` : ''
-  }
 
   // Debounced search - prevents too many API calls while typing
   useEffect(() => {

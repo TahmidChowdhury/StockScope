@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { ExternalLink, Calendar, Newspaper } from 'lucide-react'
 import NewsCard from './NewsCard'
 import FilterSortBar from './FilterSortBar'
+import { getPasswordParam } from '@/utils/auth'
 
 interface NewsArticle {
   title: string
@@ -109,11 +110,6 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
   }
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-
-  const getPasswordParam = () => {
-    const password = localStorage.getItem('stockscope_password')
-    return password ? `?password=${encodeURIComponent(password)}` : ''
-  }
 
   useEffect(() => {
     const fetchNews = async () => {

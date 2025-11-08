@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { TrendingUp, DollarSign, BarChart3, Target, Building2 } from 'lucide-react'
+import { getPasswordParam } from '@/utils/auth'
 
 interface KeyMetrics {
   currentPrice: number
@@ -35,11 +36,6 @@ export default function KeyMetricsComponent({ symbol, className = '' }: KeyMetri
   const [error, setError] = useState<string | null>(null)
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-
-  const getPasswordParam = () => {
-    const password = localStorage.getItem('stockscope_password')
-    return password ? `?password=${encodeURIComponent(password)}` : ''
-  }
 
   useEffect(() => {
     const fetchMetrics = async () => {

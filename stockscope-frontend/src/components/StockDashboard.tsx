@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { TrendingUp, TrendingDown, Activity, MessageSquare, Newspaper, Building2, X, AlertCircle, Target, Shield, FileText } from 'lucide-react'
 import type { StockDashboardProps, StockAnalysis, InvestmentAdvice, QuantitativeAnalysis } from '@/types'
+import { getPasswordParam } from '@/utils/auth'
 
 export default function StockDashboard({ symbol, onBack, embedded = false }: StockDashboardProps) {
   const [stockData, setStockData] = useState<StockAnalysis | null>(null)
@@ -29,12 +30,6 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
 
   // Get API URL from environment variables
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-
-  // Get password for API calls
-  const getPasswordParam = () => {
-    const password = localStorage.getItem('stockscope_password')
-    return password ? `?password=${encodeURIComponent(password)}` : ''
-  }
 
   // Function to fetch company information - memoized to prevent infinite loops
   const fetchCompanyInfo = useCallback(async () => {

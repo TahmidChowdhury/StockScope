@@ -7,6 +7,7 @@ import LoadingScreen from '@/components/LoadingScreen'
 import LoginForm from '@/components/LoginForm'
 import { useAnalysisProgress } from '@/hooks/useAnalysisProgress'
 import type { ViewType, StockMetadata, AuthState } from '@/types'
+import { getPasswordParam } from '@/utils/auth'
 
 // Get API URL from environment variables
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -76,11 +77,6 @@ export default function Home() {
     setCurrentView('search')
     setSelectedStock('')
     setAnalysisStatus(null)
-  }
-
-  const getPasswordParam = () => {
-    const password = localStorage.getItem('stockscope_password')
-    return password ? `?password=${encodeURIComponent(password)}` : ''
   }
 
   const handleAnalyze = async (symbol: string) => {

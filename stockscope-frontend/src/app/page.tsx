@@ -20,6 +20,13 @@ export default function Home() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisStatus, setAnalysisStatus] = useState<string | null>(null)
 
+  // Add mobile-specific state
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [showMobilePortfolio, setShowMobilePortfolio] = useState(false)
+  
+  // Move stocks state to main component for mobile header access
+  const [stocks, setStocks] = useState<StockMetadata[]>([])
+
   // Use the analysis progress hook
   const { status, progress, message, currentPhase } = useAnalysisProgress({
     symbol: selectedStock,
@@ -42,6 +49,55 @@ export default function Home() {
       setAuthState({ isAuthenticated: true })
     }
   }, [])
+
+  // Fetch portfolio data when authenticated
+  useEffect(() => {
+    const fetchPortfolioData = async () => {
+      if (!authState.isAuthenticated) return
+      
+      try {
+        const password = localStorage.getItem('stockscope_password')
+        const passwordParam = password ? `?password=${encodeURIComponent(password)}` : ''
+        const response = await fetch(`${API_BASE_URL}/api/stocks${passwordParam}`)
+        
+        if (response.ok) {
+          const data = await response.json()
+          // Handle both old format (array of strings) and new format (array of objects)
+          if (Array.isArray(data.stocks)) {
+            if (data.stocks.length > 0 && typeof data.stocks[0] === 'string') {
+              // Old format: convert strings to objects
+              setStocks(data.stocks.map((symbol: string) => ({
+                symbol,
+                total_posts: 0,
+                avg_sentiment: 0,
+                last_updated: '',
+                sources: []
+              })))
+            } else {
+              // New format: use objects directly
+              setStocks(data.stocks || [])
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch portfolio:', error)
+      }
+    }
+    
+    fetchPortfolioData()
+    
+    // Set up periodic refresh
+    if (authState.isAuthenticated) {
+      const interval = setInterval(() => {
+        const isAnalyzing = localStorage.getItem('stockscope_analyzing') === 'true'
+        if (!isAnalyzing) {
+          fetchPortfolioData()
+        }
+      }, 30000)
+      
+      return () => clearInterval(interval)
+    }
+  }, [authState.isAuthenticated])
 
   // Handle progress updates
   useEffect(() => {
@@ -76,6 +132,7 @@ export default function Home() {
     setCurrentView('search')
     setSelectedStock('')
     setAnalysisStatus(null)
+    setStocks([])
   }
 
   const getPasswordParam = () => {
@@ -134,15 +191,51 @@ export default function Home() {
     }
   }
 
+  // Mobile-optimized handlers
+  const handleMobileAnalyze = async (symbol: string) => {
+    setIsMobileMenuOpen(false) // Close mobile menu when analyzing
+    await handleAnalyze(symbol)
+  }
+
   const handleViewDashboard = (symbol: string) => {
     setSelectedStock(symbol)
     setCurrentView('dashboard')
+  }
+
+  const handleMobileViewDashboard = (symbol: string) => {
+    setShowMobilePortfolio(false) // Close mobile portfolio
+    handleViewDashboard(symbol)
   }
 
   const handleBackToSearch = () => {
     setCurrentView('search')
     setSelectedStock('')
     setAnalysisStatus(null)
+  }
+
+  // Refresh portfolio data function
+  const refreshPortfolioData = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/stocks${getPasswordParam()}`)
+      if (response.ok) {
+        const data = await response.json()
+        if (Array.isArray(data.stocks)) {
+          if (data.stocks.length > 0 && typeof data.stocks[0] === 'string') {
+            setStocks(data.stocks.map((symbol: string) => ({
+              symbol,
+              total_posts: 0,
+              avg_sentiment: 0,
+              last_updated: '',
+              sources: []
+            })))
+          } else {
+            setStocks(data.stocks || [])
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to refresh portfolio:', error)
+    }
   }
 
   // Show login form if not authenticated
@@ -165,6 +258,122 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      {/* Mobile Navigation Header - FIXED: Made solid background */}
+      <div className="lg:hidden bg-slate-900 border-b border-purple-500/20 sticky top-0 z-50">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+              <span className="text-sm">📊</span>
+            </div>
+            <h1 className="text-lg font-bold text-white">StockScope</h1>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            {/* Mobile Portfolio Toggle */}
+            <button
+              onClick={() => setShowMobilePortfolio(!showMobilePortfolio)}
+              className="relative p-2.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors touch-manipulation"
+              title="Portfolio"
+            >
+              <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14-7l2 2-2 2m2-2H9m10 6l2 2-2 2m2-2H9" />
+              </svg>
+              {stocks.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-purple-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                  {stocks.length}
+                </span>
+              )}
+            </button>
+            
+            {/* Mobile Menu Toggle */}
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="p-2.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors touch-manipulation"
+            >
+              <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {isMobileMenuOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
+            </button>
+            
+            {/* Mobile Logout */}
+            <button
+              onClick={handleLogout}
+              className="p-2.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 transition-colors touch-manipulation"
+              title="Logout"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        {/* Mobile Dropdown Menu */}
+        {isMobileMenuOpen && (
+          <div className="border-t border-slate-700/50 bg-slate-900">
+            <div className="px-4 py-4 space-y-3">
+              {/* Quick Actions */}
+              <div className="grid grid-cols-2 gap-3">
+                <a
+                  href="/compare"
+                  className="bg-blue-600/20 border border-blue-500/30 rounded-lg p-3 text-center touch-manipulation"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <div className="text-lg mb-1">⚖️</div>
+                  <div className="text-sm text-white font-medium">Compare</div>
+                </a>
+                <a
+                  href="/screener"
+                  className="bg-green-600/20 border border-green-500/30 rounded-lg p-3 text-center touch-manipulation"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <div className="text-lg mb-1">🔍</div>
+                  <div className="text-sm text-white font-medium">Screener</div>
+                </a>
+              </div>
+              
+              <div className="pt-2 border-t border-slate-700/50">
+                <div className="text-xs text-white/60 mb-2">QUICK SEARCH</div>
+                <StockSearch onAnalyze={handleMobileAnalyze} isLoading={isAnalyzing} compact={true} />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Mobile Portfolio Overlay - FIXED: Made solid header */}
+      {showMobilePortfolio && (
+        <div className="lg:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-40" onClick={() => setShowMobilePortfolio(false)}>
+          <div className="absolute bottom-0 left-0 right-0 bg-slate-900 rounded-t-2xl max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-slate-900 border-b border-slate-700 px-4 py-4 shadow-lg">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-white">📊 Portfolio</h3>
+                <button
+                  onClick={() => setShowMobilePortfolio(false)}
+                  className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white touch-manipulation"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="p-4">
+              <MobilePortfolioView 
+                stocks={stocks}
+                onViewDashboard={handleMobileViewDashboard}
+                passwordParam={getPasswordParam()}
+                onClose={() => setShowMobilePortfolio(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Show loading screen when analysis is running */}
       {isAnalyzing && (
         <LoadingScreen 
@@ -174,15 +383,14 @@ export default function Home() {
         />
       )}
       
-      <div className="container mx-auto px-3 sm:px-4 py-8 sm:py-16">
-        {/* Header with logout - Mobile optimized */}
-        <div className="text-center mb-8 sm:mb-12 relative">
+      <div className="container mx-auto px-3 sm:px-4 py-8 sm:py-16 lg:py-8">
+        {/* Desktop Header with logout - Hidden on mobile */}
+        <div className="hidden lg:block text-center mb-8 sm:mb-12 relative">
           <button
             onClick={handleLogout}
             className="absolute top-0 right-0 bg-red-500/20 hover:bg-red-500/30 text-red-300 px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg border border-red-500/50 transition-all duration-200 text-xs sm:text-sm"
           >
-            <span className="hidden sm:inline">🔓 Logout</span>
-            <span className="sm:hidden">🔓</span>
+            🔓 Logout
           </button>
           
           <h1 className="text-3xl sm:text-5xl font-bold text-white mb-2 sm:mb-4 pr-16 sm:pr-0">
@@ -196,8 +404,21 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Navigation Menu */}
-        <div className="max-w-4xl mx-auto mb-8">
+        {/* Mobile Welcome Section - Only shown on mobile */}
+        <div className="lg:hidden text-center mb-6 px-4">
+          <h2 className="text-2xl font-bold text-white mb-2">
+            Welcome to StockScope
+          </h2>
+          <p className="text-sm text-white/70 mb-4">
+            AI-powered stock analysis with real-time sentiment data
+          </p>
+          <div className="text-xs text-green-400">
+            🔒 Secure Session Active
+          </div>
+        </div>
+
+        {/* Desktop Navigation Menu - Hidden on mobile */}
+        <div className="hidden lg:block max-w-4xl mx-auto mb-8">
           <div className="bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10">
             <h2 className="text-xl font-semibold text-white mb-4 text-center">📈 Fundamentals Analytics</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -252,8 +473,8 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Stock Search */}
-        <div className="mb-6 sm:mb-8">
+        {/* Desktop Stock Search - Hidden on mobile when menu is open */}
+        <div className={`mb-6 sm:mb-8 ${isMobileMenuOpen ? 'lg:block hidden' : ''}`}>
           <StockSearch onAnalyze={handleAnalyze} isLoading={isAnalyzing} />
         </div>
 
@@ -271,14 +492,121 @@ export default function Home() {
           </div>
         )}
 
-        {/* Portfolio Section */}
-        <PortfolioView onViewDashboard={handleViewDashboard} passwordParam={getPasswordParam()} />
+        {/* Desktop Portfolio Section - Hidden on mobile */}
+        <div className="hidden lg:block">
+          <PortfolioView onViewDashboard={handleViewDashboard} passwordParam={getPasswordParam()} />
+        </div>
 
         {/* Footer */}
         <div className="mt-12 sm:mt-16 text-center text-white/60 px-2">
-          <p className="text-sm sm:text-base">Built with Next.js + Turbopack ⚡ FastAPI + Python 🐍</p>
+          <p className="text-sm sm:text-base">Made by Tahmid (will have an LLC or something later)</p>
         </div>
       </div>
+
+      {/* Mobile FAB (Floating Action Button) for quick search */}
+      <div className="lg:hidden fixed bottom-6 right-6 z-30">
+        <button
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="w-14 h-14 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-full shadow-lg flex items-center justify-center touch-manipulation transition-all duration-200 hover:scale-110"
+          title="Quick Search"
+        >
+          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// NEW: Mobile-optimized Portfolio Component
+function MobilePortfolioView({ 
+  stocks, 
+  onViewDashboard, 
+  passwordParam,
+  onClose 
+}: { 
+  stocks: StockMetadata[]
+  onViewDashboard: (symbol: string) => void
+  passwordParam: string
+  onClose: () => void
+}) {
+  if (stocks.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <div className="text-4xl mb-4">📈</div>
+        <h3 className="text-lg font-semibold text-white mb-2">No Stocks Yet</h3>
+        <p className="text-sm text-white/70 mb-4">
+          Use the search to analyze your first stock
+        </p>
+        <button
+          onClick={onClose}
+          className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition-colors touch-manipulation"
+        >
+          Start Analyzing
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {stocks.map((stock) => (
+        <button
+          key={stock.symbol}
+          onClick={() => {
+            onViewDashboard(stock.symbol)
+            onClose()
+          }}
+          className="w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-4 transition-all duration-200 touch-manipulation text-left"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center space-x-3">
+                <div className="text-lg font-bold text-white">{stock.symbol}</div>
+                {stock.currentPrice && stock.currentPrice > 0 && (
+                  <div className="text-white font-medium">
+                    ${stock.currentPrice.toFixed(2)}
+                  </div>
+                )}
+                {stock.priceChangePercent !== undefined && (
+                  <div className={`text-sm flex items-center ${
+                    stock.priceChange && stock.priceChange > 0 ? 'text-green-400' : 
+                    stock.priceChange && stock.priceChange < 0 ? 'text-red-400' : 'text-white/60'
+                  }`}>
+                    {stock.priceChange && stock.priceChange > 0 ? '↗' : 
+                     stock.priceChange && stock.priceChange < 0 ? '↘' : '→'}
+                    {stock.priceChange && stock.priceChange > 0 ? '+' : ''}{stock.priceChangePercent.toFixed(1)}%
+                  </div>
+                )}
+              </div>
+              
+              {stock.companyName && stock.companyName !== stock.symbol && (
+                <div className="text-sm text-white/60 mt-1 truncate" title={stock.companyName}>
+                  {stock.companyName}
+                </div>
+              )}
+              
+              <div className={`text-sm mt-2 flex items-center ${
+                stock.avg_sentiment > 0.1 ? 'text-green-400' : 
+                stock.avg_sentiment < -0.1 ? 'text-red-400' : 'text-yellow-400'
+              }`}>
+                {stock.avg_sentiment > 0.1 ? '📈 Bullish' : 
+                 stock.avg_sentiment < -0.1 ? '📉 Bearish' : '➡️ Neutral'}
+                {stock.total_posts > 0 && (
+                  <span className="ml-2 text-white/60">• {stock.total_posts.toLocaleString()} posts</span>
+                )}
+              </div>
+            </div>
+            
+            <div className="text-white/40">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </div>
+        </button>
+      ))}
     </div>
   )
 }

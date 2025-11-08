@@ -261,7 +261,7 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
   return (
     <div className={embedded ? "" : "min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900"}>
       <div className={embedded ? "" : "container mx-auto px-3 sm:px-4 py-4 sm:py-8"}>
-        {/* Header - Only show when not embedded */}
+        {/* Header - Only show when not embedded - FIXED: Better condition check */}
         {!embedded && (
           <div className="flex items-center justify-between mb-6 sm:mb-8">
             <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">

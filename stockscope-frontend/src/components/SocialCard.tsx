@@ -1,6 +1,6 @@
 'use client'
 
-import { MessageSquare, Heart, Share, TrendingUp, ExternalLink } from 'lucide-react'
+import { MessageSquare, Heart, Share, ExternalLink } from 'lucide-react'
 import SentimentBadge from './SentimentBadge'
 
 interface SocialMessage {
@@ -73,115 +73,124 @@ export default function SocialCard({
   // Compact variant for dense layouts
   if (variant === 'compact') {
     return (
-      {message.url ? (
-        <a
-          href={message.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 hover:bg-white/8 transition-all duration-200 ${className} block relative focus:outline-none focus:ring-2 focus:ring-blue-500`}
-          aria-label={`View post by ${message.author}`}
-        >
-          <div className="flex items-start gap-3">
-            {/* Author avatar placeholder */}
-            <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-              {message.author.charAt(0).toUpperCase()}
-            </div>
-            
-            <div className="flex-1 min-w-0">
-              {/* Header */}
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm font-medium text-white truncate">@{message.author}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full border ${getSourceColor(message.source)}`}>
-                  {getSourceIcon(message.source)} {message.source}
-                </span>
-                <span className="text-xs text-gray-500">{formatTime(message.timestamp)}</span>
+      <div>
+        {message.url ? (
+          <a
+            href={message.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 hover:bg-white/8 transition-all duration-200 ${className} block relative focus:outline-none focus:ring-2 focus:ring-blue-500`}
+            aria-label={`View post by ${message.author}`}
+          >
+            <div className="flex items-start gap-3">
+              {/* Author avatar placeholder */}
+              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                {message.author.charAt(0).toUpperCase()}
               </div>
               
-              {/* Content */}
-              <p className="text-sm text-gray-300 line-clamp-2 mb-2">
-                {message.content}
-              </p>
-              
-              {/* Footer */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 text-xs text-gray-400">
-                  {message.engagement?.likes && (
-                    <span className="flex items-center gap-1">
-                      <Heart className="h-3 w-3" />
-                      {message.engagement.likes}
-                    </span>
-                  )}
-                  {message.engagement?.comments && (
-                    <span className="flex items-center gap-1">
-                      <MessageSquare className="h-3 w-3" />
-                      {message.engagement.comments}
-                    </span>
-                  )}
+              <div className="flex-1 min-w-0">
+                {/* Header */}
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-medium text-white truncate">@{message.author}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full border ${getSourceColor(message.source)}`}>
+                    {getSourceIcon(message.source)} {message.source}
+                  </span>
+                  <span className="text-xs text-gray-500">{formatTime(message.timestamp)}</span>
                 </div>
                 
-                {showSentiment && message.sentiment && (
-                  <SentimentBadge 
-                    score={message.sentiment.score} 
-                    size="sm" 
-                    showIcon={false}
-                  />
-                )}
+                {/* Content */}
+                <p className="text-sm text-gray-300 line-clamp-2 mb-2">
+                  {message.content}
+                </p>
+                
+                {/* Footer */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 text-xs text-gray-400">
+                    {message.engagement?.likes && (
+                      <span className="flex items-center gap-1">
+                        <Heart className="h-3 w-3" />
+                        {message.engagement.likes}
+                      </span>
+                    )}
+                    {message.engagement?.comments && (
+                      <span className="flex items-center gap-1">
+                        <MessageSquare className="h-3 w-3" />
+                        {message.engagement.comments}
+                      </span>
+                    )}
+                  </div>
+                  
+                  {showSentiment && message.sentiment && (
+                    <SentimentBadge 
+                      score={message.sentiment.score} 
+                      size="sm" 
+                      showIcon={false}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          </a>
+        ) : (
+          <div className={`bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 hover:bg-white/8 transition-all duration-200 ${className}`}>
+            <div className="flex items-start gap-3">
+              {/* Author avatar placeholder */}
+              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                {message.author.charAt(0).toUpperCase()}
+              </div>
+              
+              <div className="flex-1 min-w-0">
+                {/* Header */}
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-medium text-white truncate">@{message.author}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full border ${getSourceColor(message.source)}`}>
+                    {getSourceIcon(message.source)} {message.source}
+                  </span>
+                  <span className="text-xs text-gray-500">{formatTime(message.timestamp)}</span>
+                </div>
+                
+                {/* Content */}
+                <p className="text-sm text-gray-300 line-clamp-2 mb-2">
+                  {message.content}
+                </p>
+                
+                {/* Footer */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 text-xs text-gray-400">
+                    {message.engagement?.likes && (
+                      <span className="flex items-center gap-1">
+                        <Heart className="h-3 w-3" />
+                        {message.engagement.likes}
+                      </span>
+                    )}
+                    {message.engagement?.comments && (
+                      <span className="flex items-center gap-1">
+                        <MessageSquare className="h-3 w-3" />
+                        {message.engagement.comments}
+                      </span>
+                    )}
+                  </div>
+                  
+                  {showSentiment && message.sentiment && (
+                    <SentimentBadge 
+                      score={message.sentiment.score} 
+                      size="sm" 
+                      showIcon={false}
+                    />
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </a>
-      ) : (
-        <div className={`bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 hover:bg-white/8 transition-all duration-200 ${className}`}>
-          <div className="flex items-start gap-3">
-            {/* Author avatar placeholder */}
-            <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-              {message.author.charAt(0).toUpperCase()}
-            </div>
-            
-            <div className="flex-1 min-w-0">
-              {/* Header */}
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm font-medium text-white truncate">@{message.author}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full border ${getSourceColor(message.source)}`}>
-                  {getSourceIcon(message.source)} {message.source}
-                </span>
-                <span className="text-xs text-gray-500">{formatTime(message.timestamp)}</span>
-              </div>
-              
-              {/* Content */}
-              <p className="text-sm text-gray-300 line-clamp-2 mb-2">
-                {message.content}
-              </p>
-              
-              {/* Footer */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 text-xs text-gray-400">
-                  {message.engagement?.likes && (
-                    <span className="flex items-center gap-1">
-                      <Heart className="h-3 w-3" />
-                      {message.engagement.likes}
-                    </span>
-                  )}
-                  {message.engagement?.comments && (
-                    <span className="flex items-center gap-1">
-                      <MessageSquare className="h-3 w-3" />
-                      {message.engagement.comments}
-                    </span>
-                  )}
-                </div>
-                
-                {showSentiment && message.sentiment && (
-                  <SentimentBadge 
-                    score={message.sentiment.score} 
-                    size="sm" 
-                    showIcon={false}
-                  />
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <article className={`bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:bg-white/8 transition-all duration-200 ${className}`}>
+      {/* Header */}
+      <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           {/* Author avatar */}
           <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold">

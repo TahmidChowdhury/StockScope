@@ -15,6 +15,21 @@ load_dotenv()
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 analyzer = SentimentIntensityAnalyzer()
 
+# Major stock tickers for fallback content (S&P 500 list)
+MAJOR_TICKERS = [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK-B", "UNH", "JNJ",
+    "JPM", "V", "PG", "XOM", "HD", "CVX", "MA", "PFE", "BAC", "ABBV",
+    "KO", "AVGO", "PEP", "TMO", "COST", "WMT", "MRK", "DIS", "ABT", "ACN",
+    "NFLX", "CRM", "VZ", "ADBE", "NKE", "DHR", "TXN", "NEE", "BMY", "PM",
+    "RTX", "UPS", "T", "QCOM", "ORCL", "LOW", "HON", "UNP", "MS", "COP",
+    "AMGN", "IBM", "AMD", "GS", "CAT", "INTU", "BA", "DE", "ELV", "AXP",
+    "BLK", "BKNG", "NOW", "PLD", "TJX", "GILD", "MDLZ", "GE", "LMT", "AMT",
+    "SYK", "ADP", "VRTX", "CVS", "MU", "C", "LRCX", "ADI", "ISRG", "MMC",
+    "TMUS", "ZTS", "EOG", "SO", "TGT", "HCA", "FI", "PYPL", "BSX", "REGN",
+    "CME", "WM", "PGR", "AON", "CL", "ITW", "DUK", "FCX", "USB", "EMR",
+    "APD", "SNPS", "GD", "NSC", "SHW", "MCO", "TFC", "ICE", "GM", "NOC"
+]
+
 class EnhancedNewsScraper:
     """Enhanced news scraper with multiple sources including Yahoo Finance and web scraping."""
     
@@ -273,7 +288,7 @@ class EnhancedNewsScraper:
                     continue  # Try next URL
             
             # If no articles found from scraping, provide some fallback content
-            if not articles and ticker.upper() in ["AAPL", "MSFT", "TSLA", "GOOGL", "AMZN", "META", "NVDA"]:
+            if not articles and ticker.upper() in MAJOR_TICKERS:
                 fallback_titles = [
                     f"Is {ticker} Stock a Buy After Recent Moves?",
                     f"3 Reasons to Consider {ticker} for Your Portfolio",

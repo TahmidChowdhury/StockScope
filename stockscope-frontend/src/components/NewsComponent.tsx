@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { ExternalLink, Calendar, Newspaper } from 'lucide-react'
+import { Newspaper } from 'lucide-react'
 import NewsCard from './NewsCard'
 import FilterSortBar from './FilterSortBar'
 
@@ -160,18 +160,18 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
 
   if (loading) {
     return (
-      <div className={`bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 ${className}`}>
-        <div className="flex items-center gap-3 mb-6">
-          <Newspaper className="h-6 w-6 text-purple-400" />
-          <h2 className="text-xl font-semibold text-white">Latest News</h2>
+      <div className={`bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 sm:p-6 ${className}`}>
+        <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+          <Newspaper className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400" />
+          <h2 className="text-lg sm:text-xl font-semibold text-white">Latest News</h2>
         </div>
         
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="bg-white/5 rounded-xl p-4 animate-pulse">
-              <div className="h-4 bg-white/10 rounded w-3/4 mb-2"></div>
-              <div className="h-3 bg-white/10 rounded w-1/2 mb-2"></div>
-              <div className="h-3 bg-white/10 rounded w-1/4"></div>
+            <div key={i} className="bg-white/5 rounded-lg p-3 sm:p-4 animate-pulse">
+              <div className="h-3 sm:h-4 bg-white/10 rounded w-3/4 mb-2"></div>
+              <div className="h-2 sm:h-3 bg-white/10 rounded w-1/2 mb-2"></div>
+              <div className="h-2 sm:h-3 bg-white/10 rounded w-1/4"></div>
             </div>
           ))}
         </div>
@@ -181,29 +181,31 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
 
   if (error) {
     return (
-      <div className={`bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 ${className}`}>
-        <div className="flex items-center gap-3 mb-4">
-          <Newspaper className="h-6 w-6 text-purple-400" />
-          <h2 className="text-xl font-semibold text-white">Latest News</h2>
+      <div className={`bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 sm:p-6 ${className}`}>
+        <div className="flex items-center gap-2 sm:gap-3 mb-4">
+          <Newspaper className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400" />
+          <h2 className="text-lg sm:text-xl font-semibold text-white">Latest News</h2>
         </div>
-        <div className="text-center py-8">
-          <p className="text-red-400 mb-2">Failed to load news</p>
-          <p className="text-gray-400 text-sm">{error}</p>
+        <div className="text-center py-6 sm:py-8">
+          <p className="text-red-400 mb-2 text-sm sm:text-base">Failed to load news</p>
+          <p className="text-gray-400 text-xs sm:text-sm">{error}</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className={`bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 ${className}`}>
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <Newspaper className="h-6 w-6 text-purple-400" />
-        <h2 className="text-xl font-semibold text-white">Latest News</h2>
-        <span className="text-sm text-gray-400">for {symbol}</span>
+    <div className={`bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-3 sm:p-6 ${className}`}>
+      {/* Header - Mobile optimized */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Newspaper className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400" />
+          <h2 className="text-lg sm:text-xl font-semibold text-white">Latest News</h2>
+        </div>
+        <span className="text-xs sm:text-sm text-white/60">for {symbol}</span>
       </div>
 
-      {/* Filter and Sort Bar */}
+      {/* Filter and Sort Bar - Mobile responsive */}
       <FilterSortBar
         filters={filters}
         onFilterChange={handleFilterChange}
@@ -211,22 +213,23 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
         currentSort={currentSort}
         onSortChange={handleSortChange}
         resultCount={filteredAndSortedArticles.length}
-        className="mb-6"
+        className="mb-4 sm:mb-6"
       />
 
-      {/* Articles Grid */}
+      {/* Articles Grid - Better mobile layout */}
       {filteredAndSortedArticles.length === 0 ? (
-        <div className="text-center py-8">
-          <p className="text-gray-400">No news articles found with current filters</p>
+        <div className="text-center py-6 sm:py-8">
+          <p className="text-white/60 text-sm sm:text-base">No news articles found with current filters</p>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+        <div className="grid gap-3 sm:gap-4 md:grid-cols-1 lg:grid-cols-2">
           {filteredAndSortedArticles.map((article, index) => (
             <NewsCard
               key={`${article.url}-${index}`}
               article={article}
               showSentiment={true}
               variant="default"
+              className="w-full"
             />
           ))}
         </div>

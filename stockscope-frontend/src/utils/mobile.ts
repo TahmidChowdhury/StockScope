@@ -61,7 +61,11 @@ export const GRID_PATTERNS = {
   features: 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3'
 } as const
 
-// Utility function to detect mobile device
+/**
+ * Utility function to detect mobile device based on user agent
+ * Returns false during SSR (when window is undefined)
+ * Returns true if user agent matches mobile device patterns
+ */
 export const isMobileDevice = () => {
   if (typeof window !== 'undefined') {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
@@ -69,28 +73,42 @@ export const isMobileDevice = () => {
   return false
 }
 
-// Utility function to get responsive chart dimensions
+// Breakpoint value in pixels matching MOBILE_BREAKPOINTS.sm
+const MOBILE_BREAKPOINT_PX = 640
+
+/**
+ * Get responsive chart dimensions based on device type
+ * @param isMobile - Optional flag to force mobile dimensions. If false, automatically detects based on screen width (<640px)
+ * @returns Object containing height, pieRadius, fontSize, and legendGap values optimized for mobile or desktop
+ */
 export const getChartDimensions = (isMobile: boolean = false) => {
+  let actualIsMobile = isMobile
   if (typeof window !== 'undefined') {
     const screenWidth = window.innerWidth
-    isMobile = isMobile || screenWidth < 640
+    actualIsMobile = isMobile || screenWidth < MOBILE_BREAKPOINT_PX
   }
   
   return {
-    height: isMobile ? 200 : 300,
-    pieRadius: isMobile ? 60 : 80,
-    fontSize: isMobile ? 12 : 14,
-    legendGap: isMobile ? 3 : 4
+    height: actualIsMobile ? 200 : 300,
+    pieRadius: actualIsMobile ? 60 : 80,
+    fontSize: actualIsMobile ? 12 : 14,
+    legendGap: actualIsMobile ? 3 : 4
   }
 }
 
 // Safe area handling for mobile devices with notches
+// Use these style objects in your components: e.g. <div style={SAFE_AREA.top}>...</div>
 export const SAFE_AREA = {
-  top: 'pt-safe',
-  bottom: 'pb-safe', 
-  left: 'pl-safe',
-  right: 'pr-safe',
-  x: 'px-safe',
-  y: 'py-safe',
-  all: 'p-safe'
+  top: { paddingTop: 'env(safe-area-inset-top)' },
+  bottom: { paddingBottom: 'env(safe-area-inset-bottom)' },
+  left: { paddingLeft: 'env(safe-area-inset-left)' },
+  right: { paddingRight: 'env(safe-area-inset-right)' },
+  x: { paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' },
+  y: { paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' },
+  all: {
+    paddingTop: 'env(safe-area-inset-top)',
+    paddingBottom: 'env(safe-area-inset-bottom)',
+    paddingLeft: 'env(safe-area-inset-left)',
+    paddingRight: 'env(safe-area-inset-right)'
+  }
 } as const

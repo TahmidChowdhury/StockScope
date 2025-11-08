@@ -591,6 +591,7 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
               onClick={() => !isSelectionMode && onViewDashboard(stock.symbol)}
               disabled={isSelectionMode}
               className="w-full h-36 sm:h-40 bg-gradient-to-br from-white/10 to-white/5 hover:from-white/20 hover:to-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20 transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-white/10 disabled:hover:scale-100 disabled:cursor-default flex flex-col justify-between group"
+              aria-label={`View ${stock.symbol} dashboard`}
             >
               {/* Top Section */}
               <div className="text-center">
@@ -632,15 +633,13 @@ function PortfolioView({ onViewDashboard, passwordParam }: {
               
               {/* Bottom Section - Sentiment */}
               <div className="text-center">
-                {stock.avg_sentiment !== 0 && (
-                  <div className={`text-sm flex items-center justify-center gap-1 ${
-                    stock.avg_sentiment > 0.1 ? 'text-green-400' : 
-                    stock.avg_sentiment < -0.1 ? 'text-red-400' : 'text-yellow-400'
-                  }`}>
-                    {stock.avg_sentiment > 0.1 ? '📈 Bullish' : 
-                     stock.avg_sentiment < -0.1 ? '📉 Bearish' : '➡️ Neutral'}
-                  </div>
-                )}
+                <div className={`text-sm flex items-center justify-center gap-1 ${
+                  stock.avg_sentiment > 0.1 ? 'text-green-400' : 
+                  stock.avg_sentiment < -0.1 ? 'text-red-400' : 'text-yellow-400'
+                }`}>
+                  {stock.avg_sentiment > 0.1 ? '📈 Bullish' : 
+                   stock.avg_sentiment < -0.1 ? '📉 Bearish' : '➡️ Neutral'}
+                </div>
               </div>
             </button>
 

@@ -28,6 +28,7 @@ export default function DashboardLayout({
               <button
                 onClick={() => setSidebarOpen(true)}
                 className="lg:hidden text-white p-2 rounded-lg hover:bg-white/10 transition-colors"
+                aria-label="Open menu"
               >
                 <Bars3Icon className="h-6 w-6" />
               </button>
@@ -46,6 +47,12 @@ export default function DashboardLayout({
           <div 
             className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
             onClick={() => setSidebarOpen(false)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setSidebarOpen(false)
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label="Close menu"
           />
           
           {/* Sidebar Drawer */}
@@ -55,6 +62,7 @@ export default function DashboardLayout({
               <button
                 onClick={() => setSidebarOpen(false)}
                 className="text-white/60 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors"
+                aria-label="Close menu"
               >
                 <XMarkIcon className="h-5 w-5" />
               </button>
@@ -153,18 +161,25 @@ export function DashboardSection({
     <div className={`backdrop-blur-sm border rounded-xl sm:rounded-2xl p-4 sm:p-6 ${variants[variant]} ${className}`}>
       {/* Section Header */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">
-        <button
-          className={`flex items-center gap-2 sm:gap-3 ${collapsible ? 'cursor-pointer hover:opacity-80 transition-opacity' : 'cursor-default'} flex-1 min-w-0`}
-          onClick={collapsible ? () => setIsCollapsed(!isCollapsed) : undefined}
-        >
-          {icon && <div className="text-purple-400 flex-shrink-0">{icon}</div>}
-          <h2 className="text-lg sm:text-xl font-semibold text-white truncate">{title}</h2>
-          {collapsible && (
+        {collapsible ? (
+          <button
+            className="flex items-center gap-2 sm:gap-3 cursor-pointer hover:opacity-80 transition-opacity flex-1 min-w-0"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            aria-expanded={!isCollapsed}
+            aria-controls={`section-${title.replace(/\s+/g, '-').toLowerCase()}`}
+          >
+            {icon && <div className="text-purple-400 flex-shrink-0">{icon}</div>}
+            <h2 className="text-lg sm:text-xl font-semibold text-white truncate">{title}</h2>
             <div className={`text-white/60 transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`}>
               ▼
             </div>
-          )}
-        </button>
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+            {icon && <div className="text-purple-400 flex-shrink-0">{icon}</div>}
+            <h2 className="text-lg sm:text-xl font-semibold text-white truncate">{title}</h2>
+          </div>
+        )}
         {headerAction && (
           <div className="flex-shrink-0 ml-2">
             {headerAction}
@@ -174,7 +189,10 @@ export function DashboardSection({
 
       {/* Section Content */}
       {!isCollapsed && (
-        <div className="animate-in fade-in duration-200">
+        <div 
+          className="transition-opacity duration-200 opacity-100"
+          id={`section-${title.replace(/\s+/g, '-').toLowerCase()}`}
+        >
           {children}
         </div>
       )}

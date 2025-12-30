@@ -462,10 +462,18 @@ app = FastAPI(
 # Include fundamentals router with correct path prefix
 app.include_router(fundamentals_router, prefix="/api/fundamentals", tags=["Fundamentals"])
 
-# Enhanced CORS configuration
+# Enhanced CORS configuration with optional env overrides
+frontend_origins_env = os.getenv("FRONTEND_ORIGINS", "")
+allowed_origins = ["http://localhost:3000", "https://stockscope.vercel.app"]
+
+if frontend_origins_env:
+    allowed_origins.extend([
+        origin.strip() for origin in frontend_origins_env.split(",") if origin.strip()
+    ])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://stockscope.vercel.app", "*"],  # Add wildcard for development
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Explicitly include OPTIONS
     allow_headers=["*"],

@@ -464,12 +464,18 @@ app.include_router(fundamentals_router, prefix="/api/fundamentals", tags=["Funda
 
 # Enhanced CORS configuration with optional env overrides
 frontend_origins_env = os.getenv("FRONTEND_ORIGINS", "")
-allowed_origins = ["http://localhost:3000", "https://stockscope.vercel.app"]
+allowed_origins = [
+    "http://localhost:3000",
+    "https://stockscope.vercel.app",
+    "https://stock-scope-green.vercel.app",
+    "https://stock-scope-juj13l2pn-tahmids-projects-c2f4375b.vercel.app",
+]
 
 if frontend_origins_env:
     allowed_origins.extend([
         origin.strip() for origin in frontend_origins_env.split(",") if origin.strip()
     ])
+#   allow_origin_regex=r"https://.*\.vercel\.app",
 
 app.add_middleware(
     CORSMiddleware,

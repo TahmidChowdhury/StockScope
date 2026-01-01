@@ -149,6 +149,7 @@ export default function Home() {
       if (existingDataResponse.ok) {
         setSelectedStock(symbol)
         setCurrentView('dashboard')
+        refreshPortfolioData()
         return
       }
 
@@ -177,6 +178,9 @@ export default function Home() {
       if (!response.ok) {
         throw new Error('Failed to start analysis')
       }
+
+      // Kick off a portfolio refresh in the background so new symbols appear
+      refreshPortfolioData()
 
       // The progress hook will handle polling and completion
       
@@ -248,8 +252,9 @@ export default function Home() {
       <StockAnalysisHub 
         symbol={selectedStock} 
         onBack={handleBackToSearch}
+        stocks={stocks}
         onStockSelect={(symbol) => {
-          setSelectedStock(symbol)
+          handleAnalyze(symbol)
           // Stay in dashboard view with new stock
         }}
       />

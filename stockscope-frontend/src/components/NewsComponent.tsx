@@ -1,13 +1,15 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Newspaper, RefreshCw, ExternalLink, Bookmark, BookmarkCheck } from 'lucide-react'
+import { Newspaper, RefreshCw, ExternalLink } from 'lucide-react'
 import FilterSortBar from './FilterSortBar'
 
 interface NewsArticle {
   title: string
   url: string
   publishedAt: string
+  username?: string
+  message_id?: number | string
   source: {
     name: string
   }
@@ -36,19 +38,52 @@ interface SortOption {
   direction: 'asc' | 'desc'
 }
 
+const getArticleId = (article: Pick<NewsArticle, 'url' | 'publishedAt' | 'title' | 'source'>) => {
+  return article.url || `${article.source.name}:${article.publishedAt}:${article.title}`
+}
+
+function getSourceIcon(source: string): string {
+  const s = source.toLowerCase()
+  if (s.includes('yahoo')) return '📰'
+  if (s.includes('stocktwits')) return '💬'
+  if (s.includes('seeking alpha') || s.includes('seekingalpha')) return '🔭'
+  if (s.includes('finviz')) return '📊'
+  if (s.includes('reuters')) return '📡'
+  if (s.includes('bloomberg')) return '💼'
+  if (s.includes('cnbc')) return '📺'
+  if (s.includes('marketwatch')) return '📈'
+  if (s.includes('benzinga')) return '⚡'
+  if (s.includes('motley')) return '🎯'
+  if (s.includes('google')) return '🔍'
+  if (s.includes('cnn')) return '🏛️'
+  if (s.includes('thestreet')) return '🏦'
+  return '🗞️'
+}
+
 export default function NewsComponent({ symbol, className = '' }: NewsComponentProps) {
   const [articles, setArticles] = useState<NewsArticle[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  
-  // New state for filtering and sorting
-  const [filters, setFilters] = useState<FilterOption[]>([
-    { id: 'yahoo', label: 'Yahoo Finance', icon: '📰', enabled: true },
-    { id: 'motley', label: 'Motley Fool', icon: '🎯', enabled: true },
-    { id: 'reuters', label: 'Reuters', icon: '📊', enabled: true },
-    { id: 'bloomberg', label: 'Bloomberg', icon: '💼', enabled: true },
-    { id: 'other', label: 'Other Sources', icon: '🗞️', enabled: true }
-  ])
+
+  // Dynamic source filtering — built from whatever sources are actually in the data
+  const [disabledSources, setDisabledSources] = useState<Set<string>>(new Set())
+
+  // Derive available sources from loaded articles
+  const availableSources = useMemo((): FilterOption[] => {
+    const seen = new Map<string, string>() // sourceName → icon
+    articles.forEach(a => {
+      const name = a.source.name
+      if (name && !seen.has(name)) {
+        seen.set(name, getSourceIcon(name))
+      }
+    })
+    return Array.from(seen.entries()).map(([name, icon]) => ({
+      id: name,
+      label: name,
+      icon,
+      enabled: !disabledSources.has(name)
+    }))
+  }, [articles, disabledSources])
   
   const [currentSort, setCurrentSort] = useState('date-desc')
   
@@ -59,45 +94,19 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
     { id: 'sentiment-asc', label: 'Most Negative', direction: 'asc' }
   ]
 
-  // New mobile-specific state
+  // Mobile-specific state
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [savedArticles, setSavedArticles] = useState<Set<string>>(new Set())
-  const [expandedArticles, setExpandedArticles] = useState<Set<string>>(new Set())
-  const [showFullscreen, setShowFullscreen] = useState(false)
-  const [selectedArticle, setSelectedArticle] = useState<NewsArticle | null>(null)
   const refreshStartY = useRef(0)
   const refreshDistance = useRef(0)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Load saved articles from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem(`stockscope_saved_articles_${symbol}`)
-    if (saved) {
-      setSavedArticles(new Set(JSON.parse(saved)))
-    }
-  }, [symbol])
-
-  // Filtered and sorted articles
+  // Filtered and sorted articles using dynamic source set
   const filteredAndSortedArticles = useMemo(() => {
-    // Filter articles by enabled sources
-    const enabledSources = filters.filter(f => f.enabled).map(f => f.id)
-    let filtered = articles.filter(article => {
-      const sourceName = article.source.name.toLowerCase()
-      
-      // Check which source category this article belongs to
-      if (sourceName.includes('yahoo') && enabledSources.includes('yahoo')) return true
-      if (sourceName.includes('motley') && enabledSources.includes('motley')) return true
-      if (sourceName.includes('reuters') && enabledSources.includes('reuters')) return true
-      if (sourceName.includes('bloomberg') && enabledSources.includes('bloomberg')) return true
-      if (!sourceName.includes('yahoo') && !sourceName.includes('motley') && 
-          !sourceName.includes('reuters') && !sourceName.includes('bloomberg') && 
-          enabledSources.includes('other')) return true
-      
-      return false
-    })
+    const filtered = articles.filter(article => !disabledSources.has(article.source.name))
 
     // Sort articles
     filtered.sort((a, b) => {
+
       switch (currentSort) {
         case 'date-desc':
           return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
@@ -113,12 +122,18 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
     })
 
     return filtered
-  }, [articles, filters, currentSort])
+  }, [articles, disabledSources, currentSort])
 
   const handleFilterChange = (filterId: string, enabled: boolean) => {
-    setFilters(prev => prev.map(f => 
-      f.id === filterId ? { ...f, enabled } : f
-    ))
+    setDisabledSources(prev => {
+      const next = new Set(prev)
+      if (enabled) {
+        next.delete(filterId)
+      } else {
+        next.add(filterId)
+      }
+      return next
+    })
   }
 
   const handleSortChange = (sortId: string) => {
@@ -159,38 +174,8 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
-    // Trigger news refetch
     await fetchNews()
-    setTimeout(() => setIsRefreshing(false), 500) // Minimum refresh time for UX
-  }
-
-  // Save/unsave article functionality
-  const toggleSaveArticle = (articleUrl: string) => {
-    const newSaved = new Set(savedArticles)
-    if (newSaved.has(articleUrl)) {
-      newSaved.delete(articleUrl)
-    } else {
-      newSaved.add(articleUrl)
-    }
-    setSavedArticles(newSaved)
-    localStorage.setItem(`stockscope_saved_articles_${symbol}`, JSON.stringify([...newSaved]))
-  }
-
-  // Expand/collapse article preview
-  const toggleExpandArticle = (articleUrl: string) => {
-    const newExpanded = new Set(expandedArticles)
-    if (newExpanded.has(articleUrl)) {
-      newExpanded.delete(articleUrl)
-    } else {
-      newExpanded.add(articleUrl)
-    }
-    setExpandedArticles(newExpanded)
-  }
-
-  // Open article in fullscreen modal for mobile
-  const openFullscreen = (article: NewsArticle) => {
-    setSelectedArticle(article)
-    setShowFullscreen(true)
+    setTimeout(() => setIsRefreshing(false), 500)
   }
 
   const fetchNews = async () => {
@@ -205,6 +190,20 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
       }
       
       const data = await response.json()
+
+      const isGenericStocktwitsUrl = (url: string) => {
+        const normalizedUrl = url.trim().replace(/\/+$/, '').toLowerCase()
+        return [
+          'https://stocktwits.com',
+          'http://stocktwits.com',
+          'https://www.stocktwits.com',
+          'http://www.stocktwits.com',
+          'https://stocktwits.com/mobile',
+          'http://stocktwits.com/mobile',
+          'https://www.stocktwits.com/mobile',
+          'http://www.stocktwits.com/mobile'
+        ].includes(normalizedUrl)
+      }
       
       // Transform the articles to match our interface
       const transformedArticles = data.articles?.map((item: { 
@@ -212,32 +211,35 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
         url?: string; 
         publishedAt?: string; 
         source?: string; 
+        username?: string;
+        message_id?: number | string;
         description?: string; 
         sentiment?: { compound?: number; label?: string }
       }) => {
         // Handle missing or invalid URLs better
         let articleUrl = item.url || ''
+        const sourceName = (item.source || '').toLowerCase()
+
+        if (sourceName.includes('stocktwits') && item.username && item.message_id) {
+          articleUrl = `https://stocktwits.com/${item.username}/message/${item.message_id}`
+        }
         
         // If no URL provided, create appropriate fallback based on source
-        if (!articleUrl || articleUrl === '#' || articleUrl === 'null') {
-          const sourceName = (item.source || '').toLowerCase()
-          if (sourceName.includes('stocktwits')) {
-            // For StockTwits, link to the symbol page since individual message URLs aren't available
-            articleUrl = `https://stocktwits.com/symbol/${symbol}`
-          } else if (sourceName.includes('yahoo')) {
-            articleUrl = `https://finance.yahoo.com/quote/${symbol}/news`
-          } else if (sourceName.includes('motley')) {
-            articleUrl = `https://www.fool.com/investing/${symbol.toLowerCase()}-stock/`
-          } else {
-            // For other sources without URLs, don't provide a link
-            articleUrl = ''
-          }
+        if (
+          !articleUrl ||
+          articleUrl === '#' ||
+          articleUrl === 'null' ||
+          (sourceName.includes('stocktwits') && isGenericStocktwitsUrl(articleUrl))
+        ) {
+          articleUrl = ''
         }
         
         return {
           title: item.title || 'No title available',
           url: articleUrl,
           publishedAt: item.publishedAt || new Date().toISOString(),
+          username: item.username,
+          message_id: item.message_id,
           source: {
             name: item.source || 'Unknown Source'
           },
@@ -261,7 +263,7 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
     if (symbol) {
       fetchNews()
     }
-  }, [symbol, API_BASE_URL])
+  }, [symbol]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
@@ -333,7 +335,7 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
 
         {/* Filter and Sort Bar - Mobile responsive */}
         <FilterSortBar
-          filters={filters}
+          filters={availableSources}
           onFilterChange={handleFilterChange}
           sortOptions={sortOptions}
           currentSort={currentSort}
@@ -352,110 +354,32 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
           <div className="space-y-3 sm:space-y-4 lg:grid lg:gap-4 lg:grid-cols-2 lg:space-y-0">
             {filteredAndSortedArticles.map((article, index) => (
               <EnhancedNewsCard
-                key={`${article.url}-${index}`}
+                key={`${getArticleId(article)}-${index}`}
                 article={article}
-                isSaved={savedArticles.has(article.url)}
-                isExpanded={expandedArticles.has(article.url)}
-                onToggleSave={() => toggleSaveArticle(article.url)}
-                onToggleExpand={() => toggleExpandArticle(article.url)}
-                onOpenFullscreen={() => openFullscreen(article)}
               />
             ))}
           </div>
         )}
-
-        {/* Show saved articles count */}
-        {savedArticles.size > 0 && (
-          <div className="mt-6 pt-4 border-t border-white/10">
-            <p className="text-sm text-white/60 text-center">
-              📚 {savedArticles.size} article{savedArticles.size !== 1 ? 's' : ''} saved for later
-            </p>
-          </div>
-        )}
       </div>
-
-      {/* Fullscreen Article Modal for Mobile */}
-      {showFullscreen && selectedArticle && (
-        <div className="lg:hidden fixed inset-0 bg-black/95 backdrop-blur-sm z-50 flex flex-col">
-          <div className="flex items-center justify-between p-4 border-b border-white/10">
-            <h3 className="text-lg font-semibold text-white truncate pr-4">Article Preview</h3>
-            <button
-              onClick={() => setShowFullscreen(false)}
-              className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white touch-manipulation"
-            >
-              ✕
-            </button>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-4">
-            <div className="max-w-2xl mx-auto">
-              <h2 className="text-xl font-bold text-white mb-3">{selectedArticle.title}</h2>
-              
-              <div className="flex items-center gap-3 mb-4 text-sm text-white/70">
-                <span>{selectedArticle.source.name}</span>
-                <span>•</span>
-                <span>{new Date(selectedArticle.publishedAt).toLocaleDateString()}</span>
-              </div>
-              
-              {selectedArticle.description && (
-                <p className="text-white/90 mb-6 leading-relaxed">{selectedArticle.description}</p>
-              )}
-              
-              <div className="flex flex-col gap-3">
-                <button
-                  onClick={() => window.open(selectedArticle.url, '_blank')}
-                  className="flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white py-3 px-6 rounded-lg transition-colors touch-manipulation"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Read Full Article
-                </button>
-                
-                <button
-                  onClick={() => {
-                    toggleSaveArticle(selectedArticle.url)
-                    setShowFullscreen(false)
-                  }}
-                  className="flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white py-3 px-6 rounded-lg transition-colors touch-manipulation"
-                >
-                  {savedArticles.has(selectedArticle.url) ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
-                  {savedArticles.has(selectedArticle.url) ? 'Saved' : 'Save for Later'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   )
 }
 
-// Enhanced News Card Component with mobile features
-function EnhancedNewsCard({
-  article,
-  isSaved,
-  isExpanded,
-  onToggleSave,
-  onToggleExpand,
-  onOpenFullscreen
-}: {
-  article: NewsArticle
-  isSaved: boolean
-  isExpanded: boolean
-  onToggleSave: () => void
-  onToggleExpand: () => void
-  onOpenFullscreen: () => void
-}) {
+// News Card Component
+function EnhancedNewsCard({ article }: { article: NewsArticle }) {
+  const hasLink = Boolean(article.url)
+
   const formatRelativeTime = (dateString: string) => {
     const date = new Date(dateString)
     const now = new Date()
     const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
-    
+
     if (diffInHours < 1) return 'Just now'
     if (diffInHours < 24) return `${diffInHours}h ago`
-    
+
     const diffInDays = Math.floor(diffInHours / 24)
     if (diffInDays < 7) return `${diffInDays}d ago`
-    
+
     return date.toLocaleDateString()
   }
 
@@ -473,83 +397,72 @@ function EnhancedNewsCard({
     return '➡️'
   }
 
+  // Deduplicate: skip description if it's the same text as the title
+  const showDescription =
+    article.description && article.description.trim() !== article.title.trim()
+
+  const CardWrapper = hasLink
+    ? ({ children }: { children: React.ReactNode }) => (
+        <a
+          href={article.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 hover:border-purple-500/30 transition-all duration-200 overflow-hidden"
+        >
+          {children}
+        </a>
+      )
+    : ({ children }: { children: React.ReactNode }) => (
+        <div className="bg-white/5 rounded-lg border border-white/10 overflow-hidden opacity-80">
+          {children}
+        </div>
+      )
+
   return (
-    <div className="bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 transition-all duration-200 overflow-hidden">
-      {/* Header */}
+    <CardWrapper>
       <div className="p-4">
-        <div className="flex items-start gap-3">
-          <div className="flex-1 min-w-0">
-            <h3 
-              className="font-semibold text-white mb-2 line-clamp-2 leading-tight cursor-pointer hover:text-purple-300 transition-colors"
-              onClick={() => window.innerWidth < 1024 ? onOpenFullscreen() : window.open(article.url, '_blank')}
-            >
-              {article.title}
-            </h3>
-            
-            <div className="flex items-center gap-2 text-sm text-white/60 mb-3">
-              <span className="truncate">{article.source.name}</span>
+        {/* Title */}
+        <h3 className={`font-semibold mb-2 line-clamp-2 leading-tight ${
+          hasLink ? 'text-white group-hover:text-purple-300' : 'text-white/70'
+        }`}>
+          {article.title}
+        </h3>
+
+        {/* Meta row */}
+        <div className="flex items-center gap-2 text-sm text-white/60 mb-3">
+          <span className="truncate">{article.source.name}</span>
+          <span>•</span>
+          <span>{formatRelativeTime(article.publishedAt)}</span>
+          {article.sentiment && (
+            <>
               <span>•</span>
-              <span>{formatRelativeTime(article.publishedAt)}</span>
-              
-              {article.sentiment && (
-                <>
-                  <span>•</span>
-                  <span className={`flex items-center gap-1 ${getSentimentColor(article.sentiment.score)}`}>
-                    {getSentimentIcon(article.sentiment.score)}
-                    <span className="hidden sm:inline">{article.sentiment.label}</span>
-                  </span>
-                </>
-              )}
-            </div>
-
-            {/* Description - expandable on mobile */}
-            {article.description && (
-              <p className={`text-white/80 text-sm leading-relaxed ${
-                isExpanded ? '' : 'line-clamp-2'
-              }`}>
-                {article.description}
-              </p>
-            )}
-          </div>
-
-          {/* Save button */}
-          <button
-            onClick={onToggleSave}
-            className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors touch-manipulation"
-            title={isSaved ? 'Unsave article' : 'Save for later'}
-          >
-            {isSaved ? (
-              <BookmarkCheck className="h-4 w-4 text-purple-400" />
-            ) : (
-              <Bookmark className="h-4 w-4 text-white/60" />
-            )}
-          </button>
+              <span className={`flex items-center gap-1 ${getSentimentColor(article.sentiment.score)}`}>
+                {getSentimentIcon(article.sentiment.score)}
+                <span className="hidden sm:inline">{article.sentiment.label}</span>
+              </span>
+            </>
+          )}
         </div>
 
-        {/* Mobile action buttons */}
-        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/10">
-          {article.description && (
-            <button
-              onClick={onToggleExpand}
-              className="text-xs text-purple-400 hover:text-purple-300 transition-colors touch-manipulation"
-            >
-              {isExpanded ? 'Show less' : 'Show more'}
-            </button>
+        {/* Description (only if different from title) */}
+        {showDescription && (
+          <p className="text-white/80 text-sm leading-relaxed line-clamp-3 mb-3">
+            {article.description}
+          </p>
+        )}
+
+        {/* Footer */}
+        <div className="flex justify-end pt-2 border-t border-white/10">
+          {hasLink ? (
+            <span className="inline-flex items-center gap-1 text-xs text-purple-400">
+              <ExternalLink className="h-3 w-3" />
+              Read article
+            </span>
+          ) : (
+            <span className="text-xs text-white/30">No link available</span>
           )}
-          
-          <div className="flex-1"></div>
-          
-          {/* Desktop - direct link, Mobile - fullscreen */}
-          <button
-            onClick={() => window.innerWidth < 1024 ? onOpenFullscreen() : window.open(article.url, '_blank')}
-            className="flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors touch-manipulation"
-          >
-            <ExternalLink className="h-3 w-3" />
-            <span className="hidden sm:inline">Read More</span>
-            <span className="sm:hidden">Read</span>
-          </button>
         </div>
       </div>
-    </div>
+    </CardWrapper>
   )
 }

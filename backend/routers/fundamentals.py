@@ -1,7 +1,7 @@
 """Fundamentals API endpoints for financial metrics analysis."""
 
-from typing import List, Dict, Any
-import time
+from typing import List, Dict, Any, Optional
+import asyncio
 import os
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -124,13 +124,11 @@ async def compare_fundamentals(request: CompareRequest, current_user: str = Depe
                 compacted = _compute_ttm_cached(ticker)
                 if compacted:  # Only include if we got some data
                     results.append(compacted)
-                # Small delay to respect rate limits
-                time.sleep(0.1)
             except Exception as e:
                 # Continue with other tickers even if one fails
                 print(f"Error processing {ticker}: {e}")
                 continue
-        
+
         # Sort by revenue_ttm (descending) if available
         def sort_key(x):
             return x.get("revenue_ttm", 0) if x.get("revenue_ttm") is not None else 0
@@ -141,6 +139,28 @@ async def compare_fundamentals(request: CompareRequest, current_user: str = Depe
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error comparing fundamentals: {str(e)}")
+
+
+# Semaphore to cap concurrent yfinance calls (avoids hammering the API)
+_SCREENER_CONCURRENCY = 15
+_screener_semaphore = asyncio.Semaphore(_SCREENER_CONCURRENCY)
+
+
+async def _fetch_ticker_screener(ticker: str, loop: asyncio.AbstractEventLoop) -> Optional[dict]:
+    """Fetch one ticker's TTM data in a thread, with a per-ticker timeout."""
+    async with _screener_semaphore:
+        try:
+            compacted = await asyncio.wait_for(
+                loop.run_in_executor(None, _compute_ttm_cached, ticker),
+                timeout=12.0,
+            )
+            return compacted
+        except asyncio.TimeoutError:
+            print(f"Screener timeout for {ticker}, skipping")
+            return None
+        except Exception as e:
+            print(f"Error processing {ticker} in screener: {e}")
+            return None
 
 
 @router.post("/screener", response_model=ScreenerResponse)
@@ -156,62 +176,61 @@ async def screen_fundamentals(request: ScreenerRequest, current_user: str = Depe
                 detail="Universe too large (max 500 tickers)"
             )
         
+        loop = asyncio.get_event_loop()
+        tickers = [t.upper() for t in universe]
+
+        # Fetch all tickers concurrently (bounded by semaphore)
+        raw_results = await asyncio.gather(
+            *[_fetch_ticker_screener(ticker, loop) for ticker in tickers]
+        )
+
         results = []
         total_screened = 0
-        
-        for ticker in universe:
-            try:
-                ticker = ticker.upper()
-                # Use cached computation
-                compacted = _compute_ttm_cached(ticker)
-                total_screened += 1
-                
-                # Skip if insufficient data
-                if compacted.get("insufficient_data", True):
-                    continue
-                
-                # Apply filters - only check fields that exist
-                passed_filters = True
-                
-                # Revenue growth filter
-                if (request.min_revenue_growth_yoy is not None and
-                    (compacted.get("revenue_growth_yoy") is None or 
-                     compacted.get("revenue_growth_yoy") < request.min_revenue_growth_yoy)):
-                    passed_filters = False
-                
-                # FCF growth filter
-                if (request.min_fcf_growth_yoy is not None and
-                    (compacted.get("fcf_growth_yoy") is None or 
-                     compacted.get("fcf_growth_yoy") < request.min_fcf_growth_yoy)):
-                    passed_filters = False
-                
-                # Margin growth filter (percentage points)
-                if (request.min_margin_growth_yoy_pp is not None and
-                    (compacted.get("margin_growth_yoy_pp") is None or 
-                     compacted.get("margin_growth_yoy_pp") < request.min_margin_growth_yoy_pp)):
-                    passed_filters = False
-                
-                # EBITDA growth filter
-                if (request.min_ebitda_growth_yoy is not None and
-                    (compacted.get("ebitda_growth_yoy") is None or 
-                     compacted.get("ebitda_growth_yoy") < request.min_ebitda_growth_yoy)):
-                    passed_filters = False
-                
-                # Debt to cash filter
-                if (request.max_debt_to_cash is not None and
-                    (compacted.get("debt_to_cash") is None or 
-                     compacted.get("debt_to_cash") > request.max_debt_to_cash)):
-                    passed_filters = False
-                
-                if passed_filters:
-                    results.append(compacted)
-                
-                # Small delay to respect rate limits
-                time.sleep(0.05)
-                
-            except Exception as e:
-                print(f"Error processing {ticker} in screener: {e}")
+
+        for compacted in raw_results:
+            if compacted is None:
                 continue
+            total_screened += 1
+
+            # Skip if insufficient data
+            if compacted.get("insufficient_data", True):
+                continue
+
+            # Apply filters - only check fields that exist
+            passed_filters = True
+
+            # Revenue growth filter
+            if (request.min_revenue_growth_yoy is not None and
+                (compacted.get("revenue_growth_yoy") is None or
+                 compacted.get("revenue_growth_yoy") < request.min_revenue_growth_yoy)):
+                passed_filters = False
+
+            # FCF growth filter
+            if (request.min_fcf_growth_yoy is not None and
+                (compacted.get("fcf_growth_yoy") is None or
+                 compacted.get("fcf_growth_yoy") < request.min_fcf_growth_yoy)):
+                passed_filters = False
+
+            # Margin growth filter (percentage points)
+            if (request.min_margin_growth_yoy_pp is not None and
+                (compacted.get("margin_growth_yoy_pp") is None or
+                 compacted.get("margin_growth_yoy_pp") < request.min_margin_growth_yoy_pp)):
+                passed_filters = False
+
+            # EBITDA growth filter
+            if (request.min_ebitda_growth_yoy is not None and
+                (compacted.get("ebitda_growth_yoy") is None or
+                 compacted.get("ebitda_growth_yoy") < request.min_ebitda_growth_yoy)):
+                passed_filters = False
+
+            # Debt to cash filter
+            if (request.max_debt_to_cash is not None and
+                (compacted.get("debt_to_cash") is None or
+                 compacted.get("debt_to_cash") > request.max_debt_to_cash)):
+                passed_filters = False
+
+            if passed_filters:
+                results.append(compacted)
         
         # Sort results
         valid_sort_fields = [

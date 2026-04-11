@@ -31,7 +31,6 @@ interface PriceChartProps {
 }
 
 const PERIOD_OPTIONS = [
-  { value: '1d', label: '1D' },
   { value: '5d', label: '5D' },
   { value: '1mo', label: '1M' },
   { value: '3mo', label: '3M' },

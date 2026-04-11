@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { ArrowLeftIcon, ChartBarIcon, NewspaperIcon, MagnifyingGlassIcon, HomeIcon } from '@heroicons/react/24/outline'
 import StockDashboard from './StockDashboard'
 import PriceChart from './PriceChart'
@@ -104,7 +104,7 @@ export default function StockAnalysisHub({ symbol, onBack, onStockSelect, stocks
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 pb-16 lg:pb-0">
       {/* Navigation Header - Mobile optimized */}
       <div className="bg-slate-800/50 backdrop-blur-sm border-b border-purple-500/20 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8">

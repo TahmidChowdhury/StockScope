@@ -198,11 +198,18 @@ For the best development experience, use the custom development script:
 # From the root directory
 ./dev-env.sh
 
+# Or use npm from the root directory for development
+npm run dev
+
+# Or build the frontend and serve both apps
+npm run start
+
 # Or from frontend directory
 npm run full-app
 ```
 
-This starts both backend (port 8000) and frontend (port 3000) with hot reloading.
+`npm run dev` starts both backend (port 8000) and frontend (port 3000) with hot reloading.
+`npm run start` builds the frontend, then serves the backend and frontend together.
 
 ---
 

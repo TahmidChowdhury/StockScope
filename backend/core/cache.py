@@ -7,7 +7,7 @@ import json
 from typing import Any, Callable, TypeVar
 
 # Global cache instance - 6 hour TTL for fundamentals data
-_fundamentals_cache = TTLCache(maxsize=200, ttl=6 * 3600)
+_fundamentals_cache = TTLCache(maxsize=600, ttl=6 * 3600)
 
 F = TypeVar('F', bound=Callable[..., Any])
 

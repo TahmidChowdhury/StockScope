@@ -1,0 +1,13 @@
+{
+  "name": "stockscope",
+  "private": true,
+  "scripts": {
+    "start": "./serve-app.sh",
+    "dev": "./dev-env.sh dev",
+    "start:dev": "./dev-env.sh start",
+    "backend": "./dev-env.sh backend",
+    "frontend": "npm --prefix stockscope-frontend run frontend",
+    "build": "npm --prefix stockscope-frontend run build",
+    "setup": "npm --prefix stockscope-frontend install"
+  }
+}

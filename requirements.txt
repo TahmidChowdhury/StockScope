@@ -37,3 +37,6 @@ python-multipart
 pydantic>=2.0.0
 cachetools
 pytest
+gnews>=0.4.3
+feedparser>=6.0.12
+finvizfinance>=1.3.0

@@ -1,20 +1,15 @@
 'use client'
 
-import { use } from 'react'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
+import { useParams } from 'next/navigation'
 import PriceChart from '@/components/PriceChart'
 import NewsComponent from '@/components/NewsComponent'
 import KeyMetricsComponent from '@/components/KeyMetrics'
 
-interface StockViewPageProps {
-  params: Promise<{
-    ticker: string
-  }>
-}
-
-export default function StockViewPage({ params }: StockViewPageProps) {
-  const { ticker } = use(params)
+export default function StockViewPage() {
+  const params = useParams<{ ticker: string }>()
+  const ticker = params.ticker ?? ''
   const symbol = ticker.toUpperCase()
 
   return (

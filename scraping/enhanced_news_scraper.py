@@ -1,6 +1,8 @@
 import os
 import requests
 import json
+import feedparser
+from gnews import GNews
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import yfinance as yf
@@ -15,20 +17,14 @@ load_dotenv()
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 analyzer = SentimentIntensityAnalyzer()
 
-# Major stock tickers for fallback content (S&P 500 list)
-MAJOR_TICKERS = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK-B", "UNH", "JNJ",
-    "JPM", "V", "PG", "XOM", "HD", "CVX", "MA", "PFE", "BAC", "ABBV",
-    "KO", "AVGO", "PEP", "TMO", "COST", "WMT", "MRK", "DIS", "ABT", "ACN",
-    "NFLX", "CRM", "VZ", "ADBE", "NKE", "DHR", "TXN", "NEE", "BMY", "PM",
-    "RTX", "UPS", "T", "QCOM", "ORCL", "LOW", "HON", "UNP", "MS", "COP",
-    "AMGN", "IBM", "AMD", "GS", "CAT", "INTU", "BA", "DE", "ELV", "AXP",
-    "BLK", "BKNG", "NOW", "PLD", "TJX", "GILD", "MDLZ", "GE", "LMT", "AMT",
-    "SYK", "ADP", "VRTX", "CVS", "MU", "C", "LRCX", "ADI", "ISRG", "MMC",
-    "TMUS", "ZTS", "EOG", "SO", "TGT", "HCA", "FI", "PYPL", "BSX", "REGN",
-    "CME", "WM", "PGR", "AON", "CL", "ITW", "DUK", "FCX", "USB", "EMR",
-    "APD", "SNPS", "GD", "NSC", "SHW", "MCO", "TFC", "ICE", "GM", "NOC"
-]
+# RSS feeds that reliably include stock/market news with real article URLs
+RSS_FEEDS = {
+    "MarketWatch":  "https://feeds.marketwatch.com/marketwatch/realtimeheadlines/",
+    "Reuters Business": "https://feeds.reuters.com/reuters/businessNews",
+    "CNBC":         "https://www.cnbc.com/id/10000664/device/rss/rss.html",
+    "Seeking Alpha": None,  # built per-ticker: https://seekingalpha.com/api/sa/combined/{ticker}.xml
+    "Benzinga":     "https://www.benzinga.com/feed",
+}
 
 class EnhancedNewsScraper:
     """Enhanced news scraper with multiple sources including Yahoo Finance and web scraping."""
@@ -200,123 +196,190 @@ class EnhancedNewsScraper:
             print(f"  ❌ Error fetching NewsAPI articles: {e}")
             return []
     
-    def scrape_motley_fool(self, ticker: str) -> List[Dict]:
-        """Scrape Motley Fool for stock-related articles."""
+    def fetch_gnews(self, ticker: str, company_name: str = "") -> List[Dict]:
+        """Fetch articles from Google News RSS via gnews — always returns real URLs."""
         try:
-            print(f"🔍 Scraping Motley Fool for {ticker}...")
-            
-            # Since the search endpoint is gone, try a few different approaches
-            search_urls = [
-                f"https://www.fool.com/quote/{ticker.upper()}/",
-                f"https://www.fool.com/investing/stock-market/{ticker.lower()}/",
-                f"https://www.fool.com/investing/{ticker.lower()}-stock/",
-            ]
-            
+            print(f"🔍 Fetching Google News for {ticker}...")
+            gn = GNews(language='en', country='US', period='7d', max_results=10)
+
+            query = f"{ticker} stock" if not company_name else f"{company_name} {ticker}"
+            results = gn.get_news(query)
+
             articles = []
-            
-            for search_url in search_urls:
+            for item in results:
                 try:
-                    response = self.session.get(search_url, timeout=10)
-                    
-                    # If we get a successful response, try to extract content
-                    if response.status_code == 200:
-                        soup = BeautifulSoup(response.content, 'html.parser')
-                        
-                        # Look for article links and titles
-                        article_links = soup.find_all('a', href=True)
-                        
-                        for link in article_links[:5]:  # Limit to 5 results
-                            try:
-                                title = link.get_text(strip=True)
-                                url = link.get('href', '')
-                                
-                                # Skip if no relevant title or too short
-                                if not title or len(title) < 20:
-                                    continue
-                                
-                                # Must contain ticker to be relevant
-                                if ticker.upper() not in title.upper():
-                                    continue
-                                
-                                # Skip navigation and non-article links
-                                if any(word in title.lower() for word in ['menu', 'footer', 'navigation', 'login', 'subscribe']):
-                                    continue
-                                
-                                # Prepend fool.com if relative URL
-                                if url and not url.startswith('http'):
-                                    if url.startswith('/'):
-                                        url = f"https://www.fool.com{url}"
-                                    else:
-                                        url = f"https://www.fool.com/{url}"
-                                
-                                # Look for a description nearby (sibling p tag)
-                                description = ""
-                                parent = link.parent
-                                if parent:
-                                    desc_elem = parent.find('p')
-                                    if desc_elem:
-                                        description = desc_elem.get_text(strip=True)
-                                
-                                # Calculate sentiment from title and description
-                                content = f"{title}. {description}".strip()
-                                sentiment_scores = self.analyzer.polarity_scores(content)
-                                
-                                articles.append({
-                                    'source': 'Motley Fool',
-                                    'title': title,
-                                    'description': description if description else title,
-                                    'url': url,
-                                    'publishedAt': datetime.now().isoformat(),
-                                    'sentiment': {
-                                        'compound': sentiment_scores['compound'],
-                                        'label': self.classify_sentiment(sentiment_scores['compound'])
-                                    }
-                                })
-                                
-                                # Break once we find articles to avoid duplicates
-                                if len(articles) >= 3:
-                                    break
-                                    
-                            except Exception as e:
-                                continue
-                        
-                        # If we found articles, break the outer loop
-                        if articles:
-                            break
-                            
-                except Exception as e:
-                    continue  # Try next URL
-            
-            # If no articles found from scraping, provide some fallback content
-            if not articles and ticker.upper() in MAJOR_TICKERS:
-                fallback_titles = [
-                    f"Is {ticker} Stock a Buy After Recent Moves?",
-                    f"3 Reasons to Consider {ticker} for Your Portfolio",
-                    f"{ticker} Stock Analysis: What Investors Should Know",
-                ]
-                
-                for i, title in enumerate(fallback_titles[:2]):  # Limit to 2 fallback articles
-                    sentiment_scores = self.analyzer.polarity_scores(title)
-                    
+                    title = item.get('title', '')
+                    url = item.get('url', '')
+                    description = item.get('description', '')
+                    publisher = item.get('publisher', {})
+                    source_name = publisher.get('title', 'Google News') if isinstance(publisher, dict) else str(publisher)
+                    pub_date = item.get('published date', '')
+
+                    if not title or not url:
+                        continue
+
+                    # Parse date
+                    try:
+                        published_at = datetime.strptime(pub_date, '%a, %d %b %Y %H:%M:%S %Z').isoformat()
+                    except Exception:
+                        published_at = datetime.now().isoformat()
+
+                    content = f"{title}. {description}".strip()
+                    sentiment_scores = self.analyzer.polarity_scores(content)
+
                     articles.append({
-                        'source': 'Motley Fool',
+                        'source': source_name,
                         'title': title,
-                        'description': f"Investment analysis and outlook for {ticker} stock from The Motley Fool.",
-                        'url': f"https://www.fool.com/investing/{ticker.lower()}-stock-analysis/",
-                        'publishedAt': (datetime.now() - timedelta(hours=i*2)).isoformat(),
+                        'description': description,
+                        'url': url,
+                        'publishedAt': published_at,
                         'sentiment': {
                             'compound': sentiment_scores['compound'],
                             'label': self.classify_sentiment(sentiment_scores['compound'])
                         }
                     })
-            
-            print(f"  ✅ Found {len(articles)} Motley Fool articles")
+                except Exception:
+                    continue
+
+            print(f"  ✅ Found {len(articles)} Google News articles")
             return articles
-            
+
         except Exception as e:
-            print(f"  ❌ Error scraping Motley Fool: {e}")
+            print(f"  ❌ Error fetching Google News: {e}")
             return []
-    
+
+    def fetch_rss_feeds(self, ticker: str, company_name: str = "") -> List[Dict]:
+        """Fetch and filter articles from RSS feeds, keeping only those mentioning the ticker."""
+        articles = []
+        ticker_upper = ticker.upper()
+        company_lower = company_name.lower() if company_name else ""
+
+        feed_urls = {
+            "Seeking Alpha": f"https://seekingalpha.com/api/sa/combined/{ticker_upper}.xml",
+            "MarketWatch": "https://feeds.marketwatch.com/marketwatch/realtimeheadlines/",
+            "Reuters Business": "https://feeds.reuters.com/reuters/businessNews",
+            "CNBC": "https://www.cnbc.com/id/10000664/device/rss/rss.html",
+            "Benzinga": "https://www.benzinga.com/feed",
+        }
+
+        for source_name, feed_url in feed_urls.items():
+            try:
+                print(f"🔍 Fetching {source_name} RSS for {ticker}...")
+                feed = feedparser.parse(feed_url)
+                count = 0
+
+                for entry in feed.entries[:30]:  # scan up to 30 entries per feed
+                    try:
+                        title = entry.get('title', '')
+                        url = entry.get('link', '')
+                        summary = entry.get('summary', '') or entry.get('description', '')
+                        # Strip HTML tags from summary
+                        if summary:
+                            summary = BeautifulSoup(summary, 'html.parser').get_text(separator=' ', strip=True)
+
+                        if not title or not url:
+                            continue
+
+                        # For global feeds, filter to ticker/company mentions only
+                        if source_name != "Seeking Alpha":
+                            combined = f"{title} {summary}".lower()
+                            if ticker_upper.lower() not in combined and (not company_lower or company_lower not in combined):
+                                continue
+
+                        # Parse date
+                        published_at = datetime.now().isoformat()
+                        if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                            try:
+                                published_at = datetime(*entry.published_parsed[:6]).isoformat()
+                            except Exception:
+                                pass
+
+                        content = f"{title}. {summary}".strip()
+                        sentiment_scores = self.analyzer.polarity_scores(content)
+
+                        articles.append({
+                            'source': source_name,
+                            'title': title,
+                            'description': summary[:300] if summary else '',
+                            'url': url,
+                            'publishedAt': published_at,
+                            'sentiment': {
+                                'compound': sentiment_scores['compound'],
+                                'label': self.classify_sentiment(sentiment_scores['compound'])
+                            }
+                        })
+                        count += 1
+                        if count >= 5:  # max 5 per feed
+                            break
+
+                    except Exception:
+                        continue
+
+                print(f"  ✅ Found {count} {source_name} articles")
+
+            except Exception as e:
+                print(f"  ❌ Error fetching {source_name} RSS: {e}")
+                continue
+
+        return articles
+
+    def fetch_finviz_news(self, ticker: str) -> List[Dict]:
+        """Fetch stock-specific news from Finviz."""
+        try:
+            print(f"🔍 Fetching Finviz news for {ticker}...")
+            from finvizfinance.quote import finvizfinance
+
+            stock = finvizfinance(ticker)
+            news_df = stock.ticker_news()
+
+            if news_df is None or news_df.empty:
+                print(f"  ⚠️ No Finviz news found for {ticker}")
+                return []
+
+            articles = []
+            for _, row in news_df.head(10).iterrows():
+                try:
+                    title = str(row.get('Title', '') or row.get('title', ''))
+                    url = str(row.get('Link', '') or row.get('link', '') or row.get('URL', '') or row.get('url', ''))
+                    date_val = row.get('Date', '') or row.get('date', '')
+
+                    if not title or not url or url == 'nan':
+                        continue
+
+                    # Parse date
+                    published_at = datetime.now().isoformat()
+                    if date_val:
+                        try:
+                            published_at = datetime.strptime(str(date_val), '%b-%d-%y %I:%M%p').isoformat()
+                        except Exception:
+                            try:
+                                published_at = str(date_val)
+                            except Exception:
+                                pass
+
+                    sentiment_scores = self.analyzer.polarity_scores(title)
+
+                    articles.append({
+                        'source': 'Finviz',
+                        'title': title,
+                        'description': '',
+                        'url': url,
+                        'publishedAt': published_at,
+                        'sentiment': {
+                            'compound': sentiment_scores['compound'],
+                            'label': self.classify_sentiment(sentiment_scores['compound'])
+                        }
+                    })
+                except Exception:
+                    continue
+
+            print(f"  ✅ Found {len(articles)} Finviz articles")
+            return articles
+
+        except Exception as e:
+            print(f"  ❌ Error fetching Finviz news: {e}")
+            return []
+
     def fetch_stocktwits(self, ticker: str) -> List[Dict]:
         """Fetch messages from Stocktwits using their public JSON API."""
         try:
@@ -340,6 +403,9 @@ class EnhancedNewsScraper:
                 try:
                     body = message.get('body', '')
                     created_at = message.get('created_at', '')
+                    message_id = message.get('id')
+                    user_data = message.get('user', {}) or {}
+                    username = user_data.get('username')
                     
                     # Skip if no body content
                     if not body or len(body.strip()) < 10:
@@ -357,11 +423,27 @@ class EnhancedNewsScraper:
                         except:
                             published_at = datetime.now().isoformat()
                     
-                    # Extract optional source URL
+                    # Prefer the canonical Stocktwits message permalink.
                     source_url = None
+                    if message_id and username:
+                        source_url = f"https://stocktwits.com/{username}/message/{message_id}"
+
+                    # Fall back to the API-provided source URL only if it isn't
+                    # the generic site root or mobile landing page.
                     source_data = message.get('source', {})
-                    if isinstance(source_data, dict):
-                        source_url = source_data.get('url')
+                    if not source_url and isinstance(source_data, dict):
+                        candidate_url = source_data.get('url')
+                        if candidate_url and candidate_url.rstrip('/').lower() not in {
+                            'https://stocktwits.com',
+                            'http://stocktwits.com',
+                            'https://www.stocktwits.com',
+                            'http://www.stocktwits.com',
+                            'https://stocktwits.com/mobile',
+                            'http://stocktwits.com/mobile',
+                            'https://www.stocktwits.com/mobile',
+                            'http://www.stocktwits.com/mobile',
+                        }:
+                            source_url = candidate_url
                     
                     # Calculate sentiment from message body
                     sentiment_scores = self.analyzer.polarity_scores(body)
@@ -374,6 +456,8 @@ class EnhancedNewsScraper:
                         'title': title,
                         'description': body,
                         'url': source_url,
+                        'message_id': message_id,
+                        'username': username,
                         'publishedAt': published_at,
                         'sentiment': {
                             'compound': sentiment_scores['compound'],
@@ -420,7 +504,7 @@ class EnhancedNewsScraper:
         
         return True
     
-    def fetch_comprehensive_news(self, ticker: str, limit: int = 30) -> str:
+    def fetch_comprehensive_news(self, ticker: str, limit: int = 50) -> str:
         """Fetch news from all sources and combine them."""
         
         print(f"📰 Fetching comprehensive news for {ticker}...")
@@ -430,11 +514,19 @@ class EnhancedNewsScraper:
         # Fetch from Yahoo Finance
         yahoo_articles = self.fetch_yahoo_finance_news(ticker)
         all_articles.extend(yahoo_articles)
-        
-        # Scrape Motley Fool
-        motley_articles = self.scrape_motley_fool(ticker)
-        all_articles.extend(motley_articles)
-        
+
+        # Fetch from Google News via gnews
+        gnews_articles = self.fetch_gnews(ticker)
+        all_articles.extend(gnews_articles)
+
+        # Fetch from RSS feeds (Seeking Alpha, MarketWatch, Reuters, CNBC, Benzinga)
+        rss_articles = self.fetch_rss_feeds(ticker)
+        all_articles.extend(rss_articles)
+
+        # Fetch from Finviz
+        finviz_articles = self.fetch_finviz_news(ticker)
+        all_articles.extend(finviz_articles)
+
         # Fetch from Stocktwits
         stocktwits_articles = self.fetch_stocktwits(ticker)
         all_articles.extend(stocktwits_articles)
@@ -489,7 +581,7 @@ if __name__ == "__main__":
         print(f"Testing enhanced news scraping for {ticker}")
         print('='*50)
         
-        result_path = fetch_enhanced_news_sentiment(ticker, 20)
+        result_path = fetch_enhanced_news_sentiment(ticker, 40)
         print(f"Results saved to: {result_path}")
         
         # Brief pause between requests

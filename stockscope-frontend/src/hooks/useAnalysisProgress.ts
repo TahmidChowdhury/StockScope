@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 interface AnalysisStatus {
   symbol: string
@@ -25,6 +25,10 @@ export function useAnalysisProgress({
 }: UseAnalysisProgressProps) {
   const [status, setStatus] = useState<AnalysisStatus | null>(null)
   const [isPolling, setIsPolling] = useState(false)
+  // Smoothed client-side progress that interpolates toward real backend value
+  const [displayProgress, setDisplayProgress] = useState(0)
+  const displayRef = useRef(0)
+  const rafRef = useRef<number>(0)
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -33,10 +37,54 @@ export function useAnalysisProgress({
     return password ? `?password=${encodeURIComponent(password)}` : ''
   }, [])
 
+  // Animate displayProgress toward a target value
+  const animateTo = useCallback((target: number) => {
+    cancelAnimationFrame(rafRef.current)
+    const step = () => {
+      const diff = target - displayRef.current
+      if (Math.abs(diff) < 0.3) {
+        displayRef.current = target
+        setDisplayProgress(target)
+        return
+      }
+      displayRef.current += diff * 0.04
+      setDisplayProgress(Math.round(displayRef.current * 10) / 10)
+      rafRef.current = requestAnimationFrame(step)
+    }
+    rafRef.current = requestAnimationFrame(step)
+  }, [])
+
+  // While analyzing but waiting for backend to report, creep progress slowly
+  // so the ring always moves. Caps at 85% so the real completion jump to 100 is visible.
+  useEffect(() => {
+    if (!isAnalyzing) {
+      displayRef.current = 0
+      setDisplayProgress(0)
+      return
+    }
+    const realProgress = status?.progress ?? 0
+    // If backend has reported progress, shoot straight there (capped at 95 until complete)
+    const backendTarget = status?.status === 'completed' ? 100 : Math.min(realProgress, 95)
+
+    // If we're already ahead of or at backend target, keep creeping slowly up to 85
+    if (displayRef.current >= backendTarget && displayRef.current < 85) {
+      const creep = setInterval(() => {
+        const next = Math.min(displayRef.current + 0.4, 85)
+        animateTo(next)
+      }, 500)
+      return () => clearInterval(creep)
+    }
+
+    // Otherwise animate to wherever the backend says
+    animateTo(backendTarget)
+  }, [isAnalyzing, status, animateTo])
+
+  // Cleanup RAF on unmount
+  useEffect(() => () => cancelAnimationFrame(rafRef.current), [])
+
   const pollStatus = useCallback(async () => {
     if (!symbol || !isAnalyzing) return
 
-    // Check if user is authenticated before making the request
     const passwordParam = getPasswordParam()
     if (!passwordParam) {
       console.warn('No authentication found, skipping status poll')
@@ -60,55 +108,46 @@ export function useAnalysisProgress({
       const data = await response.json()
       setStatus(data)
 
-      // Check if analysis is complete
       if (data.status === 'completed') {
         setIsPolling(false)
-        onComplete?.()
-      } else if (data.status === 'error') {
+        animateTo(100)
+        // Small delay so user sees 100% before transition
+        setTimeout(() => onComplete?.(), 600)
+      } else if (data.status === 'error' || data.status === 'failed') {
         setIsPolling(false)
         onError?.(data.message || 'Analysis failed')
       }
     } catch (error) {
       console.error('Error polling status:', error)
-      // For auth errors, stop polling and notify user
       if (error instanceof Error && error.message.includes('Authentication')) {
         setIsPolling(false)
         onError?.(error.message)
       }
-      // For other errors, continue polling (might be temporary network issues)
     }
-  }, [symbol, isAnalyzing, API_BASE_URL, getPasswordParam, onComplete, onError])
+  }, [symbol, isAnalyzing, API_BASE_URL, getPasswordParam, onComplete, onError, animateTo])
 
-  // Start polling when analysis begins
   useEffect(() => {
     if (isAnalyzing && symbol && !isPolling) {
       setIsPolling(true)
-      pollStatus() // Initial call
+      pollStatus()
     } else if (!isAnalyzing) {
       setIsPolling(false)
       setStatus(null)
     }
   }, [isAnalyzing, symbol, isPolling, pollStatus])
 
-  // Poll every 2 seconds while analyzing
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null
-
     if (isPolling) {
       interval = setInterval(pollStatus, 2000)
     }
-
-    return () => {
-      if (interval) {
-        clearInterval(interval)
-      }
-    }
+    return () => { if (interval) clearInterval(interval) }
   }, [isPolling, pollStatus])
 
   return {
     status,
     isPolling,
-    progress: status?.progress || 0,
+    progress: displayProgress,
     message: status?.message || 'Starting analysis...',
     currentPhase: status?.current_phase || 'Initializing'
   }

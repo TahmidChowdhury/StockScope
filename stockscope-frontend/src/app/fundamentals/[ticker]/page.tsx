@@ -1,6 +1,7 @@
 'use client'
 
 import { useFundamentals } from '@/hooks/useFundamentals'
+import { useParams } from 'next/navigation'
 import { 
   ComposedChart, 
   Bar, 
@@ -19,14 +20,7 @@ import {
   BanknotesIcon
 } from '@heroicons/react/24/outline'
 import { FundamentalsSeries } from '@/types'
-import { use } from 'react'
 import Link from 'next/link'
-
-interface FundamentalsPageProps {
-  params: Promise<{
-    ticker: string
-  }>
-}
 
 interface ChartDataPoint {
   date: string
@@ -38,8 +32,9 @@ interface ChartDataPoint {
   ebitda: number | null
 }
 
-export default function FundamentalsPage({ params }: FundamentalsPageProps) {
-  const { ticker } = use(params)
+export default function FundamentalsPage() {
+  const params = useParams<{ ticker: string }>()
+  const ticker = params.ticker?.toUpperCase() ?? ''
   const { data, isLoading, error } = useFundamentals(ticker)
 
   const formatPercent = (value: number | null) => {

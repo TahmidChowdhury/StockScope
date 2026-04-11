@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Filter, ArrowUpDown, CheckCircle, X } from 'lucide-react'
 
 interface FilterOption {
@@ -37,6 +37,22 @@ export default function FilterSortBar({
 }: FilterSortBarProps) {
   const [showFilters, setShowFilters] = useState(false)
   const [showSort, setShowSort] = useState(false)
+  const filterRef = useRef<HTMLDivElement>(null)
+  const sortRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdowns when clicking outside — eliminates the dark backdrop flash
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setShowFilters(false)
+      }
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) {
+        setShowSort(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const activeFiltersCount = filters.filter(f => f.enabled).length
 
@@ -53,7 +69,7 @@ export default function FilterSortBar({
         {/* Bottom/Right side - Filter and Sort controls */}
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Filter Dropdown */}
-          <div className="relative flex-1 sm:flex-initial">
+          <div className="relative flex-1 sm:flex-initial" ref={filterRef}>
             <button
               onClick={() => setShowFilters(!showFilters)}
               className={`
@@ -73,24 +89,10 @@ export default function FilterSortBar({
             </button>
 
             {showFilters && (
-              <>
-                {/* Mobile backdrop */}
-                <div 
-                  className="fixed inset-0 bg-black/50 z-40 sm:hidden"
-                  onClick={() => setShowFilters(false)}
-                />
-                
-                {/* Filter dropdown */}
-                <div className="absolute right-0 top-full mt-2 w-64 sm:w-56 bg-slate-900/95 backdrop-blur-sm border border-white/20 rounded-xl shadow-xl z-50 max-h-80 overflow-y-auto">
+              <div className="absolute right-0 top-full mt-2 w-64 sm:w-56 bg-slate-900/95 backdrop-blur-sm border border-white/20 rounded-xl shadow-xl z-50 max-h-80 overflow-y-auto">
                   <div className="p-3 sm:p-4">
                     <div className="flex items-center justify-between mb-3">
                       <div className="text-sm font-medium text-white">Filter by Source</div>
-                      <button
-                        onClick={() => setShowFilters(false)}
-                        className="text-white/60 hover:text-white sm:hidden"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
                     </div>
                     
                     <div className="space-y-2">
@@ -135,12 +137,11 @@ export default function FilterSortBar({
                     )}
                   </div>
                 </div>
-              </>
             )}
           </div>
 
           {/* Sort Dropdown */}
-          <div className="relative flex-1 sm:flex-initial">
+          <div className="relative flex-1 sm:flex-initial" ref={sortRef}>
             <button
               onClick={() => setShowSort(!showSort)}
               className="w-full sm:w-auto flex items-center justify-center gap-2 px-3 py-2 rounded-lg border bg-white/5 border-white/20 text-white/70 hover:bg-white/10 transition-all text-sm"
@@ -150,21 +151,13 @@ export default function FilterSortBar({
             </button>
 
             {showSort && (
-              <>
-                {/* Mobile backdrop */}
-                <div 
-                  className="fixed inset-0 bg-black/50 z-40 sm:hidden"
-                  onClick={() => setShowSort(false)}
-                />
-                
-                {/* Sort dropdown */}
-                <div className="absolute right-0 top-full mt-2 w-48 bg-slate-900/95 backdrop-blur-sm border border-white/20 rounded-xl shadow-xl z-50">
-                  <div className="p-2">
-                    <div className="flex items-center justify-between mb-2 sm:hidden px-2">
-                      <span className="text-sm font-medium text-white">Sort by</span>
-                      <button
-                        onClick={() => setShowSort(false)}
-                        className="text-white/60 hover:text-white"
+              <div className="absolute right-0 top-full mt-2 w-48 bg-slate-900/95 backdrop-blur-sm border border-white/20 rounded-xl shadow-xl z-50">
+                <div className="p-2">
+                  <div className="flex items-center justify-between mb-2 sm:hidden px-2">
+                    <span className="text-sm font-medium text-white">Sort by</span>
+                    <button
+                      onClick={() => setShowSort(false)}
+                      className="text-white/60 hover:text-white"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -190,7 +183,7 @@ export default function FilterSortBar({
                     ))}
                   </div>
                 </div>
-              </>
+
             )}
           </div>
         </div>

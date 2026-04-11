@@ -5,6 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { TrendingUp, TrendingDown, Activity, MessageSquare, Newspaper, Building2, X, AlertCircle, Target, Shield, FileText } from 'lucide-react'
 import type { StockDashboardProps, StockAnalysis, InvestmentAdvice, QuantitativeAnalysis } from '@/types'
 import { getSourceColor, getSentimentColor, CHART_COLORS } from '@/constants/colors'
+import { useWindowWidth } from '@/hooks/useWindowWidth'
 
 export default function StockDashboard({ symbol, onBack, embedded = false }: StockDashboardProps) {
   const [stockData, setStockData] = useState<StockAnalysis | null>(null)
@@ -25,8 +26,17 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
   const [isDeleting, setIsDeleting] = useState(false)
   const [userRole, setUserRole] = useState<string>('')
 
+  // Toast notification
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 4000)
+  }
+
   // New state for company information
   const [companyInfo, setCompanyInfo] = useState<{displayName?: string} | null>(null)
+  const windowWidth = useWindowWidth()
+  const isMobile = windowWidth < 640
 
   // Get API URL from environment variables
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -120,7 +130,7 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
       setShowAdviceModal(true)
     } catch (error) {
       console.error('Error fetching investment advice:', error)
-      alert('Failed to fetch investment advice. Please try again.')
+      showToast('Failed to fetch investment advice. Please try again.', 'error')
     } finally {
       setLoadingAdvice(false)
     }
@@ -141,7 +151,7 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
       setShowAnalysisModal(true)
     } catch (error) {
       console.error('Error fetching quantitative analysis:', error)
-      alert('Failed to fetch detailed analysis. Please try again.')
+      showToast('Failed to fetch detailed analysis. Please try again.', 'error')
     } finally {
       setLoadingAnalysis(false)
     }
@@ -194,14 +204,14 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
       }
       
       const result = await response.json()
-      alert(`Successfully deleted ${result.deleted_files.length} files for ${symbol}`)
+      showToast(`Deleted ${result.deleted_files.length} file${result.deleted_files.length !== 1 ? 's' : ''} for ${symbol}`, 'success')
       
-      // Go back to search after successful deletion
-      onBack()
+      // Go back after a brief delay so the toast is visible
+      setTimeout(() => onBack(), 1200)
       
     } catch (error) {
       console.error('Error deleting stock:', error)
-      alert(error instanceof Error ? error.message : 'Failed to delete stock data')
+      showToast(error instanceof Error ? error.message : 'Failed to delete stock data', 'error')
     } finally {
       setIsDeleting(false)
       setShowDeleteConfirm(false)
@@ -260,6 +270,17 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
 
   return (
     <div className={embedded ? "" : "min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900"}>
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl border text-sm font-medium transition-all animate-in fade-in slide-in-from-bottom-4 ${
+          toast.type === 'success'
+            ? 'bg-green-900/90 border-green-500/40 text-green-100'
+            : 'bg-red-900/90 border-red-500/40 text-red-100'
+        }`}>
+          <span>{toast.type === 'success' ? '✓' : '✕'}</span>
+          {toast.message}
+        </div>
+      )}
       <div className={embedded ? "" : "container mx-auto px-3 sm:px-4 py-4 sm:py-8"}>
         {/* Header - Only show when not embedded - FIXED: Better condition check */}
         {!embedded && (
@@ -326,7 +347,7 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
                     data={chartData}
                     cx="50%"
                     cy="50%"
-                    outerRadius={window.innerWidth < 640 ? 60 : 80}
+                    outerRadius={isMobile ? 60 : 80}
                     dataKey="count"
                     label={false}
                     labelLine={false}
@@ -347,7 +368,7 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
                       borderRadius: '8px',
                       color: 'white',
                       boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                      fontSize: window.innerWidth < 640 ? '12px' : '14px'
+                      fontSize: isMobile ? '12px' : '14px'
                     }}
                     itemStyle={{
                       color: 'white'
@@ -388,11 +409,11 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
                   <XAxis 
                     dataKey="source" 
                     stroke="rgba(255,255,255,0.7)" 
-                    fontSize={window.innerWidth < 640 ? 10 : 12}
+                    fontSize={isMobile ? 10 : 12}
                   />
                   <YAxis 
                     stroke="rgba(255,255,255,0.7)" 
-                    fontSize={window.innerWidth < 640 ? 10 : 12}
+                    fontSize={isMobile ? 10 : 12}
                   />
                   <Tooltip 
                     contentStyle={{ 
@@ -400,7 +421,7 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
                       border: 'none', 
                       borderRadius: '8px',
                       color: 'white',
-                      fontSize: window.innerWidth < 640 ? '12px' : '14px'
+                      fontSize: isMobile ? '12px' : '14px'
                     }} 
                   />
                   <Bar dataKey="count" fill={CHART_COLORS.PRIMARY} radius={[4, 4, 0, 0]} />

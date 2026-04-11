@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react'
 import { LoginRequest, SimpleAuthResponse } from '@/types'
+import { MagnifyingGlassIcon, CpuChipIcon, ArrowTrendingUpIcon, ChartBarSquareIcon } from '@heroicons/react/24/outline'
 
 // Get API URL from environment variables
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -58,7 +59,7 @@ export default function LoginForm({ onLoginSuccess }: LoginFormProps) {
         {/* Header - Mobile optimized */}
         <div className="text-center mb-6 sm:mb-8 lg:mb-12">
           <div className="inline-flex items-center justify-center w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full mb-3 sm:mb-4">
-            <span className="text-xl sm:text-2xl">📊</span>
+            <ChartBarSquareIcon className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
           </div>
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-2 sm:mb-4 leading-tight">
             StockScope Pro
@@ -71,19 +72,19 @@ export default function LoginForm({ onLoginSuccess }: LoginFormProps) {
         {/* Features Grid - Better mobile grid */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8 lg:mb-12">
           <div className="text-center p-4 sm:p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
-            <div className="text-2xl sm:text-3xl mb-2 sm:mb-4">🔍</div>
+            <div className="flex justify-center mb-2 sm:mb-4"><MagnifyingGlassIcon className="h-7 w-7 sm:h-8 sm:w-8 text-blue-400" /></div>
             <h3 className="text-base sm:text-lg font-semibold text-white mb-1 sm:mb-2">Real-Time Search</h3>
             <p className="text-sm text-gray-300">Instant autocomplete with 70+ popular stocks and custom symbol support</p>
           </div>
           
           <div className="text-center p-4 sm:p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
-            <div className="text-2xl sm:text-3xl mb-2 sm:mb-4">🤖</div>
+            <div className="flex justify-center mb-2 sm:mb-4"><CpuChipIcon className="h-7 w-7 sm:h-8 sm:w-8 text-purple-400" /></div>
             <h3 className="text-base sm:text-lg font-semibold text-white mb-1 sm:mb-2">AI Analysis</h3>
             <p className="text-sm text-gray-300">Advanced sentiment analysis from multiple data sources with ML insights</p>
           </div>
           
           <div className="text-center p-4 sm:p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
-            <div className="text-2xl sm:text-3xl mb-2 sm:mb-4">📈</div>
+            <div className="flex justify-center mb-2 sm:mb-4"><ArrowTrendingUpIcon className="h-7 w-7 sm:h-8 sm:w-8 text-green-400" /></div>
             <h3 className="text-base sm:text-lg font-semibold text-white mb-1 sm:mb-2">Investment Insights</h3>
             <p className="text-sm text-gray-300">Get BUY/SELL/HOLD recommendations with confidence scores and risk analysis</p>
           </div>

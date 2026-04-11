@@ -75,6 +75,19 @@ def _yoy_from_ttm(s: pd.Series) -> Optional[float]:
         return None
     return (curr - prev) / prev
 
+def _yoy_from_annual(s: pd.Series) -> Optional[float]:
+    """Calculate YoY growth from annual data (last year vs prior year)."""
+    if not _exists(s):
+        return None
+    s = pd.to_numeric(s, errors="coerce").dropna().sort_index()
+    if s.shape[0] < 2:
+        return None
+    curr = float(s.iloc[-1])
+    prev = float(s.iloc[-2])
+    if prev == 0:
+        return None
+    return (curr - prev) / prev
+
 def _margin_series(numer: pd.Series, denom: pd.Series) -> pd.Series:
     """Calculate margin series safely."""
     if not _exists(numer) or not _exists(denom):
@@ -97,6 +110,35 @@ def _latest(s: pd.Series) -> Optional[float]:
     return float(s.iloc[-1])
 
 # ---------- core data pulls
+
+def fetch_annuals(ticker: str) -> Dict[str, pd.Series]:
+    """Fetch annual data for YoY growth fallback."""
+    try:
+        t = yf.Ticker(ticker)
+        fin = t.financials      # annual income statement
+        cf = t.cashflow         # annual cash flow
+
+        revenue = _row(fin, ["Total Revenue", "TotalRevenue", "Revenue", "Net Revenue"])
+        op_inc  = _row(fin, ["Operating Income", "OperatingIncome", "Operating Profit"])
+        ocf     = _row(cf, ["Operating Cash Flow", "Total Cash From Operating Activities",
+                            "CashFromOperatingActivities"])
+        capex   = _row(cf, ["Capital Expenditures", "Purchase Of PPE", "PurchaseOfPPE",
+                            "Capital Expenditure", "Capex"])
+
+        fcf = pd.Series(dtype="float64")
+        if _exists(ocf):
+            if _exists(capex):
+                fcf = (ocf - capex.abs()).dropna().sort_index()
+            else:
+                fcf = ocf.copy().sort_index()
+
+        return {"revenue": revenue, "op_inc": op_inc, "fcf": fcf}
+    except Exception as e:
+        LOG.error("[fund] Error fetching annual data for %s: %s", ticker, str(e))
+        return {"revenue": pd.Series(dtype="float64"),
+                "op_inc": pd.Series(dtype="float64"),
+                "fcf": pd.Series(dtype="float64")}
+
 
 def fetch_quarterlies(ticker: str) -> Dict[str, pd.Series]:
     """Fetch quarterly data with expanded aliases and fallbacks."""
@@ -233,9 +275,10 @@ def compute_ttm_metrics(ticker: str) -> FundamentalsTTM:
     ebitda_ttm = _ttm(q["ebitda"])
     fcf_ttm = _ttm(q["fcf"])
 
-    # YoY growth calculations (only if >=8 quarters available)
-    rev_yoy = _yoy_from_ttm(q["revenue"])
-    fcf_yoy = _yoy_from_ttm(q["fcf"])
+    # YoY growth calculations (quarterly preferred, annual fallback)
+    a = fetch_annuals(ticker)
+    rev_yoy    = _yoy_from_ttm(q["revenue"]) or _yoy_from_annual(a["revenue"])
+    fcf_yoy    = _yoy_from_ttm(q["fcf"])     or _yoy_from_annual(a["fcf"])
     ebitda_yoy = _yoy_from_ttm(q["ebitda"])
 
     # Operating margin TTM

@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { useScreener } from '@/hooks/useFundamentals'
-import { FunnelIcon, ArrowLeftIcon, MagnifyingGlassIcon, ChartBarIcon } from '@heroicons/react/24/outline'
+import { FunnelIcon, MagnifyingGlassIcon, ChartBarIcon } from '@heroicons/react/24/outline'
+import SideNav from '@/components/SideNav'
 import Link from 'next/link'
 
 interface FilterState {
@@ -106,20 +107,17 @@ export default function ScreenerPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <div className="container mx-auto px-4 py-8">
+    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      <SideNav activePage="screener" />
+      <main className="flex-1 overflow-y-auto">
+      <div className="lg:hidden h-4" />
+      <div className="container mx-auto px-4 py-4 lg:py-6 pb-24 lg:pb-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-4 lg:mb-8">
           <div className="flex items-center gap-4">
-            <Link
-              href="/"
-              className="bg-white/10 hover:bg-white/20 text-white p-2 rounded-lg transition-colors backdrop-blur-sm border border-white/20"
-            >
-              <ArrowLeftIcon className="h-5 w-5" />
-            </Link>
             <div>
-              <h1 className="text-4xl font-bold text-white">🔍 Stock Screener</h1>
-              <p className="text-white/70">Filter stocks by financial criteria and performance</p>
+              <h1 className="text-2xl lg:text-4xl font-bold text-white">Stock Screener</h1>
+              <p className="text-sm lg:text-base text-white/70">Filter stocks by financial criteria and performance</p>
             </div>
           </div>
           <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20">
@@ -128,8 +126,8 @@ export default function ScreenerPage() {
         </div>
 
         {/* Filter Panel */}
-        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20 mb-8">
-          <h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
+        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 lg:p-6 border border-white/20 mb-4 lg:mb-8">
+          <h2 className="text-lg lg:text-xl font-semibold text-white mb-4 lg:mb-6 flex items-center gap-2">
             <FunnelIcon className="h-5 w-5" />
             Screening Criteria
           </h2>
@@ -138,7 +136,7 @@ export default function ScreenerPage() {
             {/* Revenue Growth Filter */}
             <div>
               <label className="block text-sm font-medium text-white/70 mb-2">
-                💰 Min Revenue Growth YoY (%)
+                Min Revenue Growth YoY (%)
               </label>
               <input
                 type="number"
@@ -154,7 +152,7 @@ export default function ScreenerPage() {
             {/* FCF Growth Filter */}
             <div>
               <label className="block text-sm font-medium text-white/70 mb-2">
-                💸 Min FCF Growth YoY (%)
+                Min FCF Growth YoY (%)
               </label>
               <input
                 type="number"
@@ -170,7 +168,7 @@ export default function ScreenerPage() {
             {/* Margin Growth Filter */}
             <div>
               <label className="block text-sm font-medium text-white/70 mb-2">
-                📈 Min Margin Growth YoY (pp)
+                Min Margin Growth YoY (pp)
               </label>
               <input
                 type="number"
@@ -186,7 +184,7 @@ export default function ScreenerPage() {
             {/* EBITDA Growth Filter */}
             <div>
               <label className="block text-sm font-medium text-white/70 mb-2">
-                📊 Min EBITDA Growth YoY (%)
+                Min EBITDA Growth YoY (%)
               </label>
               <input
                 type="number"
@@ -202,7 +200,7 @@ export default function ScreenerPage() {
             {/* Debt to Cash Filter */}
             <div>
               <label className="block text-sm font-medium text-white/70 mb-2">
-                🏦 Max Debt/Cash Ratio
+                Max Debt/Cash Ratio
               </label>
               <input
                 type="number"
@@ -218,7 +216,7 @@ export default function ScreenerPage() {
             {/* Results Limit */}
             <div>
               <label className="block text-sm font-medium text-white/70 mb-2">
-                🎯 Max Results
+                Max Results
               </label>
               <select
                 value={filters.limit}
@@ -236,7 +234,7 @@ export default function ScreenerPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div>
               <label className="block text-sm font-medium text-white/70 mb-2">
-                📊 Sort By
+                Sort By
               </label>
               <select
                 value={filters.sort_by}
@@ -253,7 +251,7 @@ export default function ScreenerPage() {
 
             <div>
               <label className="block text-sm font-medium text-white/70 mb-2">
-                ⚡ Sort Direction
+                Sort Direction
               </label>
               <select
                 value={filters.sort_dir}
@@ -294,7 +292,7 @@ export default function ScreenerPage() {
               ) : (
                 <>
                   <MagnifyingGlassIcon className="h-4 w-4" />
-                  🔍 Run Screen
+                  Run Screen
                 </>
               )}
             </button>
@@ -493,6 +491,7 @@ export default function ScreenerPage() {
           </div>
         )}
       </div>
+      </main>
     </div>
   )
 }

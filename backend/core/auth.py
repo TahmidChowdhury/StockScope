@@ -1,30 +1,124 @@
-"""Authentication dependencies for API routes."""
+"""Shared-password login and signed, expiring bearer sessions."""
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from __future__ import annotations
+
+import hmac
 import os
-import secrets
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
-security = HTTPBearer()
+from fastapi import Header, HTTPException, status
+from jose import JWTError, jwt
 
-# Simple password-based auth for now
-API_PASSWORD = os.getenv("API_PASSWORD", "defaultpassword123")
+ALGORITHM = "HS256"
+DEFAULT_ACCESS_TOKEN_EXPIRE_MINUTES = 480
+VALID_ROLES = frozenset({"admin", "demo", "guest"})
 
-def verify_password_dependency(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
-    """Verify API password from Authorization header."""
-    if not credentials or not credentials.credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
+
+def _read_passwords() -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+    admin_password = os.getenv("ADMIN_PASSWORD")
+    demo_password = os.getenv("DEMO_PASSWORD")
+    guest_password = os.getenv("GUEST_PASSWORD")
+    master_password = os.getenv("STOCKSCOPE_PASSWORD", admin_password)
+    return admin_password, demo_password, guest_password, master_password
+
+
+def _jwt_secret() -> str:
+    """Require a dedicated signing key; never derive one from login credentials."""
+    secret = os.getenv("SECRET_KEY") or os.getenv("JWT_SECRET")
+    if not secret or len(secret.strip()) < 32:
+        raise ValueError("SECRET_KEY or JWT_SECRET must contain at least 32 characters")
+    if secret == "stockscope-insecure-dev-secret-change-me" or secret in _read_passwords():
+        raise ValueError("The signing key must be dedicated and different from login passwords")
+    return secret
+
+
+def get_access_token_expire_minutes() -> int:
+    minutes = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(DEFAULT_ACCESS_TOKEN_EXPIRE_MINUTES)))
+    if minutes <= 0:
+        raise ValueError("ACCESS_TOKEN_EXPIRE_MINUTES must be positive")
+    return minutes
+
+
+def validate_auth_config() -> None:
+    """Fail closed before serving requests with missing or unsafe configuration."""
+    admin_password, demo_password, guest_password, _ = _read_passwords()
+    for name, value in (("ADMIN_PASSWORD", admin_password), ("DEMO_PASSWORD", demo_password), ("GUEST_PASSWORD", guest_password)):
+        if not value or not value.strip():
+            raise ValueError(f"{name} environment variable must be set")
+    if len({admin_password, demo_password, guest_password}) != 3:
+        raise ValueError("Admin, demo, and guest passwords must be different")
+    _jwt_secret()
+    get_access_token_expire_minutes()
+
+
+def get_user_role(password: str) -> Optional[str]:
+    admin_password, demo_password, guest_password, master_password = _read_passwords()
+    for configured, role in ((admin_password, "admin"), (demo_password, "demo"), (guest_password, "guest"), (master_password, "admin")):
+        if configured and hmac.compare_digest(password.encode("utf-8"), configured.encode("utf-8")):
+            return role
+    return None
+
+
+async def authenticate_user(password: str) -> tuple[bool, Optional[str]]:
+    role = get_user_role(password)
+    return role is not None, role
+
+
+def create_access_token(subject: str, role: str, expires_minutes: Optional[int] = None) -> str:
+    if not subject.strip() or role not in VALID_ROLES:
+        raise ValueError("A nonempty subject and a known role are required")
+    minutes = expires_minutes if expires_minutes is not None else get_access_token_expire_minutes()
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": subject,
+        "role": role,
+        "exp": now + timedelta(minutes=minutes),
+        "iat": now,
+        "type": "access",
+    }
+    return jwt.encode(payload, _jwt_secret(), algorithm=ALGORITHM)
+
+
+def _unauthorized(detail: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail, headers={"WWW-Authenticate": "Bearer"})
+
+
+def _decode_access_token(token: str) -> dict:
+    secret = _jwt_secret()
+    try:
+        payload = jwt.decode(
+            token,
+            secret,
+            algorithms=[ALGORITHM],
+            options={"require_exp": True, "require_iat": True, "require_sub": True},
         )
-    
-    # Simple password check (in production, use proper JWT/OAuth)
-    if not secrets.compare_digest(credentials.credentials, API_PASSWORD):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    return "authenticated_user"
+    except (JWTError, ValueError, TypeError, OverflowError) as exc:
+        raise _unauthorized("Invalid or expired token") from exc
+
+    issued_at, expires_at = payload.get("iat"), payload.get("exp")
+    if (
+        payload.get("type") != "access"
+        or not isinstance(payload.get("role"), str)
+        or payload["role"] not in VALID_ROLES
+        or not isinstance(payload.get("sub"), str)
+        or not payload["sub"].strip()
+        or type(issued_at) not in (int, float)
+        or type(expires_at) not in (int, float)
+        or not issued_at < expires_at
+        or issued_at > datetime.now(timezone.utc).timestamp() + 60
+    ):
+        raise _unauthorized("Invalid token payload")
+    return payload
+
+
+async def verify_password_with_role(
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+) -> str:
+    """Authenticate a bearer session. Passwords are accepted only by POST login."""
+    if not authorization:
+        raise _unauthorized("Sign in to obtain an Authorization Bearer token")
+    parts = authorization.split(" ", 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1].strip():
+        raise _unauthorized("Invalid Authorization header format")
+    return str(_decode_access_token(parts[1].strip())["role"])

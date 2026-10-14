@@ -2,12 +2,17 @@
   "name": "stockscope",
   "private": true,
   "scripts": {
-    "start": "./serve-app.sh",
-    "dev": "./dev-env.sh dev",
-    "start:dev": "./dev-env.sh start",
-    "backend": "./dev-env.sh backend",
+    "start": "uvicorn backend.api:app --host 0.0.0.0 --port ${PORT:-8000}",
+    "dev": "./dev-start.sh",
+    "start:dev": "./dev-start.sh",
+    "backend": ". venv/bin/activate && uvicorn backend.api:app --reload --port 8000",
     "frontend": "npm --prefix stockscope-frontend run frontend",
     "build": "npm --prefix stockscope-frontend run build",
-    "setup": "npm --prefix stockscope-frontend install"
+    "setup": "npm --prefix stockscope-frontend ci",
+    "test": ". venv/bin/activate && python -m pytest backend/tests -q",
+    "test:backend": ". venv/bin/activate && python -m pytest backend/tests/test_fundamentals.py -q",
+    "test:smoke": ". venv/bin/activate && python -m py_compile backend/api.py backend/core/auth.py backend/routers/fundamentals.py",
+    "lint": "npm --prefix stockscope-frontend run lint",
+    "test:frontend": "npm --prefix stockscope-frontend test"
   }
 }

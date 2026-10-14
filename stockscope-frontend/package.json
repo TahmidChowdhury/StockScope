@@ -6,11 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "backend": "cd .. && source venv/bin/activate && uvicorn backend.api:app --reload --port 8000",
     "frontend": "next dev",
     "full-app": "concurrently \"npm run backend\" \"npm run frontend\" --names \"Backend,Frontend\" --prefix-colors \"blue,green\"",
-    "setup": "npm install && npm install concurrently --save-dev"
+    "setup": "npm install && npm install concurrently --save-dev",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test src/lib/*.test.cjs"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.7",
@@ -19,23 +21,33 @@
     "@tanstack/react-query-devtools": "^5.85.5",
     "clsx": "^2.1.1",
     "lucide-react": "^0.541.0",
-    "next": "15.5.9",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
+    "next": "15.5.28",
+    "react": "19.1.10",
+    "react-dom": "19.1.10",
     "react-hot-toast": "^2.6.0",
     "recharts": "^3.1.2",
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
     "@types/node": "^20",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.2.1",
-    "eslint": "^8.57.1",
-    "eslint-config-next": "^15.5.0",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "15.5.28",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "@eslint/eslintrc": "^3.3.1"
+  },
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "^8.5.30"
+    },
+    "postcss-selector-parser": "^7.1.6"
   }
 }

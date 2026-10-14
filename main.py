@@ -4,15 +4,17 @@ from scraping.reddit_scraper import fetch_reddit_posts
 # from scraping.twitter_scraper import fetch_twitter_sentiment  # COMMENTED OUT - Twitter API disabled until paid access
 from scraping.sec_scraper import fetch_sec_sentiment
 from sentiment.analyzer import analyze_sentiment
-from datetime import datetime
+from datetime import datetime, timezone
+from backend.services.research import save_records
 import json
 import os
 import asyncio
+from sqlalchemy.exc import SQLAlchemyError
 
 async def run_pipeline(ticker: str, limit=20):
     """Run the complete data pipeline for Reddit data"""
     # Reddit scraper is now synchronous (web scraping)
-    posts = fetch_reddit_posts(ticker, limit=limit)
+    posts = await asyncio.to_thread(fetch_reddit_posts, ticker, limit=limit)
     enriched_posts = []
 
     def classify_sentiment(compound):
@@ -27,16 +29,10 @@ async def run_pipeline(ticker: str, limit=20):
         sentiment = analyze_sentiment(post["title"])
         post["sentiment"] = sentiment
         post["sentiment"]["label"] = classify_sentiment(sentiment["compound"])
-        post["created"] = datetime.fromtimestamp(post["created_utc"]).strftime("%Y-%m-%d %H:%M:%S")
+        post["created"] = datetime.fromtimestamp(post["created_utc"], timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         enriched_posts.append(post)
 
-    os.makedirs("data", exist_ok=True)
-    output_path = os.path.join("data", f"{ticker}_reddit_sentiment.json")
-
-    with open(output_path, "w") as f:
-        json.dump(enriched_posts, f, indent=2)
-
-    return output_path  # return the path so Streamlit can load it
+    return save_records(ticker, "reddit_sentiment", enriched_posts)
 
 
 async def run_full_pipeline_async(ticker: str, reddit_limit=20, twitter_limit=50, sec_limit=10):
@@ -62,10 +58,12 @@ async def run_full_pipeline_async(ticker: str, reddit_limit=20, twitter_limit=50
     
     # Fetch SEC data (keeping sync for now)
     try:
-        sec_path = fetch_sec_sentiment(ticker, limit=sec_limit)
+        sec_path = await asyncio.to_thread(fetch_sec_sentiment, ticker, limit=sec_limit)
         results['sec'] = sec_path
         if sec_path:
             print(f"[SUCCESS] SEC data saved to {sec_path}")
+    except SQLAlchemyError:
+        raise
     except Exception as e:
         print(f"[ERROR] SEC scraping failed: {e}")
         results['sec'] = None

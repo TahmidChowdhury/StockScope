@@ -1,5 +1,8 @@
 'use client'
 
+import { apiFetch } from '@/lib/api'
+import { newsDateLabels, normalizeNewsSentiment } from '@/lib/news'
+
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { Newspaper, RefreshCw, ExternalLink } from 'lucide-react'
 import FilterSortBar from './FilterSortBar'
@@ -7,7 +10,11 @@ import FilterSortBar from './FilterSortBar'
 interface NewsArticle {
   title: string
   url: string
-  publishedAt: string
+  publishedAt: string | null
+  provider_seen_at: string | null
+  source_type?: string
+  provider?: string
+  original_source?: string
   username?: string
   message_id?: number | string
   source: {
@@ -109,13 +116,16 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
 
       switch (currentSort) {
         case 'date-desc':
-          return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+          return (b.publishedAt ? new Date(b.publishedAt).getTime() : 0) - (a.publishedAt ? new Date(a.publishedAt).getTime() : 0)
         case 'date-asc':
-          return new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime()
+          return (a.publishedAt ? new Date(a.publishedAt).getTime() : Infinity) - (b.publishedAt ? new Date(b.publishedAt).getTime() : Infinity)
         case 'sentiment-desc':
-          return (b.sentiment?.score || 0) - (a.sentiment?.score || 0)
         case 'sentiment-asc':
-          return (a.sentiment?.score || 0) - (b.sentiment?.score || 0)
+          if (!a.sentiment) return b.sentiment ? 1 : 0
+          if (!b.sentiment) return -1
+          return currentSort === 'sentiment-desc'
+            ? b.sentiment.score - a.sentiment.score
+            : a.sentiment.score - b.sentiment.score
         default:
           return 0
       }
@@ -138,13 +148,6 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
 
   const handleSortChange = (sortId: string) => {
     setCurrentSort(sortId)
-  }
-
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-
-  const getPasswordParam = () => {
-    const password = localStorage.getItem('stockscope_password')
-    return password ? `?password=${encodeURIComponent(password)}` : ''
   }
 
   // Pull-to-refresh handlers for mobile
@@ -183,7 +186,7 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
     setError(null)
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stocks/${symbol}/news${getPasswordParam()}`)
+      const response = await apiFetch(`/api/stocks/${symbol}/news`)
       
       if (!response.ok) {
         throw new Error('Failed to fetch news data')
@@ -209,12 +212,16 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
       const transformedArticles = data.articles?.map((item: { 
         title?: string; 
         url?: string; 
-        publishedAt?: string; 
+        publishedAt?: string | null;
+        provider_seen_at?: string | null;
+        source_type?: string;
+        provider?: string;
+        original_source?: string;
         source?: string; 
         username?: string;
         message_id?: number | string;
         description?: string; 
-        sentiment?: { compound?: number; label?: string }
+        sentiment?: { compound?: number; label?: string } | null
       }) => {
         // Handle missing or invalid URLs better
         let articleUrl = item.url || ''
@@ -237,17 +244,18 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
         return {
           title: item.title || 'No title available',
           url: articleUrl,
-          publishedAt: item.publishedAt || new Date().toISOString(),
+          publishedAt: item.publishedAt && Number.isFinite(Date.parse(item.publishedAt)) ? item.publishedAt : null,
+          provider_seen_at: item.provider_seen_at && Number.isFinite(Date.parse(item.provider_seen_at)) ? item.provider_seen_at : null,
+          source_type: item.source_type,
+          provider: item.provider,
+          original_source: item.original_source,
           username: item.username,
           message_id: item.message_id,
           source: {
             name: item.source || 'Unknown Source'
           },
           description: item.description || '',
-          sentiment: item.sentiment ? {
-            score: item.sentiment.compound || 0,
-            label: item.sentiment.label || 'Neutral'
-          } : undefined
+          sentiment: normalizeNewsSentiment(item.sentiment, item.source_type)
         }
       }) || []
       
@@ -270,7 +278,7 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
       <div className={`bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 sm:p-6 ${className}`}>
         <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
           <Newspaper className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400" />
-          <h2 className="text-lg sm:text-xl font-semibold text-white">Latest News</h2>
+          <h2 className="text-lg sm:text-xl font-semibold text-white">Saved news</h2>
         </div>
         
         <div className="space-y-3 sm:space-y-4">
@@ -291,7 +299,7 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
       <div className={`bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 sm:p-6 ${className}`}>
         <div className="flex items-center gap-2 sm:gap-3 mb-4">
           <Newspaper className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400" />
-          <h2 className="text-lg sm:text-xl font-semibold text-white">Latest News</h2>
+          <h2 className="text-lg sm:text-xl font-semibold text-white">Saved news</h2>
         </div>
         <div className="text-center py-6 sm:py-8">
           <p className="text-red-400 mb-2 text-sm sm:text-base">Failed to load news</p>
@@ -314,7 +322,7 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 mb-4 sm:mb-6">
           <div className="flex items-center gap-2 sm:gap-3">
             <Newspaper className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400" />
-            <h2 className="text-lg sm:text-xl font-semibold text-white">Latest News</h2>
+            <h2 className="text-lg sm:text-xl font-semibold text-white">Saved news</h2>
             <span className="text-xs sm:text-sm text-white/60">for {symbol}</span>
           </div>
           
@@ -324,13 +332,15 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
             className="flex items-center gap-2 px-3 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-lg text-white text-sm transition-all disabled:opacity-50 touch-manipulation self-start sm:self-auto"
           >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">Refresh</span>
+            <span>Reload saved news</span>
           </button>
         </div>
 
+        <p className="text-xs text-white/50 mb-4">Saved articles may be out of date. Use Refresh sources in the analysis view to collect new research. Company releases are company statements and are not scored. News sentiment describes wording, not expected returns.</p>
+
         {/* Pull-to-refresh indicator for mobile */}
         <div className="lg:hidden text-center text-white/40 text-xs mb-4">
-          Pull down to refresh
+          Pull down to reload saved news
         </div>
 
         {/* Filter and Sort Bar - Mobile responsive */}
@@ -368,32 +378,22 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
 // News Card Component
 function EnhancedNewsCard({ article }: { article: NewsArticle }) {
   const hasLink = Boolean(article.url)
-
-  const formatRelativeTime = (dateString: string) => {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
-
-    if (diffInHours < 1) return 'Just now'
-    if (diffInHours < 24) return `${diffInHours}h ago`
-
-    const diffInDays = Math.floor(diffInHours / 24)
-    if (diffInDays < 7) return `${diffInDays}d ago`
-
-    return date.toLocaleDateString()
-  }
+  const isCompanyRelease = article.source_type === 'company_release'
+  const dates = newsDateLabels(article.publishedAt, article.provider_seen_at)
+  const providerLabel = article.provider === 'gdelt' ? 'GDELT'
+    : article.provider === 'company_ir_rss' ? 'Official company RSS' : null
 
   const getSentimentColor = (score?: number) => {
-    if (!score) return 'text-gray-400'
-    if (score > 0.1) return 'text-green-400'
-    if (score < -0.1) return 'text-red-400'
+    if (score == null) return 'text-gray-400'
+    if (score >= 0.05) return 'text-green-400'
+    if (score <= -0.05) return 'text-red-400'
     return 'text-yellow-400'
   }
 
   const getSentimentIcon = (score?: number) => {
-    if (!score) return '➡️'
-    if (score > 0.1) return '📈'
-    if (score < -0.1) return '📉'
+    if (score == null) return '➡️'
+    if (score >= 0.05) return '📈'
+    if (score <= -0.05) return '📉'
     return '➡️'
   }
 
@@ -429,11 +429,13 @@ function EnhancedNewsCard({ article }: { article: NewsArticle }) {
         </h3>
 
         {/* Meta row */}
-        <div className="flex items-center gap-2 text-sm text-white/60 mb-3">
-          <span className="truncate">{article.source.name}</span>
-          <span>•</span>
-          <span>{formatRelativeTime(article.publishedAt)}</span>
-          {article.sentiment && (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-white/60 mb-2">
+          <span className="break-all">{article.original_source || article.source.name}</span>
+          {isCompanyRelease && (
+            <span className="rounded border border-blue-400/30 bg-blue-400/10 px-2 py-0.5 text-xs text-blue-200">Company release</span>
+          )}
+          {providerLabel && <span className="text-xs text-white/40">via {providerLabel}</span>}
+          {!isCompanyRelease && article.sentiment && (
             <>
               <span>•</span>
               <span className={`flex items-center gap-1 ${getSentimentColor(article.sentiment.score)}`}>
@@ -442,6 +444,10 @@ function EnhancedNewsCard({ article }: { article: NewsArticle }) {
               </span>
             </>
           )}
+        </div>
+        <div className="text-xs text-white/50 mb-3 space-y-1">
+          <p title={article.publishedAt || undefined}>{dates.publication}</p>
+          {dates.discovery && <p title={article.provider_seen_at || undefined}>{dates.discovery}{article.provider === 'gdelt' ? ' by GDELT' : ''}</p>}
         </div>
 
         {/* Description (only if different from title) */}
@@ -456,7 +462,7 @@ function EnhancedNewsCard({ article }: { article: NewsArticle }) {
           {hasLink ? (
             <span className="inline-flex items-center gap-1 text-xs text-purple-400">
               <ExternalLink className="h-3 w-3" />
-              Read article
+              {isCompanyRelease ? 'Read company release' : 'Read article'}
             </span>
           ) : (
             <span className="text-xs text-white/30">No link available</span>

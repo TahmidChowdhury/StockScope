@@ -1,0 +1,112 @@
+"""Opt-in checks for an explicitly provisioned, disposable local PostgreSQL database.
+
+Set STOCKSCOPE_TEST_DATABASE_URL to a migrated database whose name ends in _test.
+No table/schema is dropped; fixture records are removed through the repository.
+"""
+
+import os
+from concurrent.futures import ThreadPoolExecutor
+from uuid import uuid4
+
+import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
+
+from backend.db import ResearchRepository
+from backend.db.engine import create_database_engine
+from backend.db.models import Base, ImportBatch
+
+
+@pytest.fixture(scope="module")
+def repository():
+    url = os.getenv("STOCKSCOPE_TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("Disposable PostgreSQL test database was not configured")
+    engine = create_database_engine(url)
+    if not (engine.url.database or "").endswith("_test"):
+        engine.dispose()
+        pytest.fail("Refusing integration checks outside an explicitly named _test database")
+    repository = ResearchRepository(engine)
+    repository.check_ready()
+    yield repository
+    engine.dispose()
+
+
+@pytest.fixture
+def symbols(repository):
+    values = ["T" + uuid4().hex[:7].upper(), "T" + uuid4().hex[:7].upper()]
+    yield values
+    for symbol in values:
+        job = repository.get_latest_run(symbol)
+        if job and job["status"] in {"pending", "processing"}:
+            repository.update_run(job["run_id"], status="failed", progress=100, message="Fixture cleanup")
+        repository.delete_symbol_research(symbol)
+
+
+def test_postgres_rls_and_anonymous_privileges(repository):
+    with repository.engine.begin() as connection:
+        # These roles only exist inside the user-provisioned disposable test cluster.
+        for role in ("anon", "authenticated"):
+            connection.execute(text(f"""DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') THEN
+                    CREATE ROLE "{role}" NOLOGIN;
+                END IF;
+            END $$"""))
+        rows = connection.execute(text("SELECT relname, relrowsecurity FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relkind = 'r'")).all()
+        flags = dict(rows)
+        for table in list(Base.metadata.tables) + ["alembic_version"]:
+            assert flags[table], f"RLS not enabled on {table}"
+            for role in ("anon", "authenticated"):
+                assert not connection.scalar(text("SELECT has_table_privilege(:role, :table, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')"), {"role": role, "table": table})
+        assert connection.scalar(text("SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = ANY(:tables)"), {"tables": list(Base.metadata.tables)}) == 0
+    with repository.engine.connect() as connection:
+        transaction = connection.begin()
+        connection.execute(text("SET LOCAL ROLE anon"))
+        with pytest.raises(DBAPIError):
+            connection.execute(text("SELECT payload FROM snapshot_revisions LIMIT 1"))
+        transaction.rollback()
+
+
+def test_postgres_owner_roundtrip_and_rls_even_if_select_is_granted(repository, symbols):
+    symbol = symbols[0]
+    records = [{"title": "Fixture evidence", "publishedAt": "2020-01-01T00:00:00Z", "fetched_at": "2020-01-02T00:00:00Z"}]
+    reference = repository.save_snapshot(symbol, "news_sentiment", records)
+    assert repository.read_snapshot_reference(reference) == records
+    assert repository.load_snapshots(symbol) == [("news_sentiment", records)]
+    with repository.engine.connect() as connection:
+        transaction = connection.begin()
+        connection.execute(text("GRANT SELECT ON snapshot_revisions TO anon"))
+        connection.execute(text("SET LOCAL ROLE anon"))
+        assert connection.scalar(text("SELECT count(*) FROM snapshot_revisions")) == 0
+        transaction.rollback()  # Restore the restricted privilege, even on test failure via connection close.
+
+
+def test_postgres_concurrent_job_creation_claims_only_once(repository, symbols):
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = list(executor.map(lambda _: repository.create_run(symbols[0], ["news"]), range(8)))
+    assert sum(result["created"] for result in results) == 1
+    assert len({result["run_id"] for result in results}) == 1
+
+
+def test_postgres_concurrent_identical_import_is_applied_once(repository, symbols):
+    manifest = uuid4().hex
+    snapshots = [(symbols[0], "news_sentiment", [{"title": "Fixture import"}])]
+    try:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            results = list(executor.map(lambda _: repository.import_snapshots(snapshots, manifest), range(4)))
+        assert sum(result["applied"] for result in results) == 1
+        assert len({result["batch_id"] for result in results}) == 1
+    finally:
+        repository.delete_symbol_research(symbols[0])
+        with repository.engine.begin() as connection:
+            connection.execute(ImportBatch.__table__.delete().where(ImportBatch.manifest_hash == manifest))
+
+
+def test_postgres_explicit_delete_keeps_another_symbols_shared_article(repository, symbols):
+    records = [{"url": f"https://example.org/{uuid4().hex}", "title": "Shared fixture"}]
+    first = repository.save_snapshot(symbols[0], "news_sentiment", records)
+    second = repository.save_snapshot(symbols[1], "news_sentiment", records)
+    repository.delete_symbol_research(symbols[0])
+    with pytest.raises(KeyError):
+        repository.read_snapshot_reference(first)
+    assert repository.read_snapshot_reference(second) == records

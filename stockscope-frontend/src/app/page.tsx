@@ -1,21 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import StockSearch from '@/components/StockSearch'
 import StockAnalysisHub from '@/components/StockAnalysisHub'
 import LoadingScreen from '@/components/LoadingScreen'
-import LoginForm from '@/components/LoginForm'
 import SideNav from '@/components/SideNav'
 import { useAnalysisProgress } from '@/hooks/useAnalysisProgress'
-import type { ViewType, StockMetadata, AuthState } from '@/types'
+import type { ViewType, StockMetadata } from '@/types'
+import { apiFetch, clearAuthSession, getAuthSession } from '@/lib/api'
 
-// Get API URL from environment variables
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export default function Home() {
-  const [authState, setAuthState] = useState<AuthState>({
-    isAuthenticated: false
-  })
   const [currentView, setCurrentView] = useState<ViewType>('search')
   const [selectedStock, setSelectedStock] = useState<string>('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -23,13 +18,13 @@ export default function Home() {
   const [stocks, setStocks] = useState<StockMetadata[]>([])
 
   // Use the analysis progress hook
-  const { status, progress, message, currentPhase } = useAnalysisProgress({
+  const { progress, message, currentPhase } = useAnalysisProgress({
     symbol: selectedStock,
     isAnalyzing,
-    onComplete: () => {
+    onComplete: (completed) => {
       setIsAnalyzing(false)
       setCurrentView('dashboard')
-      setAnalysisStatus(null)
+      setAnalysisStatus(completed.status === 'partial' ? completed.message : null)
     },
     onError: (error) => {
       setIsAnalyzing(false)
@@ -37,23 +32,12 @@ export default function Home() {
     }
   })
 
-  // Check for existing authentication on component mount
-  useEffect(() => {
-    const isAuthenticated = localStorage.getItem('stockscope_authenticated') === 'true'
-    if (isAuthenticated) {
-      setAuthState({ isAuthenticated: true })
-    }
-  }, [])
-
   // Fetch portfolio data when authenticated
   useEffect(() => {
     const fetchPortfolioData = async () => {
-      if (!authState.isAuthenticated) return
       
       try {
-        const password = localStorage.getItem('stockscope_password')
-        const passwordParam = password ? `?password=${encodeURIComponent(password)}` : ''
-        const response = await fetch(`${API_BASE_URL}/api/stocks${passwordParam}`)
+        const response = await apiFetch(`/api/stocks`)
         
         if (response.ok) {
           const data = await response.json()
@@ -64,8 +48,8 @@ export default function Home() {
               setStocks(data.stocks.map((symbol: string) => ({
                 symbol,
                 total_posts: 0,
-                avg_sentiment: 0,
-                last_updated: '',
+                avg_sentiment: null,
+                last_updated: null,
                 sources: []
               })))
             } else {
@@ -81,46 +65,19 @@ export default function Home() {
     
     fetchPortfolioData()
     
-    // Set up periodic refresh
-    if (authState.isAuthenticated) {
-      const interval = setInterval(() => {
-        const isAnalyzing = localStorage.getItem('stockscope_analyzing') === 'true'
-        if (!isAnalyzing) {
-          fetchPortfolioData()
-        }
-      }, 30000)
-      
-      return () => clearInterval(interval)
-    }
-  }, [authState.isAuthenticated])
+    const interval = setInterval(fetchPortfolioData, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Progress updates are now handled entirely via useAnalysisProgress callbacks (onComplete/onError)
 
-  const handleLoginSuccess = () => {
-    setAuthState({ isAuthenticated: true })
-  }
-
-  const handleLogout = () => {
-    localStorage.removeItem('stockscope_authenticated')
-    localStorage.removeItem('stockscope_password')
-    setAuthState({ isAuthenticated: false })
-    setCurrentView('search')
-    setSelectedStock('')
-    setAnalysisStatus(null)
-    setStocks([])
-  }
-
-  const getPasswordParam = () => {
-    const password = localStorage.getItem('stockscope_password')
-    return password ? `?password=${encodeURIComponent(password)}` : ''
-  }
+  const handleLogout = () => clearAuthSession()
 
   const handleAnalyze = async (symbol: string) => {
-    if (!authState.isAuthenticated) return
     
     try {
       // First check if data already exists
-      const existingDataResponse = await fetch(`${API_BASE_URL}/api/stocks/${symbol}${getPasswordParam()}`)
+      const existingDataResponse = await apiFetch(`/api/stocks/${symbol}`)
       if (existingDataResponse.ok) {
         setSelectedStock(symbol)
         setCurrentView('dashboard')
@@ -130,30 +87,25 @@ export default function Home() {
 
       // Start analysis and enable progress tracking
       setSelectedStock(symbol)
-      setIsAnalyzing(true)
       setAnalysisStatus(`Starting analysis for ${symbol}...`)
 
       // Start new analysis
-      const response = await fetch(`${API_BASE_URL}/api/stocks/analyze${getPasswordParam()}`, {
+      const response = await apiFetch(`/api/stocks/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           symbol: symbol,
-          sources: ['news', 'sec']  // Removed reddit since it's not implemented
+          sources: ['news', 'sec_facts']  // Removed reddit since it's not implemented
         }),
       })
-
-      if (response.status === 401) {
-        handleLogout()
-        return
-      }
 
       if (!response.ok) {
         throw new Error('Failed to start analysis')
       }
 
+      setIsAnalyzing(true)
       // Kick off a portfolio refresh in the background so new symbols appear
       refreshPortfolioData()
 
@@ -184,7 +136,7 @@ export default function Home() {
   // Refresh portfolio data function
   const refreshPortfolioData = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stocks${getPasswordParam()}`)
+      const response = await apiFetch(`/api/stocks`)
       if (response.ok) {
         const data = await response.json()
         if (Array.isArray(data.stocks)) {
@@ -192,8 +144,8 @@ export default function Home() {
             setStocks(data.stocks.map((symbol: string) => ({
               symbol,
               total_posts: 0,
-              avg_sentiment: 0,
-              last_updated: '',
+              avg_sentiment: null,
+              last_updated: null,
               sources: []
             })))
           } else {
@@ -204,11 +156,6 @@ export default function Home() {
     } catch (error) {
       console.error('Failed to refresh portfolio:', error)
     }
-  }
-
-  // Show login form if not authenticated
-  if (!authState.isAuthenticated) {
-    return <LoginForm onLoginSuccess={handleLoginSuccess} />
   }
 
   if (currentView === 'dashboard' && selectedStock) {
@@ -291,7 +238,6 @@ export default function Home() {
           {/* Portfolio */}
           <PortfolioView
             onViewDashboard={handleViewDashboard}
-            passwordParam={getPasswordParam()}
             onStocksChange={setStocks}
           />
 
@@ -303,13 +249,13 @@ export default function Home() {
 }
 
 // Portfolio component to show existing analyzed stocks
-function PortfolioView({ onViewDashboard, passwordParam, onStocksChange }: { 
+function PortfolioView({ onViewDashboard, onStocksChange }: {
   onViewDashboard: (symbol: string) => void
-  passwordParam: string
   onStocksChange?: (stocks: StockMetadata[]) => void
 }) {
   const [stocks, setStocks] = useState<StockMetadata[]>([])
   const [loading, setLoading] = useState(true)
+  const [isAdmin] = useState(() => getAuthSession()?.role === 'admin')
   const [selectedStocks, setSelectedStocks] = useState<Set<string>>(new Set())
   const [isSelectionMode, setIsSelectionMode] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -328,18 +274,18 @@ function PortfolioView({ onViewDashboard, passwordParam, onStocksChange }: {
   } | null>(null)
 
   // Helper: update local state AND notify parent (keeps SideNav in sync)
-  const applyStocks = (raw: StockMetadata[] | string[]) => {
+  const applyStocks = useCallback((raw: StockMetadata[] | string[]) => {
     const normalised: StockMetadata[] = raw.length > 0 && typeof raw[0] === 'string'
-      ? (raw as string[]).map((symbol) => ({ symbol, total_posts: 0, avg_sentiment: 0, last_updated: '', sources: [] }))
+      ? (raw as string[]).map((symbol) => ({ symbol, total_posts: 0, avg_sentiment: null, last_updated: null, sources: [] }))
       : raw as StockMetadata[]
     setStocks(normalised)
     onStocksChange?.(normalised)
-  }
+  }, [onStocksChange])
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/stocks${passwordParam}`)
+        const response = await apiFetch(`/api/stocks`)
         if (response.ok) {
           const data = await response.json()
           if (Array.isArray(data.stocks)) {
@@ -355,17 +301,13 @@ function PortfolioView({ onViewDashboard, passwordParam, onStocksChange }: {
     
     fetchData()
     
-    // Set up periodic refresh to catch newly completed analyses, but only when no analysis is running
+    // Reload the saved watchlist to catch completed analyses.
     const interval = setInterval(() => {
-      // Only refresh if we're not currently analyzing anything
-      const isAnalyzing = localStorage.getItem('stockscope_analyzing') === 'true'
-      if (!isAnalyzing) {
-        fetchData()
-      }
+      fetchData()
     }, 30000) // Refresh every 30 seconds instead of 10
     
     return () => clearInterval(interval)
-  }, [passwordParam])
+  }, [applyStocks])
 
   const handleStockSelection = (symbol: string) => {
     const newSelected = new Set(selectedStocks)
@@ -393,14 +335,14 @@ function PortfolioView({ onViewDashboard, passwordParam, onStocksChange }: {
         setConfirmModal(null)
         setDeletingStock(symbol)
         try {
-          const response = await fetch(`${API_BASE_URL}/api/stocks/${symbol}${passwordParam}`, {
+          const response = await apiFetch(`/api/stocks/${symbol}`, {
             method: 'DELETE'
           })
 
           if (response.ok) {
             const result = await response.json()
             showToast(`Deleted ${result.deleted_files.length} file${result.deleted_files.length !== 1 ? 's' : ''} for ${symbol}`, 'success')
-            const refreshResponse = await fetch(`${API_BASE_URL}/api/stocks${passwordParam}`)
+            const refreshResponse = await apiFetch(`/api/stocks`)
             if (refreshResponse.ok) {
               const data = await refreshResponse.json()
               if (Array.isArray(data.stocks)) { applyStocks(data.stocks) }
@@ -435,7 +377,7 @@ function PortfolioView({ onViewDashboard, passwordParam, onStocksChange }: {
         try {
           for (const symbol of selectedStocks) {
             try {
-              const response = await fetch(`${API_BASE_URL}/api/stocks/${symbol}${passwordParam}`, {
+              const response = await apiFetch(`/api/stocks/${symbol}`, {
                 method: 'DELETE'
               })
               if (response.ok) {
@@ -457,7 +399,7 @@ function PortfolioView({ onViewDashboard, passwordParam, onStocksChange }: {
           setSelectedStocks(new Set())
           setIsSelectionMode(false)
 
-          const refreshResponse = await fetch(`${API_BASE_URL}/api/stocks${passwordParam}`)
+          const refreshResponse = await apiFetch(`/api/stocks`)
           if (refreshResponse.ok) {
             const data = await refreshResponse.json()
             if (Array.isArray(data.stocks)) { applyStocks(data.stocks) }
@@ -482,7 +424,7 @@ function PortfolioView({ onViewDashboard, passwordParam, onStocksChange }: {
       <div className="max-w-4xl mx-auto mb-8 sm:mb-12 px-2 sm:px-0">
         <div className="text-center">
           <div className="h-6 w-6 sm:h-8 sm:w-8 animate-spin rounded-full border-2 border-white/30 border-t-white mx-auto mb-2" />
-          <p className="text-white/60 text-sm sm:text-base">Loading your portfolio...</p>
+          <p className="text-white/60 text-sm sm:text-base">Loading the watchlist...</p>
         </div>
       </div>
     )
@@ -494,7 +436,7 @@ function PortfolioView({ onViewDashboard, passwordParam, onStocksChange }: {
         <div className="bg-white/5 backdrop-blur-sm rounded-xl p-6 sm:p-8 border border-white/10">
           <div className="text-3xl sm:text-4xl mb-2 sm:mb-4">📈</div>
           <h3 className="text-lg sm:text-xl font-semibold text-white mb-1 sm:mb-2">No Stocks Analyzed Yet</h3>
-          <p className="text-sm sm:text-base text-white/70">Use the search above to analyze your first stock and start building your portfolio</p>
+          <p className="text-sm sm:text-base text-white/70">Use the search above to analyze your first stock and start building the shared watchlist</p>
         </div>
       </div>
     )
@@ -546,10 +488,10 @@ function PortfolioView({ onViewDashboard, passwordParam, onStocksChange }: {
     <div className="max-w-6xl mx-auto mb-8 sm:mb-12 px-3 sm:px-4">
       {/* Portfolio Header with Controls - Mobile optimized */}
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl sm:text-2xl font-bold text-white">Portfolio</h2>
+        <h2 className="text-xl sm:text-2xl font-bold text-white">Shared watchlist</h2>
         
         <div className="flex items-center gap-2 sm:gap-3">
-          {isSelectionMode ? (
+          {isAdmin && (isSelectionMode ? (
             <>
               <span className="text-white/70 text-sm">
                 <span className="hidden sm:inline">{selectedStocks.size} of {stocks.length} selected</span>
@@ -591,10 +533,10 @@ function PortfolioView({ onViewDashboard, passwordParam, onStocksChange }: {
               onClick={() => setIsSelectionMode(true)}
               className="bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg text-sm transition-colors border border-white/20 flex items-center gap-2"
             >
-              <span className="hidden sm:inline">Manage Portfolio</span>
+              <span className="hidden sm:inline">Manage Watchlist</span>
               <span className="sm:hidden">Manage</span>
             </button>
-          )}
+          ))}
         </div>
       </div>
 
@@ -657,8 +599,9 @@ function PortfolioView({ onViewDashboard, passwordParam, onStocksChange }: {
                     <div className="text-base sm:text-lg font-semibold text-white">
                       ${stock.currentPrice.toFixed(2)}
                     </div>
+                    <div className="text-xs text-white/50">Latest close · {stock.price_as_of?.slice(0, 10) ?? 'Date unknown'}</div>
                     {/* Price Change */}
-                    {stock.priceChange !== undefined && stock.priceChangePercent !== undefined && (
+                    {stock.priceChange != null && stock.priceChangePercent != null && (
                       <div className={`text-sm flex items-center justify-center gap-1 ${
                         stock.priceChange > 0 ? 'text-green-400' : 
                         stock.priceChange < 0 ? 'text-red-400' : 'text-white/60'
@@ -678,17 +621,19 @@ function PortfolioView({ onViewDashboard, passwordParam, onStocksChange }: {
               {/* Bottom Section - Sentiment */}
               <div className="text-center">
                 <div className={`text-sm flex items-center justify-center gap-1 ${
-                  stock.avg_sentiment > 0.1 ? 'text-green-400' : 
-                  stock.avg_sentiment < -0.1 ? 'text-red-400' : 'text-yellow-400'
+                  stock.avg_sentiment == null ? 'text-white/50' :
+                  stock.avg_sentiment >= 0.05 ? 'text-green-400' :
+                  stock.avg_sentiment <= -0.05 ? 'text-red-400' : 'text-yellow-400'
                 }`}>
-                  {stock.avg_sentiment > 0.1 ? 'Bullish' :
-                   stock.avg_sentiment < -0.1 ? 'Bearish' : 'Neutral'}
+                  {stock.avg_sentiment == null ? 'Sentiment unavailable' :
+                   stock.avg_sentiment >= 0.05 ? 'Positive news' :
+                   stock.avg_sentiment <= -0.05 ? 'Negative news' : 'Neutral news'}
                 </div>
               </div>
             </button>
 
             {/* Individual Delete Button - Better positioned */}
-            {!isSelectionMode && (
+            {isAdmin && !isSelectionMode && (
               <button
                 onClick={(e) => {
                   e.stopPropagation()
@@ -712,7 +657,7 @@ function PortfolioView({ onViewDashboard, passwordParam, onStocksChange }: {
       {/* Bulk Selection Help Text */}
       {isSelectionMode && (
         <div className="mt-6 text-center text-white/60 text-sm">
-          <span className="hidden sm:inline">Click on stocks to select them for bulk deletion, or use "Select All" to choose all stocks.</span>
+          <span className="hidden sm:inline">Click on stocks to select them for bulk deletion, or use &quot;Select All&quot; to choose all stocks.</span>
           <span className="sm:hidden">Tap stocks to select for deletion</span>
         </div>
       )}

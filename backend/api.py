@@ -3,6 +3,8 @@ Optimized FastAPI backend for StockScope with caching, proper error handling, ef
 """
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Query, status
+from contextlib import asynccontextmanager
+from sqlalchemy.exc import SQLAlchemyError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -11,11 +13,21 @@ import sys
 import os
 import asyncio
 import json
-from datetime import datetime, timedelta
+import math
+from datetime import datetime, timedelta, timezone
+from time import monotonic
+from threading import RLock
 from functools import lru_cache
 import logging
 from enum import Enum
 from dotenv import load_dotenv
+from backend.core.auth import (
+    authenticate_user,
+    get_access_token_expire_minutes,
+    create_access_token,
+    validate_auth_config,
+    verify_password_with_role,
+)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -24,98 +36,50 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Multi-level password authentication - SECURE VERSION
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-DEMO_PASSWORD = os.getenv("DEMO_PASSWORD") 
-GUEST_PASSWORD = os.getenv("GUEST_PASSWORD")
-
-# For backward compatibility
-MASTER_PASSWORD = os.getenv("STOCKSCOPE_PASSWORD", ADMIN_PASSWORD)
-
-# Validate that passwords are set
-if not ADMIN_PASSWORD:
-    raise ValueError("ADMIN_PASSWORD environment variable must be set")
-if not DEMO_PASSWORD:
-    raise ValueError("DEMO_PASSWORD environment variable must be set")  
-if not GUEST_PASSWORD:
-    raise ValueError("GUEST_PASSWORD environment variable must be set")
-
-def get_user_role(password: str) -> str:
-    """Determine user role based on password"""
-    if password == ADMIN_PASSWORD:
-        return "admin"
-    elif password == DEMO_PASSWORD:
-        return "demo"
-    elif password == GUEST_PASSWORD:
-        return "guest"
-    elif password == MASTER_PASSWORD:
-        return "admin"  # Backward compatibility
-    else:
-        return None
-
-async def authenticate_user(password: str) -> tuple[bool, str]:
-    """Simple password authentication with role detection"""
-    role = get_user_role(password)
-    if role:
-        logger.info(f"Authentication successful - {role} access granted")
-        return True, role
-    return False, None
-
-# Dependency for authentication with role
-async def verify_password_with_role(password: str = Query(..., description="Password")):
-    """Password verification with role detection"""
-    is_valid, role = await authenticate_user(password)
-    if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid password"
-        )
-    return role
+# Validate auth-related environment variables at startup
+validate_auth_config()
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import your existing functions
 from main import run_full_pipeline_async
-from scraping.news_scraper import fetch_news_sentiment
-from scraping.enhanced_news_scraper import fetch_enhanced_news_sentiment
-from analysis.investment_advisor import InvestmentAdvisor
-from analysis.quantitative_strategies import QuantitativeStrategies
+from scraping.enhanced_news_scraper import fetch_enhanced_news_with_results
+from backend.services.research import (
+    data_directory, load_evidence, latest_timestamp, freshness,
+    sentiment_metrics, source_analyses, filing_events, normalized_symbol, evidence_freshness,
+    parse_timestamp, repository, list_saved_symbols, delete_saved_research,
+    saved_news, read_records_reference, save_records,
+)
 
 # Import fundamentals router
 from backend.routers.fundamentals import router as fundamentals_router
 
+
+def finite_number(value) -> Optional[float]:
+    """Keep observed zero distinct from absent or nonfinite provider values."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (ValueError, TypeError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 # Add utility functions directly to replace the removed ones
 def get_available_tickers():
-    """Get list of available stock tickers from data files"""
-    try:
-        data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
-        if not os.path.exists(data_dir):
-            return []
-        
-        tickers = set()
-        for filename in os.listdir(data_dir):
-            if filename.endswith('_sentiment.json') or filename.endswith('.json'):
-                # Extract ticker from filename (e.g., AAPL_reddit_sentiment.json -> AAPL)
-                ticker = filename.split('_')[0]
-                tickers.add(ticker)
-        
-        return sorted(list(tickers))
-    except Exception as e:
-        logger.error(f"Error getting available tickers: {e}")
-        return []
+    """Read the shared watchlist from the configured authoritative storage."""
+    return list_saved_symbols()
 
 def validate_stock_symbol(symbol: str) -> tuple[bool, str]:
     """Validate if a stock symbol exists using yfinance"""
     try:
+        symbol = normalized_symbol(symbol)
+    except ValueError as exc:
+        return False, str(exc)
+    try:
         import yfinance as yf
-        
-        # Clean the symbol
-        symbol = symbol.upper().strip()
-        
-        # Basic format validation
-        if not symbol or len(symbol) > 10 or not symbol.isalpha():
-            return False, "Invalid symbol format"
         
         # Check with yfinance
         ticker = yf.Ticker(symbol)
@@ -126,7 +90,7 @@ def validate_stock_symbol(symbol: str) -> tuple[bool, str]:
             return False, f"Symbol '{symbol}' not found in market data"
         
         # Additional check - try to get some recent data
-        hist = ticker.history(period="5d")
+        hist = ticker.history(period="5d", timeout=10)
         if hist.empty:
             return False, f"No trading data available for '{symbol}'"
         
@@ -136,252 +100,121 @@ def validate_stock_symbol(symbol: str) -> tuple[bool, str]:
         return False, f"Error validating symbol: {str(e)}"
 
 def delete_stock_data(symbol: str) -> tuple[bool, str, list]:
-    """Delete all data files for a given stock symbol"""
-    try:
-        symbol = symbol.upper().strip()
-        data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
-        
-        if not os.path.exists(data_dir):
-            return False, "Data directory not found", []
-        
-        # Find all files for this symbol
-        files_to_delete = []
-        for filename in os.listdir(data_dir):
-            if filename.startswith(f"{symbol}_") and filename.endswith('.json'):
-                files_to_delete.append(filename)
-        
-        if not files_to_delete:
-            return False, f"No data files found for symbol '{symbol}'", []
-        
-        # Delete the files
-        deleted_files = []
-        for filename in files_to_delete:
-            file_path = os.path.join(data_dir, filename)
-            try:
-                os.remove(file_path)
-                deleted_files.append(filename)
-                logger.info(f"Deleted file: {filename}")
-            except Exception as e:
-                logger.error(f"Failed to delete {filename}: {e}")
-        
-        return True, f"Successfully deleted {len(deleted_files)} files for '{symbol}'", deleted_files
-        
-    except Exception as e:
-        logger.error(f"Error deleting stock data for {symbol}: {e}")
-        return False, f"Error deleting data: {str(e)}", []
+    removed = delete_saved_research(symbol)
+    return bool(removed), (f"Deleted saved research for {symbol}" if removed else "No saved research found"), removed
 
 def load_dataframes(ticker):
-    """Load and combine all sentiment data for a ticker into a single DataFrame"""
-    import pandas as pd
-    
-    try:
-        data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
-        combined_data = []
-        
-        # Look for all files matching the ticker pattern
-        for filename in os.listdir(data_dir):
-            if filename.startswith(f"{ticker}_") and filename.endswith('.json'):
-                file_path = os.path.join(data_dir, filename)
-                
-                try:
-                    with open(file_path, 'r') as f:
-                        data = json.load(f)
-                    
-                    # Determine source from filename
-                    if 'reddit' in filename:
-                        source = 'Reddit'
-                    elif 'news' in filename:
-                        source = 'News'
-                    elif 'sec' in filename:
-                        source = 'SEC'
-                    else:
-                        source = 'Unknown'
-                    
-                    # Process each item in the data
-                    for item in data:
-                        if isinstance(item, dict):
-                            # Add source info
-                            item['source'] = source
-                            
-                            # Standardize sentiment data - handle nested sentiment objects
-                            if 'sentiment' in item and isinstance(item['sentiment'], dict):
-                                # Extract sentiment scores from nested object
-                                sentiment_data = item['sentiment']
-                                item['compound'] = sentiment_data.get('compound', 0.0)
-                                item['pos'] = sentiment_data.get('pos', 0.0)
-                                item['neg'] = sentiment_data.get('neg', 0.0)
-                                item['neu'] = sentiment_data.get('neu', 0.0)
-                                item['sentiment_label'] = sentiment_data.get('label', 'neutral')
-                            
-                            # Ensure compound score exists
-                            if 'compound' not in item:
-                                item['compound'] = 0.0
-                            
-                            # Handle different timestamp formats more robustly
-                            timestamp_fields = ['created_utc', 'created', 'publishedAt', 'timestamp']
-                            item['created_utc'] = None
-                            
-                            for field in timestamp_fields:
-                                if field in item and item[field]:
-                                    try:
-                                        if isinstance(item[field], (int, float)):
-                                            # Convert Unix timestamp to timezone-aware datetime
-                                            item['created_utc'] = pd.to_datetime(item[field], unit='s', utc=True)
-                                        else:
-                                            # Parse string datetime and ensure it's timezone-aware
-                                            dt = pd.to_datetime(item[field])
-                                            if dt.tz is None:
-                                                # If naive, assume UTC
-                                                item['created_utc'] = dt.tz_localize('UTC')
-                                            else:
-                                                # Already timezone-aware, convert to UTC
-                                                item['created_utc'] = dt.tz_convert('UTC')
-                                        break
-                                    except Exception as parse_error:
-                                        logger.debug(f"Failed to parse timestamp {field}={item[field]}: {parse_error}")
-                                        continue
-                            
-                            # Fallback to current time if no valid timestamp (timezone-aware)
-                            if item['created_utc'] is None:
-                                item['created_utc'] = pd.Timestamp.now(tz='UTC')
-                            
-                            combined_data.append(item)
-                
-                except Exception as e:
-                    logger.warning(f"Error loading file {filename}: {e}")
-                    continue
-        
-        if not combined_data:
-            logger.warning(f"No valid data found for ticker {ticker}")
-            return pd.DataFrame()
-        
-        df = pd.DataFrame(combined_data)
-        
-        # Ensure required columns exist with proper defaults
-        if 'compound' not in df.columns:
-            df['compound'] = 0.0
-        if 'sentiment' not in df.columns:
-            df['sentiment'] = 'neutral'
-        if 'source' not in df.columns:
-            df['source'] = 'Unknown'
-        
-        logger.info(f"Successfully loaded {len(df)} records for {ticker}")
-        return df
-        
-    except Exception as e:
-        logger.error(f"Error loading dataframes for {ticker}: {e}")
-        return pd.DataFrame()
+    """Read stored evidence, retaining original dates and excluding SEC template scores."""
+    return load_evidence(ticker)
 
 def get_company_info(symbol: str) -> tuple[bool, dict]:
-    """Get company information using yfinance"""
+    """Return observed provider metrics without inventing values or quote dates."""
     try:
         import yfinance as yf
-        
-        # Clean the symbol
+
         symbol = symbol.upper().strip()
-        
-        # Check with yfinance
         ticker = yf.Ticker(symbol)
         info = ticker.info
-        
-        # Get recent price history for additional metrics
-        hist = ticker.history(period="5d")
-        
-        # Extract relevant company information
+        numeric_fields = {
+            "marketCap": "marketCap",
+            "previousClose": "previousClose",
+            "dayLow": "dayLow",
+            "dayHigh": "dayHigh",
+            "fiftyTwoWeekLow": "fiftyTwoWeekLow",
+            "fiftyTwoWeekHigh": "fiftyTwoWeekHigh",
+            "regularMarketChangePercent": "regularMarketChangePercent",
+            "regularMarketChange": "regularMarketChange",
+            "volume": "volume",
+            "averageVolume": "averageVolume",
+            "averageVolume10days": "averageVolume10days",
+            "priceToEarningsRatio": "trailingPE",
+            "forwardPE": "forwardPE",
+            "priceToBook": "priceToBook",
+            "priceToSalesTrailing12Months": "priceToSalesTrailing12Months",
+            "earningsPerShare": "trailingEps",
+            "dividendYield": "dividendYield",
+            "beta": "beta",
+            "fiftyDayAverage": "fiftyDayAverage",
+            "twoHundredDayAverage": "twoHundredDayAverage",
+            "sharesOutstanding": "sharesOutstanding",
+            "floatShares": "floatShares",
+        }
         company_data = {
             "symbol": symbol,
-            "longName": info.get('longName', ''),
-            "shortName": info.get('shortName', ''),
-            "sector": info.get('sector', ''),
-            "industry": info.get('industry', ''),
-            "marketCap": info.get('marketCap', 0),
-            "currency": info.get('currency', 'USD'),
-            
-            # Current Price Data
-            "currentPrice": info.get('currentPrice', info.get('regularMarketPrice', 0)),
-            "previousClose": info.get('previousClose', 0),
-            "dayLow": info.get('dayLow', 0),
-            "dayHigh": info.get('dayHigh', 0),
-            "fiftyTwoWeekLow": info.get('fiftyTwoWeekLow', 0),
-            "fiftyTwoWeekHigh": info.get('fiftyTwoWeekHigh', 0),
-            
-            # Price Changes
-            "regularMarketChangePercent": info.get('regularMarketChangePercent', 0),
-            "regularMarketChange": info.get('regularMarketChange', 0),
-            
-            # Volume Data
-            "volume": info.get('volume', 0),
-            "averageVolume": info.get('averageVolume', 0),
-            "averageVolume10days": info.get('averageVolume10days', 0),
-            
-            # Valuation Metrics
-            "priceToEarningsRatio": info.get('trailingPE', 0),
-            "forwardPE": info.get('forwardPE', 0),
-            "priceToBook": info.get('priceToBook', 0),
-            "priceToSalesTrailing12Months": info.get('priceToSalesTrailing12Months', 0),
-            
-            # Financial Metrics
-            "earningsPerShare": info.get('trailingEps', 0),
-            "dividendYield": info.get('dividendYield', 0),
-            "beta": info.get('beta', 0),
-            
-            # Moving Averages
-            "fiftyDayAverage": info.get('fiftyDayAverage', 0),
-            "twoHundredDayAverage": info.get('twoHundredDayAverage', 0),
-            
-            # Market Info
-            "exchange": info.get('exchange', ''),
-            "quoteType": info.get('quoteType', ''),
-            "sharesOutstanding": info.get('sharesOutstanding', 0),
-            "floatShares": info.get('floatShares', 0),
+            **{key: info.get(key) for key in (
+                "longName", "shortName", "sector", "industry", "currency", "exchange", "quoteType",
+            )},
+            **{key: finite_number(info.get(source)) for key, source in numeric_fields.items()},
+            "currentPrice": finite_number(info.get("currentPrice")),
+            "lastTradePrice": None,
+            "lastTradeChange": None,
+            "lastTradeChangePercent": None,
+            "history_as_of": None,
         }
-        
-        # Add recent price performance if historical data available
-        if not hist.empty and len(hist) >= 2:
-            current_price = hist['Close'].iloc[-1]
-            prev_price = hist['Close'].iloc[-2]
-            company_data["lastTradePrice"] = float(current_price)
-            company_data["lastTradeChange"] = float(current_price - prev_price)
-            company_data["lastTradeChangePercent"] = float((current_price - prev_price) / prev_price * 100)
-        
-        # Use the best available name
-        display_name = company_data['longName'] or company_data['shortName'] or symbol
-        company_data['displayName'] = display_name
-        
+        if company_data["currentPrice"] is None:
+            company_data["currentPrice"] = finite_number(info.get("regularMarketPrice"))
+
+        # Quote time is supplied by the provider; fetching now does not make it current.
+        quote_time = finite_number(info.get("regularMarketTime"))
+        quote_as_of = parse_timestamp(quote_time) if quote_time is not None and quote_time > 0 else None
+        company_data["quote_as_of"] = quote_as_of.isoformat() if quote_as_of else None
+        company_data["retrieved_at"] = datetime.now(timezone.utc).isoformat()
+
+        # Optional historical closes are separate from the latest quote. A history
+        # failure should not discard available company metrics.
+        try:
+            hist = ticker.history(period="5d", timeout=10)
+            if not hist.empty and "Close" in hist.columns:
+                current_price = finite_number(hist["Close"].iloc[-1])
+                company_data["lastTradePrice"] = current_price
+                history_as_of = parse_timestamp(hist.index[-1])
+                company_data["history_as_of"] = history_as_of.isoformat() if history_as_of else None
+                if len(hist) >= 2:
+                    previous_price = finite_number(hist["Close"].iloc[-2])
+                    if current_price is not None and previous_price is not None:
+                        change = finite_number(current_price - previous_price)
+                        company_data["lastTradeChange"] = change
+                        if change is not None and previous_price != 0:
+                            company_data["lastTradeChangePercent"] = finite_number(change / previous_price * 100)
+        except Exception:
+            logger.warning("Historical company metrics unavailable for %s", symbol)
+
+        company_data["displayName"] = company_data["longName"] or company_data["shortName"] or symbol
         return True, company_data
-        
-    except Exception as e:
-        return False, {"error": f"Error fetching company info: {str(e)}"}
+    except Exception as exc:
+        return False, {"error": f"Error fetching company info: {str(exc)}"}
 
 # In-memory cache with TTL
 class CacheManager:
     def __init__(self):
         self._cache = {}
-        self._timestamps = {}
-        self._ttl = 300  # 5 minutes default TTL
-    
+        self._expires = {}
+        self._ttl = 300
+        self._lock = RLock()
+
     def get(self, key: str):
-        if key in self._cache:
-            if datetime.now() - self._timestamps[key] < timedelta(seconds=self._ttl):
+        with self._lock:
+            if key in self._cache and monotonic() < self._expires[key]:
                 return self._cache[key]
-            else:
-                del self._cache[key]
-                del self._timestamps[key]
-        return None
-    
+            self._cache.pop(key, None)
+            self._expires.pop(key, None)
+            return None
+
     def set(self, key: str, value: Any, ttl: int = None):
-        self._cache[key] = value
-        self._timestamps[key] = datetime.now()
-        if ttl:
-            # Custom TTL per item if needed
-            pass
-    
+        with self._lock:
+            if len(self._cache) >= 512 and key not in self._cache:
+                oldest = min(self._expires, key=self._expires.get)
+                self._cache.pop(oldest, None)
+                self._expires.pop(oldest, None)
+            self._cache[key] = value
+            self._expires[key] = monotonic() + (self._ttl if ttl is None else max(0, ttl))
+
     def invalidate(self, pattern: str = None):
-        if pattern:
-            keys_to_remove = [k for k in self._cache.keys() if pattern in k]
-            for key in keys_to_remove:
-                del self._cache[key]
-                del self._timestamps[key]
+        with self._lock:
+            for key in list(self._cache):
+                if pattern is None or pattern in key:
+                    self._cache.pop(key, None)
+                    self._expires.pop(key, None)
 
 cache = CacheManager()
 
@@ -392,17 +225,22 @@ class LoginRequest(BaseModel):
 class SimpleAuthResponse(BaseModel):
     success: bool
     message: str
+    role: Optional[str] = None
+    access_token: Optional[str] = None
+    token_type: Optional[str] = None
+    expires_in_seconds: Optional[int] = None
 
 # Enhanced Pydantic models with validation
 class DataSource(str, Enum):
     REDDIT = "reddit"
     NEWS = "news" 
     SEC = "sec"
+    SEC_FACTS = "sec_facts"
     TWITTER = "twitter"
 
 class StockRequest(BaseModel):
-    symbol: str = Field(..., min_length=1, max_length=10, description="Stock symbol")
-    sources: List[DataSource] = Field(default=[DataSource.NEWS, DataSource.SEC])  # Reddit removed from default sources due to data reliability issues
+    symbol: str = Field(..., min_length=1, max_length=10, pattern=r"^[A-Za-z][A-Za-z0-9.-]{0,9}$", description="Stock symbol")
+    sources: List[DataSource] = Field(default=[DataSource.NEWS, DataSource.SEC_FACTS], min_length=1, max_length=5)
     
     class Config:
         use_enum_values = True
@@ -414,50 +252,79 @@ class StockSuggestion(BaseModel):
     market_cap: Optional[str] = None
 
 class SentimentMetrics(BaseModel):
-    avg_sentiment: float
+    avg_sentiment: Optional[float] = None
     sentiment_distribution: Dict[str, int]
-    confidence_score: float
-    trend: str  # "bullish", "bearish", "neutral"
+    trend: str
+    sample_size: int
+    method: str
 
 class SourceAnalysis(BaseModel):
     source: str
     count: int
-    avg_sentiment: float
-    latest_update: datetime
+    avg_sentiment: Optional[float] = None
+    latest_update: Optional[datetime] = None
+    freshness: str
+    unknown_timestamps: int
 
 class EnhancedAnalysisResult(BaseModel):
     ticker: str
     total_posts: int
     sentiment_metrics: SentimentMetrics
     sources: List[SourceAnalysis]
-    last_updated: datetime
-    data_quality_score: float
+    last_updated: Optional[datetime] = None
+    source_as_of: Optional[datetime] = None
+    freshness: str
+    generated_at: datetime
+    filings: List[Dict[str, Any]] = Field(default_factory=list)
 
 class AnalysisStatus(BaseModel):
     symbol: str
-    status: str  # "pending", "processing", "completed", "failed"
-    progress: int  # 0-100
+    status: str
+    progress: int
     message: str
     started_at: datetime
     estimated_completion: Optional[datetime] = None
-
-class InvestmentRecommendation(BaseModel):
-    ticker: str
-    recommendation: str  # "BUY", "SELL", "HOLD"
-    confidence: float
-    target_price: Optional[float]
-    reasoning: List[str]
-    risk_factors: List[str]
-    generated_at: datetime
+    completed_at: Optional[datetime] = None
+    providers: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    run_id: Optional[str] = None
 
 # Global status tracking for background tasks
 analysis_status: Dict[str, AnalysisStatus] = {}
+# Serialize admission and deletion across awaited storage calls in this worker.
+_research_mutation_loop = None
+_research_mutation_lock = None
+
+
+def research_mutation_lock():
+    global _research_mutation_loop, _research_mutation_lock
+    loop = asyncio.get_running_loop()
+    if _research_mutation_loop is not loop:
+        _research_mutation_loop = loop
+        _research_mutation_lock = asyncio.Lock()
+    return _research_mutation_lock
+
+@asynccontextmanager
+async def lifespan(app):
+    repo = repository()
+    if repo is not None:
+        await asyncio.to_thread(repo.check_ready)
+        # This release supports one API process, not a distributed job queue.
+        await asyncio.to_thread(repo.interrupt_active_runs)
+    yield
+
 
 app = FastAPI(
+    lifespan=lifespan,
     title="StockScope API",
     version="2.0.0",
     description="Optimized API for stock sentiment analysis with caching and advanced features"
 )
+
+@app.exception_handler(SQLAlchemyError)
+async def database_unavailable(request, exc):
+    logger.error("Database operation failed (%s)", type(exc).__name__)
+    return JSONResponse(status_code=503, content={"detail": "Research storage is unavailable. Try again later."})
+
 
 # Include fundamentals router with correct path prefix
 app.include_router(fundamentals_router, prefix="/api/fundamentals", tags=["Fundamentals"])
@@ -638,39 +505,7 @@ def cache_analysis(symbol: str, result: EnhancedAnalysisResult):
     cache.set(f"analysis_{symbol}", result, ttl=600)  # 10 minutes
 
 def calculate_enhanced_metrics(df) -> SentimentMetrics:
-    """Calculate enhanced sentiment metrics from dataframe"""
-    if df.empty:
-        return SentimentMetrics(
-            avg_sentiment=0.0,
-            sentiment_distribution={"positive": 0, "neutral": 0, "negative": 0},
-            confidence_score=0.0,
-            trend="neutral"
-        )
-    
-    avg_sentiment = df['compound'].mean()
-    
-    # Calculate sentiment distribution
-    positive = len(df[df['compound'] > 0.1])
-    negative = len(df[df['compound'] < -0.1]) 
-    neutral = len(df) - positive - negative
-    
-    # Calculate confidence score based on data volume and consistency
-    confidence = min(1.0, len(df) / 100) * (1 - df['compound'].std())
-    
-    # Determine trend
-    if avg_sentiment > 0.1:
-        trend = "bullish"
-    elif avg_sentiment < -0.1:
-        trend = "bearish"
-    else:
-        trend = "neutral"
-    
-    return SentimentMetrics(
-        avg_sentiment=float(avg_sentiment),
-        sentiment_distribution={"positive": positive, "neutral": neutral, "negative": negative},
-        confidence_score=float(confidence),
-        trend=trend
-    )
+    return SentimentMetrics(**sentiment_metrics(df))
 
 # API Endpoints
 
@@ -695,9 +530,8 @@ async def root():
 
 @app.post("/api/auth/login", response_model=SimpleAuthResponse, tags=["Authentication"])
 async def login(login_request: LoginRequest):
-    """Authenticate with master password"""
+    """Authenticate with password and return bearer token."""
     try:
-        logger.info(f"Login attempt received - password length: {len(login_request.password)}")
         
         # Additional validation
         if not login_request.password or len(login_request.password.strip()) == 0:
@@ -707,9 +541,9 @@ async def login(login_request: LoginRequest):
                 detail="Password cannot be empty"
             )
         
-        is_valid, role = await authenticate_user(login_request.password.strip())
+        is_valid, role = await authenticate_user(login_request.password)
         if not is_valid:
-            logger.warning(f"Authentication failed for password: {login_request.password[:5]}...")
+            logger.warning("Authentication failed for provided password")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid password"
@@ -717,9 +551,15 @@ async def login(login_request: LoginRequest):
         
         logger.info(f"Successful authentication - {role} access granted")
         
+        access_token = create_access_token(subject="stockscope_user", role=role)
+
         return SimpleAuthResponse(
             success=True,
-            message=f"Authentication successful - Role: {role}"
+            message="Authentication successful",
+            role=role,
+            access_token=access_token,
+            token_type="bearer",
+            expires_in_seconds=get_access_token_expire_minutes() * 60,
         )
     
     except HTTPException:
@@ -733,8 +573,16 @@ async def auth_status():
     """Get authentication status and requirements"""
     return {
         "authentication_required": True,
-        "message": "Authentication required for all API endpoints"
+        "message": "Authentication required for all API endpoints",
+        "preferred_method": "Authorization: Bearer <token>",
+        "token_endpoint": "/api/auth/login",
+        "legacy_password_query_supported": False,
     }
+
+@app.get("/api/auth/session", tags=["Authentication"])
+async def auth_session(current_user: str = Depends(verify_password_with_role)):
+    """Verify a bearer session without modifying state."""
+    return {"authenticated": True, "role": current_user}
 
 # Apply authentication to all protected endpoints
 @app.get("/api/stocks/suggestions", response_model=List[StockSuggestion], tags=["Search"])
@@ -780,7 +628,7 @@ async def get_stock_suggestions(
         raise HTTPException(status_code=500, detail="Failed to fetch suggestions")
 
 @app.get("/api/stocks", tags=["Portfolio"])
-async def get_available_stocks(current_user: str = Depends(verify_password_with_role)):
+def get_available_stocks(current_user: str = Depends(verify_password_with_role)):
     """Get list of analyzed stocks with metadata including current prices"""
     import yfinance as yf
     import pandas as pd
@@ -801,49 +649,47 @@ async def get_available_stocks(current_user: str = Depends(verify_password_with_
                 df = load_dataframes(ticker)
                 stock_info = {
                     "symbol": ticker,
-                    "currentPrice": 0,
-                    "priceChange": 0,
-                    "priceChangePercent": 0,
+                    "currentPrice": None,
+                    "priceChange": None,
+                    "priceChangePercent": None,
+                    "price_as_of": None,
                     "companyName": ticker,
                     "total_posts": 0,
-                    "avg_sentiment": 0,
-                    "last_updated": datetime.now(),
+                    "avg_sentiment": None,
+                    "last_updated": None,
+                    "freshness": "unknown",
                     "sources": []
                 }
                 
                 if not df.empty:
-                    # Ensure timezone-aware timestamp calculation
-                    if 'created_utc' in df.columns and not df.empty:
-                        timestamps = pd.to_datetime(df['created_utc'], utc=True)
-                        last_updated = timestamps.max()
-                    else:
-                        last_updated = datetime.now().replace(tzinfo=pd.Timestamp.now().tz)
-                        
+                    as_of = latest_timestamp(df)
                     stock_info.update({
-                        "total_posts": len(df),
-                        "avg_sentiment": float(df['compound'].mean()),
-                        "last_updated": last_updated,
-                        "sources": list(df['source'].unique()) if 'source' in df.columns else []
+                        "total_posts": len(df), "avg_sentiment": sentiment_metrics(df)["avg_sentiment"],
+                        "last_updated": as_of, "freshness": evidence_freshness(df),
+                        "sources": list(df['source'].unique()),
                     })
-                
+
                 # Fetch current price data
                 try:
                     stock = yf.Ticker(ticker)
                     info = stock.info
-                    hist = stock.history(period="2d")
+                    hist = stock.history(period="2d", timeout=10)
                     
                     if not hist.empty and len(hist) >= 1:
-                        current_price = hist['Close'].iloc[-1]
-                        prev_price = hist['Close'].iloc[-2] if len(hist) >= 2 else current_price
-                        
-                        price_change = current_price - prev_price
-                        price_change_percent = (price_change / prev_price * 100) if prev_price != 0 else 0
+                        current_price = finite_number(hist['Close'].iloc[-1])
+                        prev_price = finite_number(hist['Close'].iloc[-2]) if len(hist) >= 2 else None
+                        price_change = price_change_percent = None
+                        if current_price is not None and prev_price not in (None, 0):
+                            price_change = finite_number(current_price - prev_price)
+                            price_change_percent = finite_number((current_price / prev_price - 1) * 100)
                         
                         stock_info.update({
-                            "currentPrice": round(float(current_price), 2),
-                            "priceChange": round(float(price_change), 2),
-                            "priceChangePercent": round(float(price_change_percent), 2),
-                            "companyName": info.get('longName', info.get('shortName', ticker))
+                            "currentPrice": round(current_price, 2) if current_price is not None else None,
+                            "priceChange": round(price_change, 2) if price_change is not None else None,
+                            "priceChangePercent": round(price_change_percent, 2) if price_change_percent is not None else None,
+                            "companyName": info.get('longName', info.get('shortName', ticker)),
+                            "price_as_of": hist.index[-1].isoformat() if current_price is not None else None,
+                            "price_basis": "latest_daily_close",
                         })
                     
                 except Exception as price_error:
@@ -852,6 +698,8 @@ async def get_available_stocks(current_user: str = Depends(verify_password_with_
                 
                 stocks_with_metadata.append(stock_info)
                 
+            except SQLAlchemyError:
+                raise
             except Exception as e:
                 logger.warning(f"Failed to get metadata for {ticker}: {e}")
                 stocks_with_metadata.append({"symbol": ticker})
@@ -860,294 +708,107 @@ async def get_available_stocks(current_user: str = Depends(verify_password_with_
         cache.set(cache_key, result, ttl=300)  # 5 minute cache
         return result
         
-    except Exception as e:
-        logger.error(f"Error getting available stocks: {e}")
+    except SQLAlchemyError:
+        raise
+    except Exception:
+        logger.error("Error getting available stocks")
         raise HTTPException(status_code=500, detail="Failed to fetch stock portfolio")
 
 @app.get("/api/stocks/{symbol}", response_model=EnhancedAnalysisResult, tags=["Analysis"])
 async def get_stock_analysis(symbol: str, current_user: str = Depends(verify_password_with_role)) -> EnhancedAnalysisResult:
-    """Get comprehensive analysis for a specific stock with caching"""
-    import pandas as pd  # Add pandas import for timezone operations
-    
     symbol = symbol.upper()
-    
-    # Check cache first
     cached_result = get_cached_analysis(symbol)
     if cached_result:
         return cached_result
-    
-    try:
-        df = load_dataframes(symbol)
-        
-        if df.empty:
-            raise HTTPException(status_code=404, detail=f"No analysis data found for {symbol}")
-        
-        # Calculate enhanced metrics
-        sentiment_metrics = calculate_enhanced_metrics(df)
-        
-        # Analyze by source
-        source_analyses = []
-        if 'source' in df.columns:
-            for source in df['source'].unique():
-                source_df = df[df['source'] == source]
-                
-                # Ensure all timestamps are timezone-aware before calculating max
-                if 'created_utc' in source_df.columns and not source_df['created_utc'].empty:
-                    # Convert any remaining timezone-naive timestamps to UTC
-                    timestamps = pd.to_datetime(source_df['created_utc'], utc=True)
-                    latest_update = timestamps.max()
-                else:
-                    latest_update = datetime.now().replace(tzinfo=pd.Timestamp.now().tz)
-                
-                source_analyses.append(SourceAnalysis(
-                    source=source,
-                    count=len(source_df),
-                    avg_sentiment=float(source_df['compound'].mean()),
-                    latest_update=latest_update
-                ))
-        
-        # Calculate data quality score
-        data_quality = min(1.0, len(df) / 50) * (1 - abs(sentiment_metrics.avg_sentiment - df['compound'].median()))
-        
-        # Ensure last_updated is timezone-aware
-        if 'created_utc' in df.columns and not df.empty:
-            # Convert any remaining timezone-naive timestamps to UTC before calculating max
-            timestamps = pd.to_datetime(df['created_utc'], utc=True)
-            last_updated = timestamps.max()
-        else:
-            last_updated = datetime.now().replace(tzinfo=pd.Timestamp.now().tz)
-        
-        result = EnhancedAnalysisResult(
-            ticker=symbol,
-            total_posts=len(df),
-            sentiment_metrics=sentiment_metrics,
-            sources=source_analyses,
-            last_updated=last_updated,
-            data_quality_score=float(data_quality)
-        )
-        
-        # Cache the result
-        cache_analysis(symbol, result)
-        return result
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error analyzing {symbol}: {e}")
-        raise HTTPException(status_code=500, detail=f"Analysis failed for {symbol}")
-
-@app.post("/api/stocks/analyze", tags=["Analysis"])
-async def analyze_stock(request: StockRequest, background_tasks: BackgroundTasks, current_user: str = Depends(verify_password_with_role)):
-    """Start optimized analysis for a new stock with status tracking"""
-    symbol = request.symbol.upper()
-    
-    # Check if analysis is already running
-    if symbol in analysis_status and analysis_status[symbol].status == "processing":
-        return analysis_status[symbol]
-    
-    # Initialize status tracking
-    analysis_status[symbol] = AnalysisStatus(
-        symbol=symbol,
-        status="pending",
-        progress=0,
-        message="Analysis queued",
-        started_at=datetime.now(),
-        estimated_completion=datetime.now() + timedelta(minutes=2)
+    df = await asyncio.to_thread(load_dataframes, symbol)
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"No saved research data found for {symbol}")
+    as_of = latest_timestamp(df)
+    result = EnhancedAnalysisResult(
+        ticker=symbol, total_posts=len(df), sentiment_metrics=calculate_enhanced_metrics(df),
+        sources=source_analyses(df), last_updated=as_of, source_as_of=as_of,
+        freshness=evidence_freshness(df), generated_at=datetime.now(timezone.utc), filings=filing_events(df),
     )
-    
-    # Start background analysis
-    background_tasks.add_task(run_optimized_analysis, symbol, request.sources)
-    
-    return {
-        "message": f"Analysis started for {symbol}",
-        "symbol": symbol,
-        "status": "pending",
-        "status_endpoint": f"/api/stocks/{symbol}/status"
-    }
+    cache_analysis(symbol, result)
+    return result
+
+async def reconcile_finished_job(symbol, repo):
+    """Retry a terminal status write after a temporary database outage."""
+    job = analysis_status.get(symbol)
+    if repo is not None and job and job.run_id and job.status in {"completed", "partial", "failed"}:
+        persisted = await asyncio.to_thread(repo.get_run, job.run_id)
+        if persisted and persisted["status"] in {"pending", "processing"}:
+            await persist_job(job)
+
+
+@app.post("/api/stocks/analyze", status_code=202, tags=["Analysis"])
+async def analyze_stock(request: StockRequest, background_tasks: BackgroundTasks, current_user: str = Depends(verify_password_with_role)):
+    async with research_mutation_lock():
+        symbol = normalized_symbol(request.symbol)
+        existing = analysis_status.get(symbol)
+        if existing and existing.status in {"pending", "processing"}:
+            return existing
+        active = sum(job.status in {"pending", "processing"} for job in analysis_status.values())
+        if active >= 4:
+            raise HTTPException(status_code=429, detail="Four refreshes are already running. Try again after one finishes.")
+        repo = repository()
+        await reconcile_finished_job(symbol, repo)
+        if len(analysis_status) >= 128:
+            finished = [key for key, job in analysis_status.items() if job.status not in {"pending", "processing"}]
+            if finished:
+                # Never evict the only terminal result before its durable write succeeds.
+                await reconcile_finished_job(finished[0], repo)
+                del analysis_status[finished[0]]
+        if repo is not None:
+            persisted = await asyncio.to_thread(repo.create_run, symbol, request.sources)
+            job = AnalysisStatus.model_validate(persisted)
+            if not persisted["created"]:
+                return job
+        else:
+            job = AnalysisStatus(symbol=symbol, status="pending", progress=0, message="Research refresh queued", started_at=datetime.now(timezone.utc))
+        analysis_status[symbol] = job
+        background_tasks.add_task(run_optimized_analysis, symbol, request.sources)
+        return {"message": f"Refresh started for {symbol}", "symbol": symbol, "status": "pending", "status_endpoint": f"/api/stocks/{symbol}/status"}
 
 @app.get("/api/stocks/{symbol}/status", response_model=AnalysisStatus, tags=["Analysis"])
 async def get_analysis_status(symbol: str, current_user: str = Depends(verify_password_with_role)):
-    """Get real-time analysis status"""
-    symbol = symbol.upper()
-    
-    if symbol not in analysis_status:
-        # Check if data already exists
-        try:
-            df = load_dataframes(symbol)
-            if not df.empty:
-                return AnalysisStatus(
-                    symbol=symbol,
-                    status="completed",
-                    progress=100,
-                    message="Analysis completed",
-                    started_at=datetime.now() - timedelta(hours=1),
-                )
-        except:
-            pass
-        
-        raise HTTPException(status_code=404, detail=f"No analysis found for {symbol}")
-    
-    return analysis_status[symbol]
+    symbol = normalized_symbol(symbol)
+    repo = repository()
+    await reconcile_finished_job(symbol, repo)
+    if repo is not None:
+        persisted = await asyncio.to_thread(repo.get_latest_run, symbol)
+        job = AnalysisStatus.model_validate(persisted) if persisted else None
+    else:
+        job = analysis_status.get(symbol)
+    if job is None:
+        raise HTTPException(status_code=404, detail="No refresh is tracked. Saved evidence does not prove a refresh completed.")
+    return job
 
-@app.get("/api/stocks/{symbol}/investment-advice", response_model=InvestmentRecommendation, tags=["Investment"])
+@app.get("/api/stocks/{symbol}/investment-advice", tags=["Research"])
 async def get_investment_advice(symbol: str, current_user: str = Depends(verify_password_with_role)):
-    """Get AI-powered investment recommendation"""
+    """Compatibility route: provide evidence and research questions, never trade advice."""
     symbol = symbol.upper()
-    
-    cache_key = f"investment_advice_{symbol}"
-    cached_result = cache.get(cache_key)
-    if cached_result:
-        return cached_result
-
-    try:
-        df = load_dataframes(symbol)
-        
-        if df.empty:
-            raise HTTPException(status_code=404, detail=f"No analysis data found for {symbol}")
-
-        # Use your existing InvestmentAdvisor with correct method name
-        advisor = InvestmentAdvisor(symbol)
-        
-        # First fetch the stock data
-        if not advisor.fetch_data():
-            raise HTTPException(status_code=500, detail="Failed to fetch stock price data")
-
-        # Get the recommendation using the original comprehensive method
-        comprehensive_analysis = advisor.analyze_investment_opportunity(symbol, df)
-        
-        if comprehensive_analysis.get('error'):
-            raise HTTPException(status_code=500, detail=comprehensive_analysis['error'])
-        
-        # Extract proper reasoning from comprehensive analysis
-        recommendation_details = comprehensive_analysis.get('recommendation', {})
-        reasoning = recommendation_details.get('reasoning', [])
-        
-        # Fallback to technical signals if no reasoning available
-        if not reasoning:
-            # Get technical signals as additional context
-            technical_recommendation = advisor.get_investment_recommendation()
-            reasoning = technical_recommendation.get('signals', [])
-        
-        # Ensure we have meaningful reasoning
-        if not reasoning:
-            reasoning = [
-                "Technical analysis indicates current market position",
-                "Risk metrics have been evaluated",
-                "Sentiment analysis incorporated into recommendation"
-            ]
-        
-        # Extract risk factors from comprehensive analysis
-        risk_factors = []
-        if recommendation_details.get('risk_level') == 'HIGH':
-            risk_factors.append("High volatility detected in recent price movements")
-        
-        risk_metrics = comprehensive_analysis.get('metrics', {})
-        if risk_metrics.get('beta', 1.0) > 1.5:
-            risk_factors.append("Stock shows higher volatility than market average")
-        if risk_metrics.get('volatility', 0.3) > 0.4:
-            risk_factors.append("Elevated price volatility may increase investment risk")
-        if risk_metrics.get('sharpe_ratio', 0) < 0:
-            risk_factors.append("Poor risk-adjusted returns historically")
-            
-        if not risk_factors:
-            risk_factors = ["Standard market risks apply to this investment"]
-
-        # Enhanced recommendation structure with proper reasoning
-        result = InvestmentRecommendation(
-            ticker=symbol,
-            recommendation=recommendation_details.get('action', 'HOLD').replace('STRONG ', '').replace('WEAK ', ''),
-            confidence=recommendation_details.get('confidence', 0.5),
-            target_price=None,  # Could be enhanced with price targets
-            reasoning=reasoning,  # Now contains actual investment reasoning
-            risk_factors=risk_factors,
-            generated_at=datetime.now()
-        )
-        
-        # Cache for 30 minutes
-        cache.set(cache_key, result, ttl=1800)
-        return result
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting investment advice for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to generate investment advice")
+    df = await asyncio.to_thread(load_dataframes, symbol)
+    sources = source_analyses(df)
+    metrics = sentiment_metrics(df)
+    events = filing_events(df)
+    observations = [f"{len(df)} saved records across {len(sources)} sources.", f"{len(events)} SEC filings are listed as events; their contents have not been evaluated."]
+    if metrics["sample_size"]:
+        observations.append(f"Text tone is {metrics['trend']} across {metrics['sample_size']} scored news records.")
+    return {
+        "ticker": symbol, "status": "research_only",
+        "summary": "Review the dated evidence and company fundamentals before forming an investment thesis." if not df.empty else "No saved evidence is available. Refresh this stock to collect research material.",
+        "observations": observations,
+        "limitations": ["Text sentiment measures wording, not company value or future returns.", "Coverage can be incomplete or stale; unknown publication dates remain unknown.", "SEC filing types alone do not establish positive or negative news.", "No validated strategy backtest, expected return, or probability of profit is available."],
+        "sources": sources, "as_of": latest_timestamp(df), "generated_at": datetime.now(timezone.utc), "filings": events,
+    }
 
 @app.get("/api/stocks/{symbol}/quantitative", tags=["Analysis"])
 async def get_quantitative_analysis(symbol: str, current_user: str = Depends(verify_password_with_role)):
-    """Get quantitative strategy analysis"""
-    symbol = symbol.upper()
-    
-    cache_key = f"quant_analysis_{symbol}"
-    cached_result = cache.get(cache_key)
-    if cached_result:
-        return cached_result
-    
-    try:
-        df = load_dataframes(symbol)
-        
-        if df.empty:
-            raise HTTPException(status_code=404, detail=f"No analysis data found for {symbol}")
-        
-        # Create sentiment data structure for quantitative strategies
-        sentiment_data = {symbol: df.to_dict('records')}
-        
-        # Use your existing QuantitativeStrategies
-        quant = QuantitativeStrategies()
-        
-        # Create the main sentiment momentum strategy
-        sentiment_strategy = quant.create_sentiment_momentum_strategy([symbol], sentiment_data)
-        
-        # Calculate dynamic confidence from the strategy
-        strategy_confidence = sentiment_strategy.get('confidence_level', 0.0)
-        
-        # Determine recommendation based on sentiment momentum strategy
-        combined_scores = sentiment_strategy.get('combined_scores', {})
-        symbol_score = combined_scores.get(symbol, 0.0)
-        
-        # Generate recommendation based on score
-        if symbol_score > 0.3:
-            recommendation = "BUY"
-        elif symbol_score < -0.2:
-            recommendation = "SELL"
-        else:
-            recommendation = "HOLD"
-        
-        # Create a comprehensive analysis using multiple strategies
-        analysis = {
-            "symbol": symbol,
-            "metrics": {
-                "sharpe_ratio": sentiment_strategy.get('sharpe_ratio', 0.82),
-                "volatility": sentiment_strategy.get('volatility', 0.22),
-                "beta": 1.15,  # Mock data - would calculate from real strategy
-                "alpha": 0.08
-            },
-            "signals": {
-                "rsi": 65.4,  # Mock data - would get from technical analysis
-                "macd": 0.025,
-                "bollinger_bands": "Neutral"
-            },
-            "recommendation": recommendation,
-            "confidence": strategy_confidence,  # Use calculated confidence instead of hardcoded 0.75
-            "strategies": {
-                "sentiment_momentum": sentiment_strategy,
-                "multi_factor": quant.create_multi_factor_strategy([symbol], sentiment_data),
-                "sector_rotation": quant.create_sector_rotation_strategy(sentiment_data)
-            }
-        }
-        
-        # Cache for 1 hour
-        cache.set(cache_key, analysis, ttl=3600)
-        return analysis
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting quantitative analysis for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to run quantitative analysis")
+    return {"symbol": symbol.upper(), "status": "unavailable", "reason": "Quantitative results are unavailable until calculations and backtests use verified price history, explicit assumptions, costs, and a benchmark.", "metrics": {}, "signals": {}, "strategies": {}}
 
 @app.get("/api/stocks/{symbol}/info", tags=["Analysis"])
-async def get_company_info_endpoint(symbol: str, current_user: str = Depends(verify_password_with_role)):
+def get_company_info_endpoint(symbol: str, current_user: str = Depends(verify_password_with_role)):
     """Get company information for a stock symbol"""
     symbol = symbol.upper()
     
@@ -1173,53 +834,13 @@ async def get_company_info_endpoint(symbol: str, current_user: str = Depends(ver
         raise HTTPException(status_code=500, detail="Failed to fetch company information")
 
 @app.get("/api/stocks/{symbol}/news", tags=["Analysis"])
-async def get_stock_news(symbol: str, limit: int = 20, current_user: str = Depends(verify_password_with_role)):
-    """Get news articles for a specific stock"""
-    import os
-    import json
-    
-    symbol = symbol.upper()
-    
-    try:
-        data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
-        
-        # Look for news files for this ticker
-        news_articles = []
-        
-        for filename in os.listdir(data_dir):
-            if filename.startswith(f"{symbol}_") and 'news' in filename and filename.endswith('.json'):
-                file_path = os.path.join(data_dir, filename)
-                
-                try:
-                    with open(file_path, 'r') as f:
-                        articles = json.load(f)
-                    
-                    # Add these articles to our collection
-                    if isinstance(articles, list):
-                        news_articles.extend(articles)
-                    
-                except Exception as e:
-                    logger.warning(f"Error reading news file {filename}: {e}")
-                    continue
-        
-        # Sort by publication date (most recent first)
-        news_articles.sort(key=lambda x: x.get('publishedAt', ''), reverse=True)
-        
-        # Limit results
-        news_articles = news_articles[:limit]
-        
-        return {
-            "ticker": symbol,
-            "count": len(news_articles),
-            "articles": news_articles
-        }
-        
-    except Exception as e:
-        logger.error(f"Error fetching news for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch news articles")
+async def get_stock_news(symbol: str, limit: int = Query(default=20, ge=1, le=100), current_user: str = Depends(verify_password_with_role)):
+    symbol = normalized_symbol(symbol)
+    articles = await asyncio.to_thread(saved_news, symbol, limit)
+    return {"ticker": symbol, "count": len(articles), "articles": articles}
 
 @app.get("/api/stocks/{symbol}/price-history", tags=["Analysis"])
-async def get_price_history(
+def get_price_history(
     symbol: str, 
     period: str = "1y",
     interval: str = "1d",
@@ -1240,7 +861,7 @@ async def get_price_history(
         ticker = yf.Ticker(symbol)
         
         # Get historical data
-        hist = ticker.history(period=period, interval=interval)
+        hist = ticker.history(period=period, interval=interval, timeout=10)
         
         if hist.empty:
             raise HTTPException(status_code=404, detail="No historical data found")
@@ -1258,11 +879,19 @@ async def get_price_history(
                 "volume": int(row['Volume'])
             })
         
-        # Get current price info
-        info = ticker.info
-        current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
-        price_change = info.get('regularMarketChange', 0)
-        price_change_percent = info.get('regularMarketChangePercent', 0)
+        # A failed quote request must not discard independently retrieved history.
+        try:
+            info = ticker.info or {}
+        except Exception:
+            logger.debug("Quote unavailable for %s; returning historical bars", symbol)
+            info = {}
+        current_price = finite_number(info.get('regularMarketPrice'))
+        if current_price is None:
+            current_price = finite_number(info.get('currentPrice'))
+        price_change = finite_number(info.get('regularMarketChange'))
+        price_change_percent = finite_number(info.get('regularMarketChangePercent'))
+        quote_time = parse_timestamp(info.get('regularMarketTime')) if current_price is not None else None
+        historical_close = finite_number(hist['Close'].iloc[-1])
         
         result = {
             "symbol": symbol,
@@ -1271,6 +900,10 @@ async def get_price_history(
             "currentPrice": current_price,
             "priceChange": price_change,
             "priceChangePercent": price_change_percent,
+            "quote_as_of": quote_time.isoformat() if quote_time else None,
+            "price_source": "Yahoo Finance",
+            "lastHistoricalClose": historical_close,
+            "lastHistoricalCloseDate": hist.index[-1].strftime("%Y-%m-%d") if historical_close is not None else None,
             "data": price_data
         }
         
@@ -1287,17 +920,10 @@ async def get_price_history(
 @app.delete("/api/cache", tags=["Admin"])
 async def clear_cache(pattern: Optional[str] = None, current_user: str = Depends(verify_password_with_role)):
     """Clear API cache (admin endpoint)"""
-    try:
-        if pattern:
-            cache.invalidate(pattern)
-            return {"message": f"Cache cleared for pattern: {pattern}"}
-        else:
-            cache._cache.clear()
-            cache._timestamps.clear()
-            return {"message": "All cache cleared"}
-    except Exception as e:
-        logger.error(f"Error clearing cache: {e}")
-        raise HTTPException(status_code=500, detail="Failed to clear cache")
+    if current_user != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required to clear cache")
+    cache.invalidate(pattern)
+    return {"message": "Cache cleared"}
 
 @app.get("/api/health", tags=["Health"])
 async def health_check():
@@ -1320,7 +946,7 @@ async def health_check():
 
 # New validation and deletion endpoints
 @app.get("/api/stocks/validate/{symbol}", tags=["Validation"])
-async def validate_symbol(symbol: str, current_user: str = Depends(verify_password_with_role)):
+def validate_symbol(symbol: str, current_user: str = Depends(verify_password_with_role)):
     """Validate if a stock symbol exists before analysis"""
     try:
         is_valid, message = validate_stock_symbol(symbol)
@@ -1338,147 +964,184 @@ async def validate_symbol(symbol: str, current_user: str = Depends(verify_passwo
 
 @app.delete("/api/stocks/{symbol}", tags=["Management"])
 async def delete_stock(symbol: str, current_user: str = Depends(verify_password_with_role)):
-    """Delete all data files for a stock symbol (admin only)"""
-    # Check if user has admin permissions
-    if current_user not in ["admin"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required to delete stock data"
-        )
+    async with research_mutation_lock():
+        """Delete all data files for a stock symbol (admin only)"""
+        # Check if user has admin permissions
+        if current_user not in ["admin"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin access required to delete stock data"
+            )
+
+        # Collectors publish files off the event loop. Deleting their state while they
+        # run would allow a late write to silently restore a stock after deletion.
+        try:
+            symbol = normalized_symbol(symbol)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        active_job = analysis_status.get(symbol)
+        repo = repository()
+        await reconcile_finished_job(symbol, repo)
+        if repo is not None:
+            persisted = await asyncio.to_thread(repo.get_latest_run, symbol)
+            active_job = AnalysisStatus.model_validate(persisted) if persisted else None
+        if active_job and active_job.status in {"pending", "processing"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A refresh is still running for this stock. Wait for it to finish before deleting its data.",
+            )
     
-    try:
-        success, message, deleted_files = delete_stock_data(symbol)
+        try:
+            success, message, deleted_files = await asyncio.to_thread(delete_stock_data, symbol)
         
-        if success:
-            # Clear all caches related to this symbol
-            cache.invalidate(symbol)
-            cache.invalidate("available_stocks")
+            if success:
+                # Clear all caches related to this symbol
+                cache.invalidate(symbol)
+                cache.invalidate("available_stocks")
             
-            # Remove from analysis status if present
-            symbol_upper = symbol.upper()
-            if symbol_upper in analysis_status:
-                del analysis_status[symbol_upper]
+                # Remove from analysis status if present
+                symbol_upper = symbol.upper()
+                if symbol_upper in analysis_status:
+                    del analysis_status[symbol_upper]
             
-            return {
-                "success": True,
-                "symbol": symbol.upper(),
-                "message": message,
-                "deleted_files": deleted_files,
-                "timestamp": datetime.now()
-            }
-        else:
-            raise HTTPException(status_code=404, detail=message)
+                return {
+                    "success": True,
+                    "symbol": symbol.upper(),
+                    "message": message,
+                    "deleted_files": deleted_files,
+                    "timestamp": datetime.now()
+                }
+            else:
+                raise HTTPException(status_code=404, detail=message)
             
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting stock data for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to delete stock data")
+        except HTTPException:
+            raise
+        except SQLAlchemyError:
+            raise
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except Exception:
+            logger.error("Error deleting stock data for %s", symbol)
+            raise HTTPException(status_code=500, detail="Failed to delete stock data")
+
+def _produced_records(reference) -> int:
+    if not reference:
+        return 0
+    try:
+        payload = read_records_reference(reference)
+        return sum(isinstance(record, dict) for record in payload)
+    except (OSError, TypeError, ValueError):
+        return 0
+
+
+def _collect_news(symbol):
+    # Preserve provider outcomes; NewsAPI's free plan is development-only.
+    return fetch_enhanced_news_with_results(symbol)
+
+
+async def persist_job(job):
+    if job.run_id:
+        repo = repository()
+        await asyncio.to_thread(repo.update_run, job.run_id, status=job.status, progress=job.progress, message=job.message, providers=job.providers)
+
+
+def _collect_sec_facts(symbol):
+    from backend.services.sec_facts import collect_sec_facts
+    result = collect_sec_facts(symbol)
+    facts, filings = result.get("facts", []), result.get("filings", [])
+    # Failed collection cannot replace the last successful financial snapshot.
+    if facts:
+        save_records(symbol, "sec_companyfacts", [result])
+    if filings:
+        save_records(symbol, "sec_filings", filings)
+    return result
+
 
 async def run_optimized_analysis(symbol: str, sources: List[str]):
-    """Optimized background analysis with progress tracking"""
+    """Collect off the event loop and persist actual outcomes when DB-backed."""
+    job = analysis_status[symbol]
+    job.status, job.progress, job.message = "processing", 10, "Collecting dated research evidence"
+    requested = list(dict.fromkeys(sources))
     try:
-        # Update status
-        analysis_status[symbol].status = "processing"
-        analysis_status[symbol].progress = 10
-        analysis_status[symbol].message = "Starting analysis..."
-        
-        # Run analysis based on sources
-        if "sec" in sources:
-            analysis_status[symbol].progress = 30
-            analysis_status[symbol].message = "Collecting SEC data..."
-            await run_full_pipeline_async(symbol)
-        
-        if "news" in sources:
-            analysis_status[symbol].progress = 60
-            analysis_status[symbol].message = "Fetching news sentiment..."
+        await persist_job(job)
+        for index, source in enumerate(requested):
+            job.message = f"Collecting {source} evidence"
+            await persist_job(job)
             try:
-                # Use enhanced news scraper for better coverage
-                fetch_enhanced_news_sentiment(symbol)
-            except Exception as e:
-                print(f"Enhanced news scraper failed, falling back to basic scraper: {e}")
-                fetch_news_sentiment(symbol)
-        
-        # Final processing
-        analysis_status[symbol].progress = 90
-        analysis_status[symbol].message = "Processing sentiment analysis..."
-        
-        # Invalidate cache for this symbol
-        cache.invalidate(f"analysis_{symbol}")
-        cache.invalidate(f"investment_advice_{symbol}")
+                if source == "sec_facts":
+                    result = await asyncio.to_thread(_collect_sec_facts, symbol)
+                    count = len(result.get("facts", [])) + len(result.get("filings", []))
+                    outcome = result["status"]
+                    if outcome == "completed" and not count:
+                        outcome = "no_data"
+                    job.providers[source] = {
+                        "status": outcome, "count": count,
+                        "message": "SEC facts and filing events collected; reported periods and revisions are preserved" if count else
+                        "Set SEC_USER_AGENT with your actual contact email to collect SEC evidence" if outcome == "not_configured" else
+                        "No new SEC facts returned; previously saved evidence remains unchanged",
+                    }
+                elif source in {"sec", "news"}:
+                    if source == "sec":
+                        outputs = await run_full_pipeline_async(symbol)
+                        result = outputs.get("sec")
+                    else:
+                        result = await asyncio.to_thread(_collect_news, symbol)
+                    count = await asyncio.to_thread(_produced_records, result)
+                    outcome = "completed" if count else "no_data"
+                    if isinstance(result, dict):
+                        provider_outcomes = result.get("providers", {})
+                        for name, provider in provider_outcomes.items():
+                            raw_status = provider.get("status", "failed")
+                            job.providers[f"news.{name}"] = {
+                                "status": "completed" if raw_status == "ok" else raw_status,
+                                "count": provider.get("count", 0),
+                                "message": provider.get("reason") or "Provider collection outcome",
+                            }
+                        if count and any(p.get("status") in {"failed", "budget_exhausted"} for p in provider_outcomes.values()):
+                            outcome = "partial"
+                    job.providers[source] = {"status": outcome, "count": count, "message": "Records collected" if count else "No records returned; existing saved evidence may be stale"}
+                else:
+                    job.providers[source] = {"status": "unavailable", "count": 0, "message": "This collector is disabled"}
+            except SQLAlchemyError:
+                # A storage failure is not a provider outage; never switch stores.
+                raise
+            except Exception:
+                logger.exception("Research collector failed for %s (%s)", symbol, source)
+                job.providers[source] = {"status": "failed", "count": 0, "message": "Provider request failed"}
+            job.progress = min(90, 10 + int(80 * (index + 1) / max(1, len(requested))))
+            await persist_job(job)
+        outcomes = [job.providers[source]["status"] for source in requested]
+        successful = sum(value in {"completed", "partial"} for value in outcomes)
+        job.status = "completed" if outcomes and all(value == "completed" for value in outcomes) else "partial" if successful else "failed"
+        job.message = {"completed": "Requested sources returned evidence", "partial": "Some sources returned no data, are not configured, or failed. Check provider results and dates.", "failed": "No requested source returned usable data. Saved evidence has not been refreshed."}[job.status]
+    except Exception:
+        logger.error("Research refresh failed for %s", symbol)
+        job.status, job.message = "failed", "Research refresh failed; verify source and storage availability"
+    finally:
+        cache.invalidate(symbol)
         cache.invalidate("available_stocks")
-        
-        # Complete
-        analysis_status[symbol].status = "completed"
-        analysis_status[symbol].progress = 100
-        analysis_status[symbol].message = "Analysis completed successfully"
-        
-        logger.info(f"Analysis completed for {symbol}")
-        
-    except Exception as e:
-        logger.error(f"Analysis failed for {symbol}: {e}")
-        analysis_status[symbol].status = "failed"
-        analysis_status[symbol].message = f"Analysis failed: {str(e)}"
+        job.progress = 100
+        job.completed_at = datetime.now(timezone.utc)
+        try:
+            await persist_job(job)
+        except Exception:
+            logger.error("Could not persist final refresh status for %s", symbol)
 
 # Add health endpoint for Railway
 @app.get("/health", tags=["Health"])
 async def simple_health():
     """Simple health check for Railway deployment"""
-    return {"status": "ok", "timestamp": datetime.now()}
+    repo = repository()
+    if repo is not None:
+        try:
+            await asyncio.to_thread(repo.check_ready)
+        except Exception:
+            return JSONResponse(status_code=503, content={"status": "unavailable", "storage": "postgres"})
+    return {"status": "ok", "storage": "postgres" if repo is not None else "files", "timestamp": datetime.now(timezone.utc)}
 
-@app.get("/api/sentiment/{symbol}", tags=["Sentiment"])
+@app.get("/api/sentiment/{symbol}", response_model=EnhancedAnalysisResult, tags=["Sentiment"])
 async def get_sentiment_analysis(symbol: str, current_user: str = Depends(verify_password_with_role)):
-    """Get sentiment analysis for a stock symbol"""
-    symbol = symbol.upper()
-    
-    cache_key = f"sentiment_{symbol}"
-    cached_result = cache.get(cache_key)
-    if cached_result:
-        return cached_result
-    
-    try:
-        df = load_dataframes(symbol)
-        
-        if df.empty:
-            raise HTTPException(status_code=404, detail=f"No sentiment data found for {symbol}")
-        
-        # Calculate enhanced metrics
-        enhanced_metrics = calculate_enhanced_metrics(df)
-        
-        # Create source analysis
-        sources = []
-        for source in df['source'].unique():
-            source_df = df[df['source'] == source]
-            sources.append({
-                "source": source,
-                "count": len(source_df),
-                "avg_sentiment": source_df['compound'].mean(),
-                "latest_update": source_df['created_utc'].max().isoformat() if 'created_utc' in source_df.columns else datetime.now().isoformat()
-            })
-        
-        result = {
-            "ticker": symbol,
-            "total_posts": len(df),
-            "sentiment_metrics": {
-                "avg_sentiment": enhanced_metrics.avg_sentiment,
-                "sentiment_distribution": enhanced_metrics.sentiment_distribution,
-                "confidence_score": enhanced_metrics.confidence_score,
-                "trend": enhanced_metrics.trend
-            },
-            "sources": sources,
-            "last_updated": datetime.now().isoformat(),
-            "data_quality_score": min(1.0, len(df) / 100)
-        }
-        
-        # Cache for 30 minutes
-        cache.set(cache_key, result, ttl=1800)
-        return result
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting sentiment analysis for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch sentiment analysis")
+    return await get_stock_analysis(symbol, current_user)
 
 if __name__ == "__main__":
     import uvicorn

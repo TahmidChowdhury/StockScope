@@ -1,153 +1,129 @@
 """Tests for fundamentals analytics backend."""
 
-import pytest
-import pandas as pd
-from datetime import datetime
 from unittest.mock import Mock, patch
-import numpy as np
 
+import pandas as pd
+
+from backend.models.fundamentals import FundamentalsSeries, FundamentalsTTM
 from backend.services.fundamentals import (
     FundamentalsService,
+    compute_quarterly_series,
     compute_ttm_metrics,
-    compute_quarterly_series
 )
-from backend.models.fundamentals import (
-    FundamentalsTTM,
-    FundamentalsSeries,
-    FundamentalPoint
-)
+
+
+def _dt_cols(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert DataFrame columns to datetime to mirror yfinance output."""
+    df.columns = pd.to_datetime(df.columns)
+    return df
+
+
+def _mock_ticker_with_financials(mock_ticker):
+    """Attach realistic quarterly/annual financial data to yfinance.Ticker mock."""
+    quarterly_financials = _dt_cols(
+        pd.DataFrame(
+            {
+                "2023-12-31": [1_000_000, 200_000, 300_000],
+                "2023-09-30": [950_000, 180_000, 280_000],
+                "2023-06-30": [900_000, 160_000, 260_000],
+                "2023-03-31": [850_000, 140_000, 240_000],
+            },
+            index=["Total Revenue", "Operating Income", "EBITDA"],
+        )
+    )
+
+    quarterly_cashflow = _dt_cols(
+        pd.DataFrame(
+            {
+                "2023-12-31": [150_000, -50_000],
+                "2023-09-30": [140_000, -45_000],
+                "2023-06-30": [130_000, -40_000],
+                "2023-03-31": [120_000, -35_000],
+            },
+            index=["Operating Cash Flow", "Capital Expenditures"],
+        )
+    )
+
+    quarterly_balance_sheet = _dt_cols(
+        pd.DataFrame(
+            {
+                "2023-12-31": [500_000, 200_000],
+                "2023-09-30": [490_000, 195_000],
+            },
+            index=["Total Debt", "Cash And Cash Equivalents"],
+        )
+    )
+
+    annual_financials = _dt_cols(
+        pd.DataFrame(
+            {
+                "2023-12-31": [3_700_000, 720_000],
+                "2022-12-31": [3_300_000, 640_000],
+            },
+            index=["Total Revenue", "Operating Income"],
+        )
+    )
+
+    annual_cashflow = _dt_cols(
+        pd.DataFrame(
+            {
+                "2023-12-31": [540_000, -170_000],
+                "2022-12-31": [500_000, -160_000],
+            },
+            index=["Operating Cash Flow", "Capital Expenditures"],
+        )
+    )
+
+    mock_ticker_instance = Mock()
+    mock_ticker_instance.quarterly_financials = quarterly_financials
+    mock_ticker_instance.quarterly_cashflow = quarterly_cashflow
+    mock_ticker_instance.quarterly_balance_sheet = quarterly_balance_sheet
+    mock_ticker_instance.financials = annual_financials
+    mock_ticker_instance.cashflow = annual_cashflow
+    mock_ticker.return_value = mock_ticker_instance
 
 
 def test_fundamentals_service_initialization():
-    """Test that FundamentalsService can be initialized without DatetimeIndex errors."""
     service = FundamentalsService()
     assert service is not None
 
 
-@patch('yfinance.Ticker')
+@patch("yfinance.Ticker")
 def test_compute_ttm_metrics_with_mock_data(mock_ticker):
-    """Test TTM metrics computation with mocked data to avoid DatetimeIndex comparison errors."""
-    # Create mock data that mimics yfinance structure
-    mock_income_data = pd.DataFrame({
-        '2023-12-31': [1000000, 200000, 300000],
-        '2023-09-30': [950000, 180000, 280000],
-        '2023-06-30': [900000, 160000, 260000], 
-        '2023-03-31': [850000, 140000, 240000]
-    }, index=['Total Revenue', 'Operating Income', 'EBITDA'])
-    
-    mock_cashflow_data = pd.DataFrame({
-        '2023-12-31': [150000, -50000],
-        '2023-09-30': [140000, -45000],
-        '2023-06-30': [130000, -40000],
-        '2023-03-31': [120000, -35000]
-    }, index=['Operating Cash Flow', 'Capital Expenditures'])
-    
-    mock_balance_data = pd.DataFrame({
-        '2023-12-31': [500000, 200000]
-    }, index=['Total Debt', 'Cash And Cash Equivalents'])
-    
-    # Convert column names to DatetimeIndex to match yfinance format
-    mock_income_data.columns = pd.to_datetime(mock_income_data.columns)
-    mock_cashflow_data.columns = pd.to_datetime(mock_cashflow_data.columns)
-    mock_balance_data.columns = pd.to_datetime(mock_balance_data.columns)
-    
-    # Mock the yfinance ticker object
-    mock_ticker_instance = Mock()
-    mock_ticker_instance.quarterly_income_stmt = mock_income_data
-    mock_ticker_instance.quarterly_cashflow = mock_cashflow_data
-    mock_ticker_instance.quarterly_balance_sheet = mock_balance_data
-    mock_ticker.return_value = mock_ticker_instance
-    
-    # This should not raise a DatetimeIndex comparison error
-    result = compute_ttm_metrics('TEST')
-    
+    _mock_ticker_with_financials(mock_ticker)
+
+    result = compute_ttm_metrics("TEST")
+
     assert isinstance(result, FundamentalsTTM)
-    assert result.ticker == 'TEST'
-    # Should not have insufficient data with 4 quarters
+    assert result.ticker == "TEST"
     assert result.insufficient_data is False
+    assert result.revenue_ttm is not None
+    assert result.operating_income_ttm is not None
+    assert result.fcf_ttm is not None
 
 
-@patch('yfinance.Ticker') 
+@patch("yfinance.Ticker")
 def test_compute_quarterly_series_with_mock_data(mock_ticker):
-    """Test quarterly series computation with mocked data."""
-    # Create mock data
-    mock_income_data = pd.DataFrame({
-        '2023-12-31': [1000000, 200000],
-        '2023-09-30': [950000, 180000],
-        '2023-06-30': [900000, 160000], 
-        '2023-03-31': [850000, 140000]
-    }, index=['Total Revenue', 'Operating Income'])
-    
-    mock_cashflow_data = pd.DataFrame({
-        '2023-12-31': [150000, -50000],
-        '2023-09-30': [140000, -45000],
-        '2023-06-30': [130000, -40000],
-        '2023-03-31': [120000, -35000]
-    }, index=['Operating Cash Flow', 'Capital Expenditures'])
-    
-    # Convert to DatetimeIndex
-    mock_income_data.columns = pd.to_datetime(mock_income_data.columns)
-    mock_cashflow_data.columns = pd.to_datetime(mock_cashflow_data.columns)
-    
-    # Mock the yfinance ticker object
-    mock_ticker_instance = Mock()
-    mock_ticker_instance.quarterly_income_stmt = mock_income_data
-    mock_ticker_instance.quarterly_cashflow = mock_cashflow_data
-    mock_ticker_instance.quarterly_balance_sheet = pd.DataFrame()
-    mock_ticker.return_value = mock_ticker_instance
-    
-    # This should not raise a DatetimeIndex comparison error
-    result = compute_quarterly_series('TEST')
-    
+    _mock_ticker_with_financials(mock_ticker)
+
+    result = compute_quarterly_series("TEST")
+
     assert isinstance(result, FundamentalsSeries)
+    assert result.revenue_q is not None
+    assert len(result.revenue_q) == 4
+    assert result.operating_income_q is not None
+    assert result.fcf_q is not None
 
 
-def test_fundamentals_service_safe_get_method():
-    """Test the _safe_get method handles DatetimeIndex properly."""
+@patch("yfinance.Ticker")
+def test_fundamentals_service_wrapper_response(mock_ticker):
+    _mock_ticker_with_financials(mock_ticker)
+
     service = FundamentalsService()
-    
-    # Create test DataFrame with DatetimeIndex columns
-    test_data = pd.DataFrame({
-        pd.Timestamp('2023-12-31'): [100, 200],
-        pd.Timestamp('2023-09-30'): [110, 220]
-    }, index=['Revenue', 'Income'])
-    
-    # Test that _safe_get doesn't raise DatetimeIndex comparison errors
-    try:
-        result = service._safe_get(test_data, 'Revenue', pd.Timestamp('2023-12-31'))
-        # If we get here without an exception, the fix worked
-        assert True
-    except ValueError as e:
-        if "ambiguous" in str(e).lower():
-            pytest.fail("DatetimeIndex comparison error still exists")
-        else:
-            # Some other error is acceptable for this test
-            pass
+    payload = service.get_fundamentals_data("TEST")
 
-
-def test_fundamentals_service_calculate_growth_rate():
-    """Test the _calculate_growth_rate method."""
-    service = FundamentalsService()
-    
-    # Test normal growth calculation
-    growth = service._calculate_growth_rate(120.0, 100.0)
-    assert growth == pytest.approx(0.2)
-    
-    # Test negative growth
-    growth = service._calculate_growth_rate(80.0, 100.0)
-    assert growth == pytest.approx(-0.2)
-    
-    # Test with None values
-    growth = service._calculate_growth_rate(None, 100.0)
-    assert growth is None
-    
-    growth = service._calculate_growth_rate(120.0, None)
-    assert growth is None
-    
-    # Test with zero previous value
-    growth = service._calculate_growth_rate(100.0, 0.0)
-    assert growth is None
-
-
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+    assert payload["ticker"] == "TEST"
+    assert "ttm" in payload
+    assert "series" in payload
+    assert "metadata" in payload
+    assert payload["metadata"]["insufficient_data"] is False

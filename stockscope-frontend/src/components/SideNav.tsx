@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { clearAuthSession } from '@/lib/api'
 import Link from 'next/link'
 import {
   HomeIcon,
@@ -67,7 +68,7 @@ export default function SideNav({
       <div className="px-3 pb-3">
         <div className="h-px bg-white/10 mb-3" />
         <div className="text-xs font-semibold text-white/25 uppercase tracking-widest mb-2 px-3">
-          Portfolio
+          Shared watchlist
         </div>
         <div className="space-y-0.5 max-h-48 overflow-y-auto">
           {stocks.slice(0, 10).map(stock => (
@@ -82,11 +83,11 @@ export default function SideNav({
             >
               <span className="font-mono font-semibold tracking-wide">{stock.symbol}</span>
               <span className={`text-xs ${
-                (stock.avg_sentiment ?? 0) > 0.1  ? 'text-green-400' :
-                (stock.avg_sentiment ?? 0) < -0.1 ? 'text-red-400'   : 'text-white/25'
+                (stock.avg_sentiment ?? 0) >= 0.05  ? 'text-green-400' :
+                (stock.avg_sentiment ?? 0) <= -0.05 ? 'text-red-400'   : 'text-white/25'
               }`}>
-                {(stock.avg_sentiment ?? 0) > 0.1  ? '▲' :
-                 (stock.avg_sentiment ?? 0) < -0.1 ? '▼' : '—'}
+                {(stock.avg_sentiment ?? 0) >= 0.05  ? '▲' :
+                 (stock.avg_sentiment ?? 0) <= -0.05 ? '▼' : '—'}
               </span>
             </button>
           ))}
@@ -96,12 +97,11 @@ export default function SideNav({
   }
 
   const LogoutBtn = () => {
-    if (!onLogout) return null
     return (
       <div className="px-3 pb-4 mt-auto">
         <div className="h-px bg-white/10 mb-3" />
         <button
-          onClick={onLogout}
+          onClick={onLogout || clearAuthSession}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-400/70 hover:text-red-300 hover:bg-red-500/10 transition-all text-sm"
         >
           <ArrowRightOnRectangleIcon className="w-4 h-4 flex-shrink-0" />

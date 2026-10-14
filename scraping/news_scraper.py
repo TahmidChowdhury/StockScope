@@ -3,7 +3,8 @@ import requests
 import json
 from dotenv import load_dotenv
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from datetime import datetime
+from datetime import datetime, timezone
+from backend.services.research import save_records
 
 # Load environment variables from .env
 load_dotenv()
@@ -132,9 +133,11 @@ def fetch_news_sentiment(ticker, limit=20):
         "apiKey": NEWS_API_KEY
     }
 
-    response = requests.get(BASE_URL, params=params)
+    if not NEWS_API_KEY:
+        return None
+    response = requests.get(BASE_URL, params=params, timeout=(3, 5))
     if response.status_code != 200:
-        raise Exception(f"NewsAPI error: {response.status_code} - {response.text}")
+        raise RuntimeError(f"NewsAPI request failed ({response.status_code})")
 
     articles = response.json().get("articles", [])
     print(f"🔍 Found {len(articles)} articles for query: '{query}'")
@@ -180,6 +183,7 @@ def fetch_news_sentiment(ticker, limit=20):
 
         article_data = {
             "title": title,
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
             "description": description,
             "publishedAt": article["publishedAt"],
             "url": article["url"],
@@ -196,10 +200,9 @@ def fetch_news_sentiment(ticker, limit=20):
         
         results.append(article_data)
 
-    os.makedirs("data", exist_ok=True)
-    output_path = os.path.join("data", f"{ticker}_news_sentiment.json")
-    with open(output_path, "w") as f:
-        json.dump(results, f, indent=2)
+    if not results:
+        return None
+    output_path = save_records(ticker, "news_sentiment", results)
 
     if flagged_for_review:
         print(f"⚠️  {len(flagged_for_review)} articles flagged for manual review")

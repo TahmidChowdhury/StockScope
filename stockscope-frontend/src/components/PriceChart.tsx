@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { apiFetch } from '@/lib/api'
+
+import { useState, useEffect, useCallback } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { TrendingUp, TrendingDown } from 'lucide-react'
 import { useWindowWidth } from '@/hooks/useWindowWidth'
@@ -19,9 +21,13 @@ interface PriceHistoryResponse {
   symbol: string
   period: string
   interval: string
-  currentPrice: number
-  priceChange: number
-  priceChangePercent: number
+  currentPrice: number | null
+  priceChange: number | null
+  priceChangePercent: number | null
+  quote_as_of: string | null
+  price_source: string
+  lastHistoricalClose: number | null
+  lastHistoricalCloseDate: string | null
   data: PriceData[]
 }
 
@@ -47,20 +53,14 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
   const [selectedPeriod, setSelectedPeriod] = useState('1y')
   const windowWidth = useWindowWidth()
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-
-  const getPasswordParam = () => {
-    const password = localStorage.getItem('stockscope_password')
-    return password ? `?password=${encodeURIComponent(password)}` : ''
-  }
-
-  const fetchPriceData = async (period: string) => {
+  const fetchPriceData = useCallback(async (period: string, signal: AbortSignal) => {
     setLoading(true)
     setError(null)
     
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/stocks/${symbol}/price-history?period=${period}&interval=1d${getPasswordParam() ? '&' + getPasswordParam().slice(1) : ''}`
+      const response = await apiFetch(
+        `/api/stocks/${encodeURIComponent(symbol)}/price-history?period=${period}&interval=1d`,
+        { signal }
       )
       
       if (!response.ok) {
@@ -68,19 +68,21 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
       }
       
       const data = await response.json()
-      setPriceData(data)
+      if (!signal.aborted) setPriceData(data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error')
+      if (!signal.aborted) setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
-      setLoading(false)
+      if (!signal.aborted) setLoading(false)
     }
-  }
+  }, [symbol])
 
   useEffect(() => {
+    const controller = new AbortController()
     if (symbol) {
-      fetchPriceData(selectedPeriod)
+      fetchPriceData(selectedPeriod, controller.signal)
     }
-  }, [symbol, selectedPeriod])
+    return () => controller.abort()
+  }, [symbol, selectedPeriod, fetchPriceData])
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -92,19 +94,22 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
   }
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr)
+    // Daily bars are trading dates, not midnight instants in the viewer's timezone.
+    const date = new Date(`${dateStr}T00:00:00Z`)
     return date.toLocaleDateString('en-US', {
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'UTC'
     })
   }
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: ReadonlyArray<{ payload?: PriceData }> }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload
+      if (!data) return null
       return (
         <div className="bg-slate-900/95 backdrop-blur-sm p-3 rounded-lg shadow-lg border border-white/20">
-          <p className="font-semibold text-white">{formatDate(label)}</p>
+          <p className="font-semibold text-white">{formatDate(data.date)}</p>
           <p className="text-green-400">Close: {formatPrice(data.close)}</p>
           <p className="text-gray-300">Volume: {data.volume.toLocaleString()}</p>
         </div>
@@ -138,8 +143,11 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
     return null
   }
 
-  const isPositive = priceData.priceChange >= 0
-  const chartColor = isPositive ? '#10B981' : '#EF4444'
+  const change = priceData.priceChange
+  const changePercent = priceData.priceChangePercent
+  const chartColor = change == null || change === 0 ? '#94A3B8' : change > 0 ? '#10B981' : '#EF4444'
+  const quoteDate = priceData.quote_as_of ? new Date(priceData.quote_as_of) : null
+  const quoteDateLabel = quoteDate && !Number.isNaN(quoteDate.getTime()) ? quoteDate.toLocaleString() : 'Unknown'
 
   return (
     <div className={`bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-3 sm:p-6 ${className}`}>
@@ -151,19 +159,21 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
           </h3>
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <span className="text-xl sm:text-2xl font-bold text-white">
-              {formatPrice(priceData.currentPrice)}
+              {priceData.currentPrice == null ? 'Quote unavailable' : formatPrice(priceData.currentPrice)}
             </span>
-            <div className={`flex items-center gap-1 ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-              {isPositive ? (
+            {change != null && changePercent != null ? <div className={`flex items-center gap-1 ${change === 0 ? 'text-white/60' : change > 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {change > 0 ? (
                 <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4" />
-              ) : (
+              ) : change < 0 ? (
                 <TrendingDown className="h-3 w-3 sm:h-4 sm:w-4" />
-              )}
+              ) : null}
               <span className="text-sm sm:text-base font-semibold">
-                {formatPrice(Math.abs(priceData.priceChange))} ({Math.abs(priceData.priceChangePercent).toFixed(2)}%)
+                {change > 0 ? '+' : ''}{formatPrice(change)} ({changePercent > 0 ? '+' : ''}{changePercent.toFixed(2)}%)
               </span>
-            </div>
+            </div> : <span className="text-sm text-white/60">Daily change unavailable</span>}
           </div>
+          <p className="mt-2 text-xs text-white/60">{priceData.price_source || 'Price provider'} · Quote time: {quoteDateLabel}</p>
+          {priceData.lastHistoricalClose != null && <p className="mt-1 text-xs text-white/60">Latest chart close: {formatPrice(priceData.lastHistoricalClose)} · {priceData.lastHistoricalCloseDate ?? 'Date unknown'}</p>}
         </div>
 
         {/* Period selector - Better mobile layout */}

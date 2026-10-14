@@ -2,13 +2,17 @@ import os
 import requests
 import json
 import feedparser
-from gnews import GNews
-from datetime import datetime, timedelta
+from backend.services.research import save_records, parse_timestamp
+from email.utils import parsedate_to_datetime
+from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
 import yfinance as yf
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from bs4 import BeautifulSoup
 import time
+from scraping.research_sources import ResearchNewsSources, canonical_url, explicit_timestamp
+from urllib3.util import Timeout
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -35,6 +39,21 @@ class EnhancedNewsScraper:
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
+        self.research_sources = ResearchNewsSources(session=self.session)
+        self.last_provider_results = {}
+        self._deadline = None
+
+    def _request_timeout(self):
+        remaining = self._deadline - time.monotonic() if self._deadline is not None else 8
+        if remaining <= 0:
+            raise TimeoutError("News collection budget exhausted")
+        return Timeout(total=min(8, remaining), connect=min(3, remaining), read=min(5, remaining))
+
+    def fetch_company_ir(self, ticker: str) -> List[Dict]:
+        return self.research_sources.fetch_company_ir(ticker, deadline=self._deadline)
+
+    def fetch_gdelt(self, ticker: str) -> List[Dict]:
+        return self.research_sources.fetch_gdelt(ticker, deadline=self._deadline)
     
     def classify_sentiment(self, compound):
         """Classify sentiment based on compound score."""
@@ -75,16 +94,8 @@ class EnhancedNewsScraper:
                         
                         # Parse pubDate
                         pub_date = content.get('pubDate', '')
-                        if pub_date:
-                            try:
-                                # Parse ISO format like '2025-10-07T12:51:54Z'
-                                if pub_date.endswith('Z'):
-                                    pub_date = pub_date[:-1]  # Remove 'Z'
-                                published_at = datetime.fromisoformat(pub_date).isoformat()
-                            except:
-                                published_at = datetime.now().isoformat()
-                        else:
-                            published_at = datetime.now().isoformat()
+                        parsed_date = parse_timestamp(pub_date)
+                        published_at = parsed_date.isoformat() if parsed_date else None
                     else:
                         # Old structure (direct fields)
                         title = article.get('title', '')
@@ -93,9 +104,9 @@ class EnhancedNewsScraper:
                         provider_publish_time = article.get('providerPublishTime')
                         
                         if provider_publish_time:
-                            published_at = datetime.fromtimestamp(provider_publish_time).isoformat()
+                            published_at = datetime.fromtimestamp(provider_publish_time, timezone.utc).isoformat()
                         else:
-                            published_at = datetime.now().isoformat()
+                            published_at = None
                     
                     if not title:
                         continue
@@ -158,7 +169,7 @@ class EnhancedNewsScraper:
                     "domains": "reuters.com,bloomberg.com,marketwatch.com,yahoo.com,cnbc.com,fool.com,seekingalpha.com,investorplace.com,benzinga.com"
                 }
                 
-                response = requests.get("https://newsapi.org/v2/everything", params=params)
+                response = requests.get("https://newsapi.org/v2/everything", params=params, timeout=(3, 5))
                 if response.status_code == 200:
                     articles = response.json().get("articles", [])
                     
@@ -200,10 +211,13 @@ class EnhancedNewsScraper:
         """Fetch articles from Google News RSS via gnews — always returns real URLs."""
         try:
             print(f"🔍 Fetching Google News for {ticker}...")
-            gn = GNews(language='en', country='US', period='7d', max_results=10)
+            # Fetch bytes ourselves: GNews/feedparser URL loading has no finite timeout.
 
             query = f"{ticker} stock" if not company_name else f"{company_name} {ticker}"
-            results = gn.get_news(query)
+            response = self.session.get("https://news.google.com/rss/search", params={"q": query + " when:7d", "hl": "en-US", "gl": "US", "ceid": "US:en"}, timeout=self._request_timeout())
+            response.raise_for_status()
+            feed = feedparser.parse(response.content)
+            results = [{"title": entry.get("title", ""), "url": entry.get("link", ""), "description": entry.get("summary", ""), "publisher": {"title": entry.get("source", {}).get("title", "Google News")}, "published date": entry.get("published", "")} for entry in feed.entries[:10]]
 
             articles = []
             for item in results:
@@ -220,9 +234,9 @@ class EnhancedNewsScraper:
 
                     # Parse date
                     try:
-                        published_at = datetime.strptime(pub_date, '%a, %d %b %Y %H:%M:%S %Z').isoformat()
+                        published_at = explicit_timestamp(pub_date)
                     except Exception:
-                        published_at = datetime.now().isoformat()
+                        published_at = None
 
                     content = f"{title}. {description}".strip()
                     sentiment_scores = self.analyzer.polarity_scores(content)
@@ -263,9 +277,13 @@ class EnhancedNewsScraper:
         }
 
         for source_name, feed_url in feed_urls.items():
+            if self._deadline is not None and time.monotonic() >= self._deadline:
+                break
             try:
                 print(f"🔍 Fetching {source_name} RSS for {ticker}...")
-                feed = feedparser.parse(feed_url)
+                response = self.session.get(feed_url, timeout=self._request_timeout())
+                response.raise_for_status()
+                feed = feedparser.parse(response.content)
                 count = 0
 
                 for entry in feed.entries[:30]:  # scan up to 30 entries per feed
@@ -287,10 +305,10 @@ class EnhancedNewsScraper:
                                 continue
 
                         # Parse date
-                        published_at = datetime.now().isoformat()
+                        published_at = None
                         if hasattr(entry, 'published_parsed') and entry.published_parsed:
                             try:
-                                published_at = datetime(*entry.published_parsed[:6]).isoformat()
+                                published_at = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc).isoformat()
                             except Exception:
                                 pass
 
@@ -347,15 +365,19 @@ class EnhancedNewsScraper:
                         continue
 
                     # Parse date
-                    published_at = datetime.now().isoformat()
+                    published_at = None
                     if date_val:
                         try:
-                            published_at = datetime.strptime(str(date_val), '%b-%d-%y %I:%M%p').isoformat()
-                        except Exception:
+                            parsed_date = datetime.fromisoformat(str(date_val))
+                        except (ValueError, TypeError):
                             try:
-                                published_at = str(date_val)
-                            except Exception:
-                                pass
+                                parsed_date = datetime.strptime(str(date_val), '%b-%d-%y %I:%M%p')
+                            except (ValueError, TypeError):
+                                parsed_date = None
+                        if parsed_date is not None:
+                            if parsed_date.tzinfo is None:
+                                parsed_date = parsed_date.replace(tzinfo=ZoneInfo("America/New_York"))
+                            published_at = parsed_date.astimezone(timezone.utc).isoformat()
 
                     sentiment_scores = self.analyzer.polarity_scores(title)
 
@@ -388,7 +410,7 @@ class EnhancedNewsScraper:
             # Use the public Stocktwits API endpoint
             url = f"https://api.stocktwits.com/api/2/streams/symbol/{ticker}.json"
             
-            response = self.session.get(url, timeout=10)
+            response = self.session.get(url, timeout=self._request_timeout())
             response.raise_for_status()
             
             data = response.json()
@@ -412,16 +434,8 @@ class EnhancedNewsScraper:
                         continue
                     
                     # Parse created_at timestamp
-                    published_at = datetime.now().isoformat()  # Fallback
-                    if created_at:
-                        try:
-                            # Stocktwits usually returns ISO format timestamps
-                            # Example: "2025-10-08T14:24:00Z"
-                            if created_at.endswith('Z'):
-                                created_at = created_at[:-1]  # Remove 'Z'
-                            published_at = datetime.fromisoformat(created_at).isoformat()
-                        except:
-                            published_at = datetime.now().isoformat()
+                    parsed_date = parse_timestamp(created_at)
+                    published_at = parsed_date.isoformat() if parsed_date else None
                     
                     # Prefer the canonical Stocktwits message permalink.
                     source_url = None
@@ -511,49 +525,70 @@ class EnhancedNewsScraper:
         
         all_articles = []
         
-        # Fetch from Yahoo Finance
-        yahoo_articles = self.fetch_yahoo_finance_news(ticker)
-        all_articles.extend(yahoo_articles)
+        # Transport and provider budgets are finite. The third-party Yahoo and
+        # Finviz clients need their full default request timeout remaining.
+        self._deadline = time.monotonic() + 60
+        self.last_provider_results = {}
+        collectors = (
+            ("company_ir_rss", self.fetch_company_ir, 1),
+            ("gdelt", self.fetch_gdelt, 1),
+            ("yahoo_finance", self.fetch_yahoo_finance_news, 30),
+            ("google_news", self.fetch_gnews, 1),
+            ("rss", self.fetch_rss_feeds, 1),
+            ("finviz", self.fetch_finviz_news, 10),
+            ("stocktwits", self.fetch_stocktwits, 1),
+        )
+        try:
+            for provider, collector, required_seconds in collectors:
+                if self._deadline - time.monotonic() < required_seconds:
+                    self.last_provider_results[provider] = {"status": "budget_exhausted", "count": 0}
+                    continue
+                try:
+                    articles = collector(ticker)
+                    for article in articles:
+                        article.setdefault("provider", provider)
+                        article.setdefault("original_source", article.get("source"))
+                        article.setdefault("source_type", "social" if provider == "stocktwits" else "news")
+                    all_articles.extend(articles)
+                    self.last_provider_results[provider] = self.research_sources.last_results.get(
+                        provider, {"status": "ok" if articles else "no_data", "count": len(articles)})
+                except Exception as exc:
+                    self.last_provider_results[provider] = {"status": "failed", "count": 0, "reason": str(exc)[:160]}
+        finally:
+            self._deadline = None
 
-        # Fetch from Google News via gnews
-        gnews_articles = self.fetch_gnews(ticker)
-        all_articles.extend(gnews_articles)
-
-        # Fetch from RSS feeds (Seeking Alpha, MarketWatch, Reuters, CNBC, Benzinga)
-        rss_articles = self.fetch_rss_feeds(ticker)
-        all_articles.extend(rss_articles)
-
-        # Fetch from Finviz
-        finviz_articles = self.fetch_finviz_news(ticker)
-        all_articles.extend(finviz_articles)
-
-        # Fetch from Stocktwits
-        stocktwits_articles = self.fetch_stocktwits(ticker)
-        all_articles.extend(stocktwits_articles)
-        
-        # Deduplicate by lowercase title
+        # Canonical links identify articles. Title-only dedup is a fallback for
+        # legacy records with no usable URL; separate publishers may reuse titles.
+        seen_urls = set()
         seen_titles = set()
         unique_articles = []
         
         for article in all_articles:
-            title_key = article['title'].lower().strip()
-            if title_key not in seen_titles and len(title_key) > 5:  # Minimum title length
-                seen_titles.add(title_key)
-                unique_articles.append(article)
+            title_key = str(article.get('title', '')).lower().strip()
+            url = canonical_url(article.get('url'))
+            if len(title_key) <= 5 or (url in seen_urls if url else title_key in seen_titles):
+                continue
+            if url:
+                seen_urls.add(url)
+                article['url'] = url
+            seen_titles.add(title_key)
+            unique_articles.append(article)
         
-        # Sort by published date (most recent first)
-        unique_articles.sort(key=lambda x: x['publishedAt'], reverse=True)
+        # Discovery time may order an undated discovery, but is never copied into
+        # publishedAt or represented as a publisher-supplied date.
+        unique_articles.sort(key=lambda x: parse_timestamp(x.get('publishedAt')) or parse_timestamp(x.get('provider_seen_at')) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
         
         # Limit results
         final_articles = unique_articles[:limit]
         
-        # Save to file
-        os.makedirs("data", exist_ok=True)
-        output_path = os.path.join("data", f"{ticker}_comprehensive_news.json")
-        
-        with open(output_path, "w") as f:
-            json.dump(final_articles, f, indent=2)
-        
+        if not final_articles:
+            return None
+        for article in final_articles:
+            parsed_date = parse_timestamp(article.get("publishedAt"))
+            article["publishedAt"] = parsed_date.isoformat() if parsed_date else None
+            article["fetched_at"] = datetime.now(timezone.utc).isoformat()
+        output_path = save_records(ticker, "comprehensive_news", final_articles)
+
         print(f"✅ Saved {len(final_articles)} comprehensive news articles to {output_path}")
         print(f"   📊 Sources breakdown:")
         
@@ -571,6 +606,13 @@ def fetch_enhanced_news_sentiment(ticker: str, limit: int = 30) -> str:
     """Enhanced news fetching function to replace the original."""
     scraper = EnhancedNewsScraper()
     return scraper.fetch_comprehensive_news(ticker, limit)
+
+
+def fetch_enhanced_news_with_results(ticker: str, limit: int = 30) -> Dict:
+    """Keep provider outcomes separate from the persisted article snapshot."""
+    scraper = EnhancedNewsScraper()
+    reference = scraper.fetch_comprehensive_news(ticker, limit)
+    return {"reference": reference, "providers": scraper.last_provider_results}
 
 if __name__ == "__main__":
     # Test with a few tickers

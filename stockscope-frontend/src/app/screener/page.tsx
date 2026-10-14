@@ -40,12 +40,6 @@ export default function ScreenerPage() {
   const handleScreen = () => {
     const request = {
       ...filters,
-      // Convert empty strings to undefined
-      min_revenue_growth_yoy: filters.min_revenue_growth_yoy || undefined,
-      min_fcf_growth_yoy: filters.min_fcf_growth_yoy || undefined,
-      min_margin_growth_yoy_pp: filters.min_margin_growth_yoy_pp || undefined,
-      min_ebitda_growth_yoy: filters.min_ebitda_growth_yoy || undefined,
-      max_debt_to_cash: filters.max_debt_to_cash || undefined,
       // Add test universe if enabled
       universe: useTestUniverse ? ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'NFLX', 'ADBE', 'CRM'] : undefined
     }
@@ -67,9 +61,9 @@ export default function ScreenerPage() {
 
   const formatPercent = (value: number | null | undefined) => {
     if (value === null || value === undefined || isNaN(value)) return 'N/A'
-    return new Intl.NumberFormat('en-US', { 
-      style: 'percent', 
-      maximumFractionDigits: 1 
+    return new Intl.NumberFormat('en-US', {
+      style: 'percent',
+      maximumFractionDigits: 1
     }).format(value)
   }
 
@@ -80,8 +74,8 @@ export default function ScreenerPage() {
     } else if (compact && Math.abs(value) >= 1e6) {
       return `$${(value / 1e6).toFixed(1)}M`
     }
-    return new Intl.NumberFormat('en-US', { 
-      style: 'currency', 
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
       currency: 'USD',
       maximumFractionDigits: 0
     }).format(value)
@@ -131,7 +125,7 @@ export default function ScreenerPage() {
             <FunnelIcon className="h-5 w-5" />
             Screening Criteria
           </h2>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             {/* Revenue Growth Filter */}
             <div>
@@ -141,8 +135,8 @@ export default function ScreenerPage() {
               <input
                 type="number"
                 step="0.01"
-                value={filters.min_revenue_growth_yoy ? (filters.min_revenue_growth_yoy * 100) : ''}
-                onChange={(e) => handleFilterChange('min_revenue_growth_yoy', 
+                value={filters.min_revenue_growth_yoy !== undefined ? (filters.min_revenue_growth_yoy * 100) : ''}
+                onChange={(e) => handleFilterChange('min_revenue_growth_yoy',
                   e.target.value ? parseFloat(e.target.value) / 100 : undefined)}
                 placeholder="e.g., 10 for 10%"
                 className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent backdrop-blur-sm"
@@ -157,8 +151,8 @@ export default function ScreenerPage() {
               <input
                 type="number"
                 step="0.01"
-                value={filters.min_fcf_growth_yoy ? (filters.min_fcf_growth_yoy * 100) : ''}
-                onChange={(e) => handleFilterChange('min_fcf_growth_yoy', 
+                value={filters.min_fcf_growth_yoy !== undefined ? (filters.min_fcf_growth_yoy * 100) : ''}
+                onChange={(e) => handleFilterChange('min_fcf_growth_yoy',
                   e.target.value ? parseFloat(e.target.value) / 100 : undefined)}
                 placeholder="e.g., 15 for 15%"
                 className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent backdrop-blur-sm"
@@ -173,9 +167,9 @@ export default function ScreenerPage() {
               <input
                 type="number"
                 step="0.1"
-                value={filters.min_margin_growth_yoy_pp ? (filters.min_margin_growth_yoy_pp * 100) : ''}
-                onChange={(e) => handleFilterChange('min_margin_growth_yoy_pp', 
-                  e.target.value ? parseFloat(e.target.value) / 100 : undefined)}
+                value={filters.min_margin_growth_yoy_pp ?? ''}
+                onChange={(e) => handleFilterChange('min_margin_growth_yoy_pp',
+                  e.target.value ? parseFloat(e.target.value) : undefined)}
                 placeholder="e.g., 1.0 for 1pp"
                 className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent backdrop-blur-sm"
               />
@@ -189,8 +183,8 @@ export default function ScreenerPage() {
               <input
                 type="number"
                 step="0.01"
-                value={filters.min_ebitda_growth_yoy ? (filters.min_ebitda_growth_yoy * 100) : ''}
-                onChange={(e) => handleFilterChange('min_ebitda_growth_yoy', 
+                value={filters.min_ebitda_growth_yoy !== undefined ? (filters.min_ebitda_growth_yoy * 100) : ''}
+                onChange={(e) => handleFilterChange('min_ebitda_growth_yoy',
                   e.target.value ? parseFloat(e.target.value) / 100 : undefined)}
                 placeholder="e.g., 12 for 12%"
                 className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent backdrop-blur-sm"
@@ -205,8 +199,8 @@ export default function ScreenerPage() {
               <input
                 type="number"
                 step="0.1"
-                value={filters.max_debt_to_cash || ''}
-                onChange={(e) => handleFilterChange('max_debt_to_cash', 
+                value={filters.max_debt_to_cash ?? ''}
+                onChange={(e) => handleFilterChange('max_debt_to_cash',
                   e.target.value ? parseFloat(e.target.value) : undefined)}
                 placeholder="e.g., 2.0"
                 className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent backdrop-blur-sm"
@@ -264,6 +258,8 @@ export default function ScreenerPage() {
             </div>
           </div>
 
+          <p className="mb-4 text-sm text-white/60">The default universe is a curated US-stock list with an unknown membership date. It is not the full current S&amp;P 500.</p>
+
           {/* Test Universe Option */}
           <div className="flex items-center gap-2 mb-8">
             <input
@@ -273,7 +269,7 @@ export default function ScreenerPage() {
               className="h-4 w-4 text-blue-600 bg-white/10 border-white/30 rounded focus:ring-blue-500"
             />
             <label className="text-sm font-medium text-white/70">
-              Use Test Universe (AAPL, MSFT, GOOGL, AMZN, NVDA, TSLA, META, NFLX, ADBE, CRM)
+              Use Small Example List (AAPL, MSFT, GOOGL, AMZN, NVDA, TSLA, META, NFLX, ADBE, CRM)
             </label>
           </div>
 
@@ -296,7 +292,7 @@ export default function ScreenerPage() {
                 </>
               )}
             </button>
-            
+
             <button
               onClick={clearFilters}
               className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/30 text-white rounded-lg transition-colors font-medium backdrop-blur-sm"
@@ -332,29 +328,29 @@ export default function ScreenerPage() {
                 <div className="flex items-center gap-3">
                   <ChartBarIcon className="h-8 w-8 text-blue-400" />
                   <div>
-                    <h3 className="text-2xl font-bold text-white">{screener.data.results.length}</h3>
-                    <p className="text-white/70 text-sm">Companies Found</p>
+                    <h3 className="text-2xl font-bold text-white">{screener.data.total_matches}</h3>
+                    <p className="text-white/70 text-sm">Total Matches</p>
                   </div>
                 </div>
               </div>
-              
+
               <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
                 <div className="flex items-center gap-3">
                   <MagnifyingGlassIcon className="h-8 w-8 text-green-400" />
                   <div>
-                    <h3 className="text-2xl font-bold text-white">{screener.data.total_screened}</h3>
-                    <p className="text-white/70 text-sm">Total Screened</p>
+                    <h3 className="text-2xl font-bold text-white">{screener.data.total_evaluated}</h3>
+                    <p className="text-white/70 text-sm">Companies Evaluated</p>
                   </div>
                 </div>
               </div>
-              
+
               <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
                 <div className="flex items-center gap-3">
                   <FunnelIcon className="h-8 w-8 text-purple-400" />
                   <div>
                     <h3 className="text-2xl font-bold text-white">
-                      {screener.data.total_screened > 0 ? 
-                        `${((screener.data.results.length / screener.data.total_screened) * 100).toFixed(1)}%` : '0%'}
+                      {screener.data.total_evaluated > 0 ?
+                        `${((screener.data.total_matches / screener.data.total_evaluated) * 100).toFixed(1)}%` : '0%'}
                     </h3>
                     <p className="text-white/70 text-sm">Pass Rate</p>
                   </div>
@@ -362,11 +358,17 @@ export default function ScreenerPage() {
               </div>
             </div>
 
+            <div className="rounded-lg border border-white/20 bg-white/5 p-4 text-sm text-white/70 space-y-2">
+              <p>{screener.data.universe_name} · {screener.data.total_attempted} unique symbols attempted.</p>
+              <p>{screener.data.total_failed} requests failed or timed out; {screener.data.total_insufficient} had insufficient financial data. Showing {screener.data.results.length} of {screener.data.total_matches} matches.</p>
+              <p>Growth may use TTM or fiscal-year comparisons; each result identifies its basis. Unavailable growth does not pass a growth filter.</p>
+            </div>
+
             {/* Sort Information */}
             <div className="bg-white/5 backdrop-blur-sm rounded-lg p-4 border border-white/10">
               <p className="text-white/80 text-sm text-center">
-                📊 Sorted by <span className="font-medium text-white">{sortOptions.find(opt => opt.value === filters.sort_by)?.label}</span> 
-                {' '}({filters.sort_dir === 'desc' ? 'Highest to Lowest' : 'Lowest to Highest'})
+                📊 Sorted by <span className="font-medium text-white">{sortOptions.find(opt => opt.value === screener.data.filters_applied.sort_by)?.label}</span>
+                {' '}({screener.data.filters_applied.sort_dir === 'desc' ? 'Highest to Lowest' : 'Lowest to Highest'})
               </p>
             </div>
 
@@ -374,9 +376,9 @@ export default function ScreenerPage() {
             {screener.data.results.length > 0 ? (
               <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 overflow-hidden">
                 <div className="px-6 py-4 border-b border-white/20">
-                  <h3 className="text-xl font-semibold text-white">🏆 Screening Results</h3>
+                  <h3 className="text-xl font-semibold text-white">Screening Results</h3>
                 </div>
-                
+
                 {/* Desktop Table */}
                 <div className="hidden lg:block overflow-x-auto">
                   <table className="min-w-full">
@@ -405,6 +407,7 @@ export default function ScreenerPage() {
                           <td className="px-6 py-4">
                             <div className={`font-medium ${getChangeColor(company.revenue_growth_yoy)}`}>
                               {formatPercent(company.revenue_growth_yoy)}
+                              <span className="block text-xs text-white/50">{company.growth_metadata?.revenue_growth_yoy?.basis === 'fiscal_year' ? 'Fiscal year' : company.growth_metadata?.revenue_growth_yoy?.status === 'available' ? 'TTM' : 'Unavailable'}</span>
                             </div>
                           </td>
                           <td className="px-6 py-4 text-white font-medium">
@@ -413,6 +416,7 @@ export default function ScreenerPage() {
                           <td className="px-6 py-4">
                             <div className={`font-medium ${getChangeColor(company.fcf_growth_yoy)}`}>
                               {formatPercent(company.fcf_growth_yoy)}
+                              <span className="block text-xs text-white/50">{company.growth_metadata?.fcf_growth_yoy?.basis === 'fiscal_year' ? 'Fiscal year' : company.growth_metadata?.fcf_growth_yoy?.status === 'available' ? 'TTM' : 'Unavailable'}</span>
                             </div>
                           </td>
                           <td className="px-6 py-4 text-white font-medium">
@@ -421,13 +425,14 @@ export default function ScreenerPage() {
                           <td className="px-6 py-4">
                             <div className={`font-medium ${getChangeColor(company.ebitda_growth_yoy)}`}>
                               {formatPercent(company.ebitda_growth_yoy)}
+                              <span className="block text-xs text-white/50">{company.growth_metadata?.ebitda_growth_yoy?.basis === 'fiscal_year' ? 'Fiscal year' : company.growth_metadata?.ebitda_growth_yoy?.status === 'available' ? 'TTM' : 'Unavailable'}</span>
                             </div>
                           </td>
                           <td className="px-6 py-4 text-white font-medium">
                             {formatNumber(company.debt_to_cash)}
                           </td>
                           <td className="px-6 py-4">
-                            <Link 
+                            <Link
                               href={`/fundamentals/${company.ticker}`}
                               className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
                             >
@@ -439,14 +444,14 @@ export default function ScreenerPage() {
                     </tbody>
                   </table>
                 </div>
-                
+
                 {/* Mobile Card View */}
                 <div className="lg:hidden space-y-4 p-4">
-                  {screener.data.results.map((company, index) => (
+                  {screener.data.results.map((company) => (
                     <div key={company.ticker} className="bg-white/5 rounded-lg p-4 space-y-3">
                       <div className="flex justify-between items-center">
                         <h4 className="text-lg font-bold text-white">{company.ticker}</h4>
-                        <Link 
+                        <Link
                           href={`/fundamentals/${company.ticker}`}
                           className="text-blue-400 text-sm font-medium"
                         >

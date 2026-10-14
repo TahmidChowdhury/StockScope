@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "documentation": {
+    "gdelt": "https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/",
+    "nvidia_ir": "https://investor.nvidia.com/investor-resources/rss/default.aspx",
+    "nvidia_rss_terms": "https://www.nvidia.com/en-us/about-nvidia/rss/"
+  },
+  "companies": {
+    "NVDA": {
+      "name": "NVIDIA Corporation",
+      "aliases": ["NVIDIA", "NVIDIA Corporation"],
+      "official_domains": ["nvidia.com"],
+      "ir_feeds": [{"name": "NVIDIA Newsroom", "url": "https://nvidianews.nvidia.com/cats/press_release.xml"}]
+    },
+    "AAPL": {"name": "Apple Inc.", "aliases": ["Apple Inc", "Apple shares", "Apple stock", "Apple earnings"], "official_domains": ["apple.com"], "ir_feeds": []},
+    "MSFT": {"name": "Microsoft Corporation", "aliases": ["Microsoft"], "official_domains": ["microsoft.com"], "ir_feeds": []},
+    "AMZN": {"name": "Amazon.com, Inc.", "aliases": ["Amazon.com", "Amazon Web Services", "Amazon shares", "Amazon stock", "Amazon earnings"], "official_domains": ["aboutamazon.com"], "ir_feeds": []},
+    "GOOGL": {"name": "Alphabet Inc.", "aliases": ["Alphabet Inc", "Alphabet shares", "Alphabet stock", "Google"], "official_domains": ["abc.xyz", "blog.google"], "ir_feeds": []},
+    "GOOG": {"name": "Alphabet Inc.", "aliases": ["Alphabet Inc", "Alphabet shares", "Alphabet stock", "Google"], "official_domains": ["abc.xyz", "blog.google"], "ir_feeds": []},
+    "META": {"name": "Meta Platforms, Inc.", "aliases": ["Meta Platforms", "Meta shares", "Meta stock", "Meta earnings"], "official_domains": ["about.fb.com"], "ir_feeds": []},
+    "TSLA": {"name": "Tesla, Inc.", "aliases": ["Tesla Inc", "Tesla shares", "Tesla stock", "Tesla earnings", "Tesla vehicles"], "official_domains": ["tesla.com"], "ir_feeds": []}
+  }
+}

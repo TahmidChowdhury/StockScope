@@ -2,10 +2,9 @@
 
 import React, { useState } from 'react'
 import { LoginRequest, SimpleAuthResponse } from '@/types'
+import { API_BASE_URL, saveAuthSession } from '@/lib/api'
 import { MagnifyingGlassIcon, CpuChipIcon, ArrowTrendingUpIcon, ChartBarSquareIcon } from '@heroicons/react/24/outline'
 
-// Get API URL from environment variables
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 interface LoginFormProps {
   onLoginSuccess: () => void
@@ -38,9 +37,8 @@ export default function LoginForm({ onLoginSuccess }: LoginFormProps) {
       const authData: SimpleAuthResponse = await response.json()
       
       if (authData.success) {
-        // Store simple auth state in localStorage
-        localStorage.setItem('stockscope_authenticated', 'true')
-        localStorage.setItem('stockscope_password', password) // Store for API calls
+        saveAuthSession(authData)
+        setPassword('')
         onLoginSuccess()
       } else {
         throw new Error(authData.message || 'Authentication failed')
@@ -65,7 +63,7 @@ export default function LoginForm({ onLoginSuccess }: LoginFormProps) {
             StockScope Pro
           </h1>
           <p className="text-base sm:text-lg lg:text-xl text-gray-300 max-w-2xl mx-auto px-2">
-            Professional stock sentiment analysis and investment insights
+            Stock research and financial learning
           </p>
         </div>
 
@@ -73,20 +71,20 @@ export default function LoginForm({ onLoginSuccess }: LoginFormProps) {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8 lg:mb-12">
           <div className="text-center p-4 sm:p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
             <div className="flex justify-center mb-2 sm:mb-4"><MagnifyingGlassIcon className="h-7 w-7 sm:h-8 sm:w-8 text-blue-400" /></div>
-            <h3 className="text-base sm:text-lg font-semibold text-white mb-1 sm:mb-2">Real-Time Search</h3>
-            <p className="text-sm text-gray-300">Instant autocomplete with 70+ popular stocks and custom symbol support</p>
+            <h3 className="text-base sm:text-lg font-semibold text-white mb-1 sm:mb-2">Company Research</h3>
+            <p className="text-sm text-gray-300">Find companies and explore their prices, filings, and financial statements</p>
           </div>
           
           <div className="text-center p-4 sm:p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
             <div className="flex justify-center mb-2 sm:mb-4"><CpuChipIcon className="h-7 w-7 sm:h-8 sm:w-8 text-purple-400" /></div>
-            <h3 className="text-base sm:text-lg font-semibold text-white mb-1 sm:mb-2">AI Analysis</h3>
-            <p className="text-sm text-gray-300">Advanced sentiment analysis from multiple data sources with ML insights</p>
+            <h3 className="text-base sm:text-lg font-semibold text-white mb-1 sm:mb-2">Source-Based Research</h3>
+            <p className="text-sm text-gray-300">Read news and see descriptive sentiment with source and freshness information</p>
           </div>
           
           <div className="text-center p-4 sm:p-6 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
             <div className="flex justify-center mb-2 sm:mb-4"><ArrowTrendingUpIcon className="h-7 w-7 sm:h-8 sm:w-8 text-green-400" /></div>
-            <h3 className="text-base sm:text-lg font-semibold text-white mb-1 sm:mb-2">Investment Insights</h3>
-            <p className="text-sm text-gray-300">Get BUY/SELL/HOLD recommendations with confidence scores and risk analysis</p>
+            <h3 className="text-base sm:text-lg font-semibold text-white mb-1 sm:mb-2">Learn and Compare</h3>
+            <p className="text-sm text-gray-300">Compare fundamentals and investigate risks before making your own decisions</p>
           </div>
         </div>
 
@@ -106,7 +104,7 @@ export default function LoginForm({ onLoginSuccess }: LoginFormProps) {
             <form className="space-y-6" onSubmit={handleSubmit}>
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
-                  Master Password
+                  Access password
                 </label>
                 <div className="relative">
                   <input

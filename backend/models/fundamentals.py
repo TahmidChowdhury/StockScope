@@ -39,10 +39,11 @@ class FundamentalsTTM(BaseModel):
     fcf_margin_ttm: Optional[float] = None  # as decimal
     ebitda_ttm: Optional[float] = None
     
-    # Growth metrics - only present if >=8 quarters available
+    # Growth metrics - only present if >=8 quarters available (or annual fallback)
     revenue_growth_yoy: Optional[float] = None  # as decimal
     fcf_growth_yoy: Optional[float] = None  # as decimal
     ebitda_growth_yoy: Optional[float] = None  # as decimal
+    operating_income_growth_yoy: Optional[float] = None  # as decimal
     margin_growth_yoy_pp: Optional[float] = None  # percentage points
     
     # Debt metrics - only present if both debt and cash data available
@@ -52,6 +53,8 @@ class FundamentalsTTM(BaseModel):
     total_debt: Optional[float] = None
     cash_and_equivalents: Optional[float] = None
     net_debt: Optional[float] = None
+    growth_metadata: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    period_metadata: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
 
     class Config:
         # Exclude None values when serializing
@@ -82,7 +85,7 @@ class ScreenerRequest(BaseModel):
     min_margin_growth_yoy_pp: Optional[float] = None
     min_ebitda_growth_yoy: Optional[float] = None
     max_debt_to_cash: Optional[float] = None
-    limit: int = 100
+    limit: int = Field(default=100, ge=1, le=500)
     sort_by: str = "revenue_growth_yoy"
     sort_dir: str = "desc"
 
@@ -92,3 +95,10 @@ class ScreenerResponse(BaseModel):
     results: List[Dict[str, Any]]  # Use compacted dictionaries instead of full models
     total_screened: int
     filters_applied: Dict[str, Any]
+    total_attempted: int
+    total_failed: int
+    total_insufficient: int
+    total_evaluated: int
+    total_matches: int
+    universe_name: str
+    universe_as_of: Optional[str] = None

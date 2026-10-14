@@ -1,457 +1,197 @@
-# StockScope Pro - Advanced Stock Analytics & Sentiment Analysis Platform
+# StockScope
 
-**StockScope Pro** is a comprehensive financial analysis platform that combines real-time sentiment analysis with fundamental stock analytics. The platform aggregates data from social media, financial news, and SEC filings while providing deep fundamental analysis including company comparisons, stock screening, and AI-powered investment recommendations.
+StockScope is a personal stock-research workspace for a long-term investing core and a separate trading-learning allocation. It combines company fundamentals, comparison, a curated stock screener, dated news, and links to original SEC filings.
 
----
+## Current behavior
 
-## 🚀 New Features
+- **Fundamentals:** quarterly and trailing-twelve-month financials from yfinance, with missing values and calculation limitations exposed. Free cash flow requires both operating cash flow and capital expenditure. Growth figures identify their reporting basis.
+- **Comparison and screening:** compare companies and filter a **curated 110-symbol universe**, or supply a custom universe. This is not a complete/current S&P 500 constituent list. Coverage counts distinguish failures, missing data, matches, and displayed results.
+- **SEC reported facts:** an explicit refresh collects primary financial facts and recent filings. The fundamentals page exposes periods, units, filing versions, and original links alongside the existing yfinance metrics; SEC facts do not silently replace TTM calculations.
+- **Research:** news text-tone scores describe saved articles; SEC filing events and company press releases are unscored. Publication dates are distinct from summary-generation dates, and unknown dates stay unknown.
+- **Refresh:** collect new source snapshots explicitly, with completion, partial-result, and failure status. Merely opening saved research does not imply it was refreshed.
+- **Shared watchlist:** saved analyzed symbols are shared across authenticated roles. This is not a holdings ledger or a measure of actual portfolio returns.
+- **Authentication:** a shared password for each role is exchanged for an expiring bearer token. The browser keeps tokens in sessionStorage, removes old stored passwords, and clears client data on logout/expiry. API credentials are no longer accepted in URL query parameters.
 
-### Fundamentals Analytics Suite
-- **📊 Individual Company Analysis** - Deep dive into company fundamentals with interactive charts
-- **⚖️ Multi-Company Comparison** - Side-by-side analysis of financial metrics
-- **🔍 Advanced Stock Screener** - Filter stocks by financial criteria and performance metrics
-- **📈 Interactive Charting** - Quarterly revenue, margins, cash flow, and profitability trends
-- **🤖 AI Investment Recommendations** - Intelligent BUY/SELL/HOLD suggestions with reasoning
+Users sign in on the website with one of the app passwords configured on the backend. `ADMIN_PASSWORD` grants administrative deletion/cache access; `DEMO_PASSWORD` and `GUEST_PASSWORD` currently both allow research reads and refreshes. Everyone sees the same watchlist and saved research. There is no email signup, user-owned portfolio, or account password-reset flow yet. Supabase stores research; Supabase Auth is not connected to this login. The legacy `STOCKSCOPE_PASSWORD` also grants admin if set; remove that variable when deploying the three role passwords. Sessions last eight hours by default and are stored per browser tab; existing sessions must sign in again after the authentication migration.
 
-### Enhanced User Experience
-- **🎯 Intuitive Navigation** - Easy access to all analytics features from the main dashboard
-- **⚡ Real-time Updates** - Live data synchronization across all components
-- **📱 Responsive Design** - Optimized for desktop, tablet, and mobile devices
-- **🔒 Secure Authentication** - Multi-level access control with role-based permissions
-
----
-
-## 🏗️ How StockScope Pro Works Now
-
-### 1. **Multi-Source Data Collection**
-```
-Social Media → Reddit API → Sentiment Analysis
-Financial News → NewsAPI → Content Processing  
-SEC Filings → SEC API → Document Analysis
-Stock Data → yFinance → Fundamental Metrics
-```
-
-### 2. **Integrated Analytics Pipeline**
-```
-Raw Data → AI Processing → Sentiment Scores
-↓
-Fundamental Data → Financial Analysis → Key Metrics
-↓
-Combined Intelligence → Investment Recommendations
-```
-
-### 3. **User Journey & Features**
-
-#### **Main Dashboard**
-- **Portfolio Overview**: View all analyzed stocks with real-time prices
-- **Quick Actions**: Direct access to fundamentals from stock cards
-- **Navigation Hub**: Easy access to comparison, screening, and analysis tools
-
-#### **Sentiment Analysis** (Original Core Feature)
-1. **Search & Analyze**: Enter any stock symbol (AAPL, TSLA, etc.)
-2. **Real-time Processing**: Background analysis of Reddit, news, and SEC data
-3. **Comprehensive Dashboard**: Sentiment trends, source breakdown, and insights
-4. **Investment Advice**: AI-powered recommendations with confidence scores
-
-#### **Fundamentals Analytics** (New Features)
-1. **Individual Analysis**: `/fundamentals/AAPL`
-   - Revenue trends and growth rates
-   - Profitability margins (FCF, Operating, EBITDA)
-   - Quarterly performance charts
-   - Year-over-year comparisons
-
-2. **Company Comparison**: `/compare`
-   - Select multiple companies for side-by-side analysis
-   - Compare financial metrics across time periods
-   - Visual performance comparisons
-   - Relative valuation analysis
-
-3. **Stock Screener**: `/screener`
-   - Filter by market cap, sector, performance
-   - Advanced financial criteria screening
-   - Real-time filtering with instant results
-   - Export and save screening results
-
----
+The former BUY/SELL/HOLD recommendations, probability-like confidence percentages, and fabricated quantitative metrics have been removed from active API responses. The legacy `/investment-advice` route now returns an evidence summary. `/quantitative` explicitly reports that validated metrics are unavailable. Experimental code in `analysis/` is not a validated investment model and is no longer called by these routes.
 
 ## Architecture
 
-### Frontend (Next.js 15)
-- **React Query Integration** - Efficient data fetching and caching
-- **TypeScript Throughout** - Full type safety across all components
-- **Tailwind CSS 4** - Modern, responsive UI design
-- **Recharts Integration** - Interactive financial charting
-- **Client-side Routing** - Fast navigation between features
-
-### Backend (FastAPI)
-- **Modular Router System** - Separate endpoints for sentiment and fundamentals
-- **Async Processing** - Non-blocking operations for better performance
-- **Multi-level Caching** - Optimized response times with intelligent cache management
-- **Comprehensive API** - RESTful endpoints for all features
-
-### New Backend Structure
-```
-backend/
-├── api.py                 # Main FastAPI application
-├── routers/
-│   └── fundamentals.py    # Fundamentals analytics endpoints
-├── services/
-│   └── fundamentals.py    # Business logic for financial analysis
-├── models/
-│   └── fundamentals.py    # Data models and schemas
-└── core/
-    └── cache.py          # Caching utilities
+```text
+Next.js frontend (Vercel)
+        | HTTPS + Authorization: Bearer token
+FastAPI backend (Railway)
+        |-- Fundamentals / prices: yfinance
+        |-- News: RSS / Yahoo / configured company IR / GDELT
+        |-- Reported financial facts + filing events: SEC EDGAR
+        |-- DATABASE_URL set: Supabase Postgres
+        |   (versioned research, shared watchlist, collection outcomes)
+        `-- DATABASE_URL absent: local JSON snapshots + in-memory jobs
 ```
 
----
+The frontend and backend deploy separately. Postgres stores research and job outcomes when configured; a failed database never silently falls back to files. Without `DATABASE_URL`, file mode remains available and job status is lost on restart.
 
-## 🔥 Key Features
+Run **one backend process/worker and one replica**. Work still executes in that process, with a four-job admission limit. At startup, unfinished persisted runs are marked failed, not resumed. Stop the old process before starting a replacement: overlapping deployments can mark another process’s work interrupted. A durable external queue and shared cache are still future work.
 
-### Real-Time Sentiment Analysis
-- **Multi-source Aggregation**: Reddit, news, SEC filings
-- **VADER NLP Processing**: Advanced sentiment scoring
-- **Live Updates**: Real-time analysis with progress tracking
-- **Historical Trends**: Track sentiment changes over time
+## Local setup
 
-### Advanced Fundamentals Analytics
-- **Financial Metrics**: Revenue, margins, cash flow, profitability
-- **Growth Analysis**: YoY comparisons and trend identification
-- **Interactive Charts**: Quarterly data visualization
-- **Comparative Analysis**: Multi-company side-by-side comparisons
-
-### AI-Powered Insights
-- **Investment Recommendations**: BUY/SELL/HOLD with confidence scores
-- **Risk Assessment**: Volatility and trend analysis
-- **Reasoning Engine**: Detailed explanations for all recommendations
-- **Quantitative Strategies**: Multiple analysis approaches
-
-### Professional Tools
-- **Stock Screening**: Advanced filtering capabilities
-- **Portfolio Management**: Bulk operations and organization
-- **Data Export**: Download analysis results
-- **Real-time Updates**: Live price and sentiment data
-
----
-
-## 📊 API Endpoints
-
-### Sentiment Analysis (Original)
-- `GET /api/stocks` - Portfolio overview with metadata
-- `POST /api/stocks/analyze` - Start sentiment analysis
-- `GET /api/stocks/{symbol}` - Get sentiment analysis results
-- `GET /api/stocks/{symbol}/investment-advice` - AI recommendations
-
-### Fundamentals Analytics (New)
-- `GET /fundamentals/{ticker}` - Individual company fundamentals
-- `POST /fundamentals/compare` - Multi-company comparison
-- `POST /fundamentals/screener` - Advanced stock screening
-- `GET /api/stocks/{symbol}/info` - Company information
-
-### Utility Endpoints
-- `GET /api/stocks/suggestions` - Stock symbol autocomplete
-- `POST /api/auth/login` - Authentication
-- `GET /api/health` - System status
-
----
-
-## 🛠️ Development Setup
-
-### Prerequisites
-- **Node.js 18+** and npm
-- **Python 3.9+** and pip
-- **Git** for version control
-
-### Quick Start
+Use Python 3.11 and Node.js 22 (Node 24 is also supported). Run commands from the repository root unless otherwise stated.
 
 ```bash
-# 1. Clone repository
-git clone https://github.com/TahmidChowdhury/StockScope.git
-cd StockScope
-
-# 2. Setup Python environment
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-# 3. Setup frontend
-cd stockscope-frontend
-npm install
-cd ..
-
-# 4. Configure authentication
+python3.11 -m venv venv
+venv/bin/python -m pip install -r requirements.txt
+npm --prefix stockscope-frontend ci
 cp .env.example .env
-# Edit .env with your passwords:
-ADMIN_PASSWORD=your_secure_password
-STOCKSCOPE_PASSWORD=your_secure_password
-
-# 5. Start development servers
-cd stockscope-frontend
-npm run dev &
-cd .. && python backend/api.py
+cp stockscope-frontend/.env.example stockscope-frontend/.env.local
 ```
 
-### One-Command Development
-
-For the best development experience, use the custom development script:
+Set three distinct private role passwords in `.env` and generate an independent signing secret:
 
 ```bash
-# From the root directory
-./dev-env.sh
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+```
 
-# Or use npm from the root directory for development
+Paste the generated value into `SECRET_KEY`. It must be at least 32 characters and must not equal a login password. Missing/invalid signing configuration prevents startup. Never put the secret in a `NEXT_PUBLIC_` variable or commit `.env`.
+
+Required backend variables:
+
+| Variable | Purpose |
+|---|---|
+| `ADMIN_PASSWORD` | Full access, including deleting saved research and clearing caches |
+| `DEMO_PASSWORD` | Shared research access without admin mutations |
+| `GUEST_PASSWORD` | Restricted access as enforced by API routes |
+| `SECRET_KEY` | Independent random signing secret, at least 32 characters |
+
+Additional configuration:
+
+- `ACCESS_TOKEN_EXPIRE_MINUTES`: session lifetime; default 480 minutes.
+- `FRONTEND_ORIGINS`: comma-separated browser origins, such as `http://localhost:3000`.
+- `DATABASE_URL`: optional private Postgres connection; schema migration is required before API startup.
+- `STOCKSCOPE_DATA_DIR`: file-mode directory; defaults to root `data/`. Existing files are imported explicitly, never automatically.
+- `SEC_USER_AGENT`: app name and actual contact email; SEC facts remain disabled until configured.
+- `SEC_FACT_CONCEPTS`: optional concept allowlist to control storage (see `.env.example`).
+- `STOCKSCOPE_IR_ENABLED` / `STOCKSCOPE_GDELT_ENABLED`: default `true`; set `false` to disable either provider.
+- Frontend `NEXT_PUBLIC_API_URL`: backend URL, embedded at frontend **build time**.
+
+Start both services:
+
+```bash
 npm run dev
-
-# Or build the frontend and serve both apps
-npm run start
-
-# Or from frontend directory
-npm run full-app
 ```
 
-`npm run dev` starts both backend (port 8000) and frontend (port 3000) with hot reloading.
-`npm run start` builds the frontend, then serves the backend and frontend together.
-
----
-
-## 🎯 How to Use StockScope Pro
-
-### 1. **Getting Started**
-- Navigate to `http://localhost:3000`
-- Login with your configured password
-- Explore the main dashboard
-
-### 2. **Sentiment Analysis Workflow**
-```
-Search Stock → Start Analysis → View Results → Get Recommendations
-```
-- Use the search bar to find stocks
-- Click "Analyze" to start sentiment processing
-- Monitor real-time progress
-- Review comprehensive sentiment dashboard
-
-### 3. **Fundamentals Analytics Workflow**
-```
-Main Dashboard → Choose Tool → Analyze → Compare → Make Decisions
-```
-
-#### **Individual Analysis**
-- Click navigation card "Company Analysis"
-- Search for any stock symbol
-- View detailed fundamental metrics
-- Analyze trends and performance
-
-#### **Company Comparison**
-- Click "⚖️ Compare Companies"
-- Add multiple companies to comparison
-- View side-by-side metrics
-- Identify relative strengths/weaknesses
-
-#### **Stock Screening**
-- Click "🔍 Stock Screener"
-- Set filtering criteria
-- Browse filtered results
-- Deep dive into interesting companies
-
-### 4. **Portfolio Management**
-- View all analyzed stocks on main dashboard
-- Quick access to fundamentals via hover buttons
-- Bulk delete operations for portfolio cleanup
-- Real-time price updates for tracked stocks
-
----
-
-## 🔒 Authentication System
-
-StockScope Pro uses a secure multi-level authentication system:
-
-### Access Levels
-1. **Admin** - Full access to all features including data deletion
-2. **Demo** - Read-only access for demonstrations
-3. **Guest** - Limited public access
-
-### Setup
-```bash
-# In your .env file
-ADMIN_PASSWORD=StockScope_Admin_2025_Secure!
-DEMO_PASSWORD=StockScope_Demo_2025
-GUEST_PASSWORD=StockScope_Guest_2025
-STOCKSCOPE_PASSWORD=StockScope_Admin_2025_Secure!  # Active password
-```
-
-All API endpoints require password authentication for security.
-
----
-
-## Production Deployment
-
-### Containerized Deployment
+Or start them separately:
 
 ```bash
-# Build and run with Docker Compose
-docker-compose up --build
+npm run backend
+npm run frontend
 ```
 
-The project includes optimized Dockerfiles for both frontend and backend components.
+The frontend is at `http://localhost:3000`; the API is at `http://localhost:8000`; API documentation is at `/docs`. `npm run start` starts the API using `$PORT` (default 8000).
 
-### Recommended Hosting
+## Supabase setup and existing-data migration
 
-**Frontend**: Vercel (optimized for Next.js)
-- Global CDN distribution
-- Automatic deployments from Git
-- Built-in performance optimization
+Create a dedicated Supabase project on the Free plan. Copy the owner Postgres URI from **Connect** into `DATABASE_URL` in your private backend `.env` and Railway variables; never put it in Vercel or a `NEXT_PUBLIC_` variable. Use the direct connection when IPv6 is available, or the **Session pooler** on port 5432 for IPv4. Percent-encode reserved password characters and enable TLS with `sslmode=require` (`verify-full` with the supplied CA is stronger). Use the exact dashboard hostname and username. See [Supabase connection instructions](https://supabase.com/docs/guides/database/connecting-to-postgres).
 
-**Backend**: Railway or Render
-- Python-optimized hosting
-- Environment variable management
-- Automatic scaling
-
-### Environment Variables
-
-**Production Frontend**:
-```env
-NEXT_PUBLIC_API_URL=https://your-api-domain.com
-```
-
-**Production Backend**:
-```env
-ADMIN_PASSWORD=your_secure_admin_password
-DEMO_PASSWORD=your_demo_password
-GUEST_PASSWORD=your_guest_password
-STOCKSCOPE_PASSWORD=your_active_password
-
-# Optional API keys for enhanced features
-REDDIT_CLIENT_ID=your_reddit_client_id
-REDDIT_CLIENT_SECRET=your_reddit_client_secret
-NEWS_API_KEY=your_news_api_key
-```
-
----
-
-## Performance Features
-
-### Caching Strategy
-- **API Response Caching** with configurable TTL
-- **Smart Cache Invalidation** when new data arrives
-- **Memory-efficient** storage with automatic cleanup
-- **Multi-layer caching** for different data types
-
-### Optimization
-- **Background Task Processing** for analysis operations
-- **Debounced Search** to reduce API calls
-- **Progressive Loading** for large datasets
-- **Response Compression** for faster data transfer
-
-### Monitoring
-- **Health Check Endpoints** for uptime monitoring
-- **Structured Logging** for debugging and analytics
-- **Error Tracking** with detailed stack traces
-- **Performance Metrics** for response times
-
----
-
-## Data Sources & Analysis
-
-### Reddit Sentiment
-- **Subreddits**: r/stocks, r/wallstreetbets, r/investing, r/SecurityAnalysis
-- **Real-time Processing**: Live posts and comments analysis
-- **Sentiment Scoring**: VADER NLP with confidence metrics
-
-### Financial News
-- **NewsAPI Integration**: Professional financial news sources
-- **Article Analysis**: Headline and content sentiment scoring
-- **Source Credibility**: Weighted scoring based on publication quality
-
-### SEC Filings
-- **Official Documents**: 10-K, 10-Q, 8-K filings analysis
-- **Regulatory Sentiment**: Management discussion analysis
-- **Filing Impact**: Historical correlation with stock performance
-
-### AI Investment Advisor
-- **Multi-factor Analysis**: Combines all data sources
-- **Risk Assessment**: Volatility and trend analysis
-- **Confidence Scoring**: Transparent recommendation reliability
-- **Reasoning Engine**: Detailed explanation of recommendations
-
----
-
-## Security & Privacy
-
-### Data Protection
-- **Environment Variables**: All credentials secured in .env files
-- **Git Security**: Sensitive files excluded from version control
-- **API Authentication**: Password protection on all endpoints
-- **Input Validation**: Comprehensive request sanitization
-
-### Best Practices
-- **HTTPS Enforcement** in production
-- **CORS Configuration** for secure cross-origin requests
-- **Error Handling** without sensitive data exposure
-- **Dependency Updates** for security patches
-
----
-
-## Contributing
-
-### Development Setup
+For local setup, copy the Session pooler URI from **Connect**, then run the private interactive helper (replace `YOUR_PROJECT_REF` with the project reference):
 
 ```bash
-# Fork and clone the repository
-git clone https://github.com/yourusername/StockScope.git
-cd StockScope
-
-# Create a feature branch
-git checkout -b feature/your-feature-name
-
-# Set up environment
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-cd stockscope-frontend && npm install && cd ..
-
-# Configure authentication
-cp .env.example .env
-# Edit .env with your passwords
-
-# Start development
-cd stockscope-frontend
-npm run full-app
-
-# Make your changes and test
-# Commit and push
-git commit -m "Add your feature description"
-git push origin feature/your-feature-name
+venv/bin/python -m scripts.configure_database --project-ref YOUR_PROJECT_REF
 ```
 
-### Code Standards
-- **TypeScript** for frontend type safety
-- **Python Type Hints** for backend code
-- **ESLint** for JavaScript/TypeScript linting
-- **Prettier** for consistent code formatting
+Paste the URI at its hidden prompt, then enter the database password separately. The helper accepts a plain URI, quoted URI, `psql` command, or `DATABASE_URL=` assignment. It verifies the project, requires TLS, tests a read-only connection, and saves only after success. It preserves other `.env` entries and sets file permissions to owner-only. It does not apply migrations.
 
----
+The backend uses SQLAlchemy/psycopg, not the Supabase browser client. No Supabase anon/publishable key or service-role API key is needed. Existing application roles are shared backend roles, not Supabase Auth accounts. The migration enables RLS with no public policies and revokes access from `PUBLIC`, `anon`, and `authenticated` on its tables. The owner connection can access the tables; keep that credential private.
 
-## License
+Stop refreshes and the backend before migration/import. Back up the original `data/` directory and any existing database. Then, from the repository root with the private `.env` configured:
 
-MIT License - Use this code to build amazing investment tools!
+```bash
+venv/bin/python -m alembic upgrade head
+venv/bin/python -m scripts.import_research --data-dir data
+venv/bin/python -m scripts.import_research --data-dir data --apply
+```
 
----
+The first import command is a dry run. `--apply` validates the full batch and writes it in one transaction, leaves input files untouched, and skips an identical batch already imported. Unsupported old social snapshots are skipped; invalid supported JSON aborts the entire batch. Re-importing a **changed** batch publishes those files as current snapshots, so only import deliberately before resuming refreshes. With `DATABASE_URL` set, the API reads only Postgres; files are not merged into the live view. Start the backend after import and confirm `/health` reports `storage: postgres`.
 
-## Acknowledgments
+The initial migration creates companies, providers, article links/revisions, filings/revisions, reported financial facts, shared watchlists, notes, snapshot history, collection runs, and import batches. Watchlist and saved-research APIs are integrated; the notes table is groundwork, with no notes UI yet. Repeated refreshes preserve prior snapshot revisions and original source dates. Explicit admin stock deletion purges its research/history and runs, retaining shared articles linked to other stocks. Active refreshes block deletion.
 
-- **Next.js & Vercel** - Modern web development platform
-- **FastAPI** - High-performance Python web framework
-- **VADER Sentiment** - Robust sentiment analysis
-- **Tailwind CSS** - Utility-first CSS framework
-- **React & TypeScript** - Modern frontend development
+Supabase currently lists **500 MB database storage** on Free and pauses inactive projects after one week; check [current limits](https://supabase.com/pricing). Start with a small watchlist. Full SEC histories plus normalized rows and snapshot revisions consume space; pagination only reduces response size. `SEC_FACT_CONCEPTS` can limit collected concepts while preserving their units and filing versions. There is no automatic retention/pruning yet. Monitor database size and export backups before cleanup or plan changes. If reverting to file mode, export new database research first: the original files will otherwise be stale.
 
----
+## Article sources and primary evidence
 
-## Created By
+| Source | Use in StockScope | Limits and interpretation |
+|---|---|---|
+| [Company investor relations](https://investor.nvidia.com/investor-resources/rss/default.aspx) | Official company releases; NVIDIA feed configured and live-checked | Company statements, separately labeled and excluded from news tone. Add reviewed feeds explicitly in `backend/data/source_feeds.json`. NVIDIA RSS terms permit individual informational, non-commercial use. |
+| [GDELT DOC 2](https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/) | Discover article metadata and original publisher links for configured company aliases | Discovery time is not publication time. Conservative title matching reduces, but cannot eliminate, irrelevant matches. Public availability varies; live smoke timed out on October 14, 2026. |
+| [SEC APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces) | Company Facts plus the recent submissions table | Actual contact identity required. Preserve reporting periods, units, and amendments; do not treat every duration as a quarter or TTM. Older submission archive files are not fetched. |
+| Existing Yahoo / Google News / publisher RSS / Finviz adapters | Additional headline coverage | Unofficial endpoints and feeds can change or fail. Provider outcomes and incomplete coverage remain visible. |
 
-**Tahmid Chowdhury**  
-Portfolio: https://tahmidchowdhury.github.io/ | GitHub: https://github.com/TahmidChowdhury
+Collection stores metadata, summaries supplied by the feed, and original links; it does not scrape full article bodies. [NVIDIA RSS terms](https://www.nvidia.com/en-us/about-nvidia/rss/) and each publisher’s terms still apply. No full-text redistribution rights are implied. The active refresh does not use NewsAPI: its [free plan is development-only](https://newsapi.org/pricing). Legacy scripts are not the production collection path.
 
----
+The new source adapters use response-size limits, public HTTPS targets, timeouts, and a shared collection budget. This budget limits request admission and transport timeouts; DNS and third-party library calls are not forcibly cancellable. Failed refreshes retain previous saved evidence, and partial refreshes retain only the newly collected providers in the current news snapshot (older revisions remain in Postgres). Provider failures are visible in job results. SEC data is cached per process and rate limited; multiple processes would need coordinated limits.
 
-**From Social Sentiment to Smart Investment Decisions**  
-*Built with Next.js 15, FastAPI, React Query, and Modern Financial Analytics*
+## Validation
+
+```bash
+npm test
+npm run test:frontend
+npm run lint
+npm run build
+```
+
+The backend regression suite uses controlled fixtures for authentication, accounting, reporting periods, source dates, and collection outcomes. Frontend tests exercise session handling and request authentication. CI installs from the npm lockfile and runs backend tests, frontend tests, lint, and the production build. Passing these checks does not establish a profitable investment strategy.
+
+Dependency check on October 14, 2026: `npm audit --omit=dev` reports no known production dependency vulnerabilities. The full audit reports seven high-severity development dependency entries stemming from a `braces` stack-exhaustion advisory in the Tailwind 3 / Next ESLint tooling chains. They remain open; resolving them requires a separately tested tooling migration. The lockfile includes patched React/Next versions and PostCSS dependency overrides. Recheck advisories before release.
+
+## API overview
+
+Login with `POST /api/auth/login` and a JSON password body. For subsequent calls use `Authorization: Bearer <access_token>`. Old `?password=` clients must be migrated; old browser sessions must sign in again.
+
+| Route | Behavior |
+|---|---|
+| `GET /api/auth/session` | Read the current authenticated role without mutating data |
+| `GET /api/stocks` | Shared saved-research watchlist |
+| `POST /api/stocks/analyze` | Start an explicit refresh for requested sources |
+| `GET /api/stocks/{symbol}/status` | Collection progress and terminal outcome |
+| `GET /api/stocks/{symbol}` | Dated evidence and text-tone summary |
+| `GET /api/stocks/{symbol}/investment-advice` | Research observations and limitations; no trading recommendation |
+| `GET /api/stocks/{symbol}/quantitative` | Explicit unavailable response; no fabricated metrics |
+| `GET /api/stocks/{symbol}/news` | Saved source articles |
+| `GET /api/stocks/{symbol}/price-history` | Provider price history |
+| `GET /api/fundamentals/{ticker}/sec-facts` | Saved primary facts with concept filtering and pagination; no collection on read |
+| `GET /api/fundamentals/{ticker}` | Financial series, metrics, and reporting metadata |
+| `POST /api/fundamentals/compare` | Company comparison |
+| `POST /api/fundamentals/screener` | Screening with coverage counts |
+| `GET /health` | Storage readiness; returns 503 if configured Postgres is unavailable |
+
+## Deployment
+
+The established production arrangement is Vercel for `stockscope-frontend/` and Railway for FastAPI. Keep development work on a branch and validate before promoting it.
+
+For this authentication migration, configure the independent `SECRET_KEY` and all role passwords on the backend **before** deploying the backend code. Deploy the frontend and backend together in a coordinated release: the frontend requires bearer-token support, and the backend no longer accepts query passwords. Existing sessions must sign in again. Verify admin/guest behavior, refresh success/partial/failure, and source timestamps against the candidate deployment.
+
+Vercel:
+
+- Project root: `stockscope-frontend`.
+- Install: `npm ci`; build: `npm run build`.
+- Set `NEXT_PUBLIC_API_URL` to the Railway API URL before building.
+- Node.js 22.
+
+Railway:
+
+- Uses `railway.json` and `Dockerfile.backend`.
+- Set required authentication variables and `FRONTEND_ORIGINS` to the deployed frontend origin.
+- Set `DATABASE_URL` after the migration/import below, or mount persistent file-mode storage.
+- If `DATABASE_URL` uses the direct `db.<project-ref>.supabase.co` host, enable **Settings → Networking → Enable Outbound IPv6** on the Railway API service. Outbound IPv6 is opt-in. Alternatively use a verified Supabase Session pooler URI.
+- Run one API worker/replica and avoid overlapping deployments; persistent status is not a distributed queue.
+
+For local container testing, configure `.env`, then use `docker compose up --build`. The Docker build context excludes secrets, environments, generated research, and dependency directories. The frontend API URL is supplied as a build argument.
+
+No automatic trade execution is implemented. No provider subscription or brokerage connection is required for the current research workflow. Free data access does not automatically grant redistribution or display rights; check the chosen provider's terms before sharing a deployment.
+
+## Next implementation stages
+
+1. Connect the prepared Supabase schema, import the existing research, and verify a coordinated preview deployment. Add storage retention controls and a durable worker queue before scaling.
+2. Build long-term research notes, valuation scenarios, actual holdings/contributions, and benchmark-relative performance.
+3. Add a separate paper-trading journal with planned risk, execution costs, and drawdowns.
+4. Evaluate any predictive strategy on point-in-time data and unseen periods before exposing predictive claims.

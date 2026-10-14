@@ -1,5 +1,7 @@
 'use client'
 
+import { apiFetch } from '@/lib/api'
+
 import { useState, useEffect, useRef } from 'react'
 import { MagnifyingGlassIcon, ChartBarIcon } from '@heroicons/react/24/outline'
 import { Combobox } from '@headlessui/react'
@@ -15,14 +17,6 @@ export default function StockSearch({ onAnalyze, isLoading = false, compact = fa
   const [validationError, setValidationError] = useState<string | null>(null)
   const [isShaking, setIsShaking] = useState(false)
 
-  // Get API URL from environment variables with fallback
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-
-  // Get password for API calls
-  const getPasswordParam = () => {
-    const password = localStorage.getItem('stockscope_password')
-    return password ? `?password=${encodeURIComponent(password)}` : ''
-  }
 
   // Debounced search - prevents too many API calls while typing
   useEffect(() => {
@@ -35,7 +29,7 @@ export default function StockSearch({ onAnalyze, isLoading = false, compact = fa
 
       setIsLoadingSuggestions(true)
       try {
-        const response = await fetch(`${API_BASE_URL}/api/stocks/suggestions${getPasswordParam()}&q=${encodeURIComponent(searchQuery)}`)
+        const response = await apiFetch(`/api/stocks/suggestions?q=${encodeURIComponent(searchQuery)}`)
         const data = await response.json()
         setSuggestions(data)
       } catch (error) {
@@ -59,7 +53,7 @@ export default function StockSearch({ onAnalyze, isLoading = false, compact = fa
         clearTimeout(debounceRef.current)
       }
     }
-  }, [query, API_BASE_URL])
+  }, [query])
 
   const handleAnalyze = async (symbol: string) => {
     // Clear any previous errors
@@ -68,7 +62,7 @@ export default function StockSearch({ onAnalyze, isLoading = false, compact = fa
     
     // First validate the symbol
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stocks/validate/${symbol}${getPasswordParam()}`)
+      const response = await apiFetch(`/api/stocks/validate/${symbol}`)
       const validation = await response.json()
       
       if (!validation.valid) {

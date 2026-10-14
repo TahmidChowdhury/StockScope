@@ -1,924 +1,259 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
-import { TrendingUp, TrendingDown, Activity, MessageSquare, Newspaper, Building2, X, AlertCircle, Target, Shield, FileText } from 'lucide-react'
-import type { StockDashboardProps, StockAnalysis, InvestmentAdvice, QuantitativeAnalysis } from '@/types'
-import { getSourceColor, getSentimentColor, CHART_COLORS } from '@/constants/colors'
-import { useWindowWidth } from '@/hooks/useWindowWidth'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
+import { Activity, ExternalLink, FileText, RefreshCw, X } from 'lucide-react'
+import { apiFetch, getAuthSession } from '@/lib/api'
+import type { InvestmentAdvice, QuantitativeAnalysis, StockAnalysis, StockDashboardProps } from '@/types'
+
+function displayDate(value?: string | null) {
+  if (!value) return 'Unknown'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString()
+}
+
+function safeSourceUrl(value: string) {
+  try {
+    const url = new URL(value)
+    return ['https:', 'http:'].includes(url.protocol) ? url.href : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function pause(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) return reject(new DOMException('Aborted', 'AbortError'))
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(new DOMException('Aborted', 'AbortError'))
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
 
 export default function StockDashboard({ symbol, onBack, embedded = false }: StockDashboardProps) {
   const [stockData, setStockData] = useState<StockAnalysis | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [providerResults, setProviderResults] = useState<Record<string, { status: string; count: number; message: string }>>({})
   const [error, setError] = useState<string | null>(null)
-  
-  // New state for button functionality
-  const [investmentAdvice, setInvestmentAdvice] = useState<InvestmentAdvice | null>(null)
-  const [quantAnalysis, setQuantAnalysis] = useState<QuantitativeAnalysis | null>(null)
-  const [showAdviceModal, setShowAdviceModal] = useState(false)
-  const [showAnalysisModal, setShowAnalysisModal] = useState(false)
-  const [showNewsModal, setShowNewsModal] = useState(false)
-  const [loadingAdvice, setLoadingAdvice] = useState(false)
-  const [loadingAnalysis, setLoadingAnalysis] = useState(false)
+  const [research, setResearch] = useState<InvestmentAdvice | null>(null)
+  const [quantitative, setQuantitative] = useState<QuantitativeAnalysis | null>(null)
+  const [detailsLoading, setDetailsLoading] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const refreshController = useRef<AbortController | null>(null)
+  const detailController = useRef<AbortController | null>(null)
 
-  // New state for delete functionality
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [userRole, setUserRole] = useState<string>('')
-
-  // Toast notification
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
-  const showToast = (message: string, type: 'success' | 'error') => {
-    setToast({ message, type })
-    setTimeout(() => setToast(null), 4000)
-  }
-
-  // New state for company information
-  const [companyInfo, setCompanyInfo] = useState<{displayName?: string} | null>(null)
-  const windowWidth = useWindowWidth()
-  const isMobile = windowWidth < 640
-
-  // Get API URL from environment variables
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-
-  // Get password for API calls
-  const getPasswordParam = () => {
-    const password = localStorage.getItem('stockscope_password')
-    return password ? `?password=${encodeURIComponent(password)}` : ''
-  }
-
-  // Function to fetch company information - memoized to prevent infinite loops
-  const fetchCompanyInfo = useCallback(async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/stocks/${symbol}/info${getPasswordParam()}`)
-      if (response.ok) {
-        const data = await response.json()
-        setCompanyInfo(data)
-      }
-    } catch (error) {
-      console.error('Error fetching company info:', error)
-      // Don't show error for this, just use symbol if company name fails
-    }
-  }, [API_BASE_URL, symbol])
+  const loadData = useCallback(async (signal?: AbortSignal) => {
+    const response = await apiFetch(`/api/stocks/${encodeURIComponent(symbol)}`, { signal })
+    if (!response.ok) throw new Error(`Saved research is unavailable for ${symbol}. Try refreshing the sources.`)
+    const data: StockAnalysis = await response.json()
+    if (!signal?.aborted) setStockData(data)
+  }, [symbol])
 
   useEffect(() => {
-    const fetchStockData = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-        
-        // Fetch both stock data and company info in parallel
-        const [stockResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/stocks/${symbol}${getPasswordParam()}`),
-          fetchCompanyInfo() // This handles its own errors
-        ])
-        
-        if (!stockResponse.ok) {
-          throw new Error(`Failed to fetch data for ${symbol}`)
-        }
-        
-        const data = await stockResponse.json()
-        setStockData(data)
-      } catch (error) {
-        console.error('Error fetching stock data:', error)
-        setError(error instanceof Error ? error.message : 'Unknown error')
-      } finally {
-        setLoading(false)
-      }
+    const controller = new AbortController()
+    setLoading(true)
+    setError(null)
+    setStockData(null)
+    setResearch(null)
+    setQuantitative(null)
+    setMessage(null)
+    setProviderResults({})
+    setRefreshing(false)
+    setDetailsLoading(false)
+    setConfirmDelete(false)
+    loadData(controller.signal)
+      .catch((reason: Error) => { if (!controller.signal.aborted) setError(reason.message) })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => {
+      controller.abort()
+      refreshController.current?.abort()
+      detailController.current?.abort()
     }
+  }, [loadData])
 
-    fetchStockData()
-  }, [symbol, API_BASE_URL, fetchCompanyInfo])
-
-  const refetchStockData = async () => {
+  const refreshSources = async () => {
+    detailController.current?.abort()
+    setDetailsLoading(false)
+    setProviderResults({})
+    refreshController.current?.abort()
+    const controller = new AbortController()
+    refreshController.current = controller
+    setRefreshing(true)
+    setError(null)
+    setMessage('Collecting new articles and filing events…')
+    setResearch(null)
+    setQuantitative(null)
     try {
-      setLoading(true)
-      setError(null)
-      
-      // Fetch both stock data and company info in parallel
-      const [stockResponse] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/stocks/${symbol}${getPasswordParam()}`),
-        fetchCompanyInfo() // This handles its own errors
-      ])
-      
-      if (!stockResponse.ok) {
-        throw new Error(`Failed to fetch data for ${symbol}`)
-      }
-      
-      const data = await stockResponse.json()
-      setStockData(data)
-    } catch (error) {
-      console.error('Error fetching stock data:', error)
-      setError(error instanceof Error ? error.message : 'Unknown error')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // New function to get investment advice
-  const getInvestmentAdvice = async () => {
-    try {
-      setLoadingAdvice(true)
-      const response = await fetch(`${API_BASE_URL}/api/stocks/${symbol}/investment-advice${getPasswordParam()}`)
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch investment advice')
-      }
-      
-      const data = await response.json()
-      setInvestmentAdvice(data)
-      setShowAdviceModal(true)
-    } catch (error) {
-      console.error('Error fetching investment advice:', error)
-      showToast('Failed to fetch investment advice. Please try again.', 'error')
-    } finally {
-      setLoadingAdvice(false)
-    }
-  }
-
-  // New function to get quantitative analysis
-  const getQuantitativeAnalysis = async () => {
-    try {
-      setLoadingAnalysis(true)
-      const response = await fetch(`${API_BASE_URL}/api/stocks/${symbol}/quantitative${getPasswordParam()}`)
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch quantitative analysis')
-      }
-      
-      const data = await response.json()
-      setQuantAnalysis(data)
-      setShowAnalysisModal(true)
-    } catch (error) {
-      console.error('Error fetching quantitative analysis:', error)
-      showToast('Failed to fetch detailed analysis. Please try again.', 'error')
-    } finally {
-      setLoadingAnalysis(false)
-    }
-  }
-
-  // New function to show recent news & posts
-  const showRecentPosts = () => {
-    setShowNewsModal(true)
-  }
-
-  // Check user role on component mount
-  useEffect(() => {
-    const checkUserRole = async () => {
-      try {
-        const password = localStorage.getItem('stockscope_password')
-        if (password) {
-          // Make a test API call to determine role
-          const response = await fetch(`${API_BASE_URL}/api/stocks${getPasswordParam()}`)
-          if (response.status === 403) {
-            setUserRole('guest')
-          } else {
-            // Check if it's admin by trying an admin endpoint
-            const testResponse = await fetch(`${API_BASE_URL}/api/cache${getPasswordParam()}`, {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' }
-            })
-            setUserRole(testResponse.status === 403 ? 'demo' : 'admin')
-          }
-        }
-      } catch (error) {
-        console.error('Error checking user role:', error)
-        setUserRole('guest')
-      }
-    }
-    
-    checkUserRole()
-  }, [API_BASE_URL])
-
-  // Function to delete stock data
-  const handleDeleteStock = async () => {
-    try {
-      setIsDeleting(true)
-      const response = await fetch(`${API_BASE_URL}/api/stocks/${symbol}${getPasswordParam()}`, {
-        method: 'DELETE'
+      const response = await apiFetch('/api/stocks/analyze', {
+        method: 'POST', signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol, sources: ['news', 'sec_facts'] }),
       })
-      
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.detail || 'Failed to delete stock data')
+      if (!response.ok) throw new Error('Could not start the source refresh.')
+      const deadline = Date.now() + 240_000
+      while (Date.now() < deadline) {
+        await pause(1500, controller.signal)
+        const statusResponse = await apiFetch(`/api/stocks/${encodeURIComponent(symbol)}/status`, { signal: controller.signal })
+        if (!statusResponse.ok) throw new Error('Could not read refresh progress. Saved research is still available.')
+        const status: { status: string; message: string; providers?: Record<string, { status: string; count: number; message: string }> } = await statusResponse.json()
+        setProviderResults(status.providers ?? {})
+        setMessage(status.message)
+        if (status.status === 'failed') throw new Error(status.message || 'No sources could be refreshed.')
+        if (status.status === 'completed' || status.status === 'partial') {
+          await loadData(controller.signal)
+          setMessage(status.status === 'partial' ? `Partial refresh: ${status.message}` : 'Sources refreshed. Publication dates are shown below.')
+          return
+        }
       }
-      
-      const result = await response.json()
-      showToast(`Deleted ${result.deleted_files.length} file${result.deleted_files.length !== 1 ? 's' : ''} for ${symbol}`, 'success')
-      
-      // Go back after a brief delay so the toast is visible
-      setTimeout(() => onBack(), 1200)
-      
-    } catch (error) {
-      console.error('Error deleting stock:', error)
-      showToast(error instanceof Error ? error.message : 'Failed to delete stock data', 'error')
+      throw new Error('Refresh is taking longer than expected. The job may still be running; reopen this view to check saved results.')
+    } catch (reason) {
+      if (!controller.signal.aborted) {
+        setError(reason instanceof Error ? reason.message : 'Refresh failed.')
+        setMessage(null)
+      }
     } finally {
-      setIsDeleting(false)
-      setShowDeleteConfirm(false)
+      if (!controller.signal.aborted) setRefreshing(false)
     }
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center px-4">
-        <div className="text-center">
-          <div className="h-12 w-12 sm:h-16 sm:w-16 animate-spin rounded-full border-4 border-white/30 border-t-white mx-auto mb-4" />
-          <p className="text-white text-lg sm:text-xl">Loading {symbol} analysis...</p>
-        </div>
-      </div>
-    )
+  const loadDetails = async (kind: 'research' | 'quantitative') => {
+    detailController.current?.abort()
+    const controller = new AbortController()
+    detailController.current = controller
+    setDetailsLoading(true)
+    setError(null)
+    try {
+      const endpoint = kind === 'research' ? 'investment-advice' : 'quantitative'
+      const response = await apiFetch(`/api/stocks/${encodeURIComponent(symbol)}/${endpoint}`, { signal: controller.signal })
+      if (!response.ok) throw new Error('Research details could not be loaded.')
+      const data = await response.json()
+      if (controller.signal.aborted) return
+      if (kind === 'research') { setResearch(data); setQuantitative(null) }
+      else { setQuantitative(data); setResearch(null) }
+    } catch (reason) {
+      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Could not load details.')
+    } finally {
+      if (!controller.signal.aborted) setDetailsLoading(false)
+    }
   }
 
-  if (error || !stockData) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center px-4">
-        <div className="text-center">
-          <div className="text-4xl sm:text-6xl mb-4">📊</div>
-          <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">No Data Available</h2>
-          <p className="text-white/70 mb-6 text-sm sm:text-base">{error || `No analysis found for ${symbol}`}</p>
-          <button
-            onClick={onBack}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg transition-colors"
-          >
-            ← Back to Search
-          </button>
-        </div>
-      </div>
-    )
+  const deleteStock = async () => {
+    setDeleting(true)
+    try {
+      const response = await apiFetch(`/api/stocks/${encodeURIComponent(symbol)}`, { method: 'DELETE' })
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body.detail || 'Could not delete saved research.')
+      }
+      onBack()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Delete failed.')
+    } finally {
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
   }
 
-  // Prepare chart data - now using SourceAnalysis objects
-  const chartData = stockData.sources.map(sourceAnalysis => ({
-    source: sourceAnalysis.source,
-    count: sourceAnalysis.count,
-    color: getSourceColor(sourceAnalysis.source)
-  }))
-
-  // Get sentiment from either new structure or legacy fallback
-  const avgSentiment = stockData.sentiment_metrics?.avg_sentiment ?? stockData.avg_sentiment ?? 0
-  const sentimentColor = getSentimentColor(avgSentiment)
-
-  const sentimentEmoji = avgSentiment > 0.1 ? '🟢' : 
-                        avgSentiment < -0.1 ? '🔴' : '🟡'
-
-  // Calculate counts for each source type using SourceAnalysis objects
-  const newsData = stockData.sources.find(s => s.source === 'News')
-  const secData = stockData.sources.find(s => s.source === 'SEC')
-  
-  const newsCount = newsData?.count ?? 0
-  const secCount = secData?.count ?? 0
+  const sentiment = stockData?.sentiment_metrics?.avg_sentiment
+  const sentimentLabel = sentiment == null ? 'Unavailable' : sentiment >= 0.05 ? 'Positive' : sentiment <= -0.05 ? 'Negative' : 'Neutral'
+  const freshness = stockData?.freshness ?? 'unknown'
+  const filings = stockData?.filings ?? []
 
   return (
-    <div className={embedded ? "" : "min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900"}>
-      {/* Toast notification */}
-      {toast && (
-        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl border text-sm font-medium transition-all animate-in fade-in slide-in-from-bottom-4 ${
-          toast.type === 'success'
-            ? 'bg-green-900/90 border-green-500/40 text-green-100'
-            : 'bg-red-900/90 border-red-500/40 text-red-100'
-        }`}>
-          <span>{toast.type === 'success' ? '✓' : '✕'}</span>
-          {toast.message}
-        </div>
-      )}
-      <div className={embedded ? "" : "container mx-auto px-3 sm:px-4 py-4 sm:py-8"}>
-        {/* Header - Only show when not embedded - FIXED: Better condition check */}
-        {!embedded && (
-          <div className="flex items-center justify-between mb-6 sm:mb-8">
-            <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
-              <button
-                onClick={onBack}
-                className="bg-white/10 hover:bg-white/20 text-white p-2 rounded-lg transition-colors backdrop-blur-sm flex-shrink-0"
-              >
-                ←
-              </button>
-              <div className="min-w-0">
-                <h1 className="text-2xl sm:text-4xl font-bold text-white truncate">{companyInfo?.displayName || symbol}</h1>
-                <p className="text-white/70 text-sm sm:text-base">Sentiment Analysis Dashboard</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-            {/* Chart View Link */}
-            <a
-              href={`/stock/${symbol.toLowerCase()}`}
-              className="bg-green-600 hover:bg-green-700 text-white px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-colors flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
-              title="View price chart and news"
-            >
-              <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Charts</span>
-            </a>
-            
-            {/* Delete button - only for admin users */}
-            {userRole === 'admin' && (
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="bg-red-600 hover:bg-red-700 text-white px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-colors flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
-                title="Delete all data for this stock (Admin only)"
-              >
-                <X className="h-3 w-3 sm:h-4 sm:w-4" />
-                <span className="hidden sm:inline">Delete Stock</span>
-              </button>
-            )}
-            
-            <button
-              onClick={refetchStockData}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-colors flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
-            >
-              <Activity className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Refresh</span>
-            </button>
+    <section className={`${embedded ? '' : 'min-h-screen bg-slate-950 p-4 sm:p-8'} text-white`} aria-label={`${symbol} research`}>
+      <div className="mx-auto max-w-6xl space-y-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            {!embedded && <button onClick={onBack} className="mb-3 text-sm text-blue-300">← Back to watchlist</button>}
+            <h2 className="text-2xl font-semibold">{symbol} research</h2>
+            <p className="mt-1 max-w-2xl text-sm text-slate-300">News tone and filing events provide context. They do not estimate investment returns or the probability of a profitable trade.</p>
           </div>
+          <button onClick={refreshSources} disabled={refreshing || loading} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-medium hover:bg-blue-500 disabled:opacity-50">
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing sources…' : 'Refresh sources'}
+          </button>
         </div>
-        )}
 
-        {/* Charts - Mobile stacked layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-          {/* Source Distribution */}
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
-            <h3 className="text-lg sm:text-xl font-semibold text-white mb-3 sm:mb-4 flex items-center gap-2">
-              <Building2 className="h-4 w-4 sm:h-5 sm:w-5" />
-              Data Sources
-            </h3>
-            <div className="h-48 sm:h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={chartData}
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={isMobile ? 60 : 80}
-                    dataKey="count"
-                    label={false}
-                    labelLine={false}
-                  >
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    formatter={(value, name, props) => [
-                      `${value} posts`,
-                      props.payload.source
-                    ]}
-                    labelFormatter={() => "Data Source"}
-                    contentStyle={{ 
-                      backgroundColor: 'rgba(0,0,0,0.9)', 
-                      border: '1px solid rgba(255,255,255,0.2)', 
-                      borderRadius: '8px',
-                      color: 'white',
-                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                      fontSize: isMobile ? '12px' : '14px'
-                    }}
-                    itemStyle={{
-                      color: 'white'
-                    }}
-                    labelStyle={{
-                      color: 'white'
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+        {error && <p role="alert" className="rounded-lg border border-red-400/40 bg-red-950/40 p-4 text-sm text-red-200">{error}</p>}
+        {message && <p role="status" className="rounded-lg bg-blue-950/50 p-4 text-sm text-blue-200">{message}</p>}
+        {Object.keys(providerResults).length > 0 && <ul className="grid gap-2 text-sm text-slate-300 sm:grid-cols-2" aria-label="Refresh results">{Object.entries(providerResults).map(([source, outcome]) => <li key={source} className="rounded-lg border border-white/10 p-3"><span className="font-medium uppercase">{source}</span>: {outcome.status.replaceAll('_', ' ')} · {outcome.count} items<p className="mt-1 text-xs text-slate-400">{outcome.message}</p></li>)}</ul>}
+        {loading ? <p role="status" className="py-12 text-center text-slate-300">Loading saved research…</p> : stockData && <>
+          <div className={`rounded-xl border p-4 ${freshness === 'recent' ? 'border-slate-600 bg-slate-800/50' : 'border-amber-500/40 bg-amber-950/20'}`}>
+            <p className="font-medium">{freshness === 'recent' ? 'Recent source material' : freshness === 'stale' ? 'Source material is stale' : 'Source freshness is unknown'}</p>
+            <p className="mt-1 text-sm text-slate-300">Latest source publication: {displayDate(stockData.source_as_of)}. Summary generated: {displayDate(stockData.generated_at)}.</p>
+            <p className="mt-1 text-xs text-slate-400">Generating a summary does not make its underlying articles or filings newer. Review each source date before using it.</p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+              <p className="text-sm text-slate-300">News tone</p>
+              <p className="mt-2 text-2xl font-semibold">{sentimentLabel}</p>
+              <p className="mt-1 text-sm text-slate-400">{sentiment == null ? 'No scored news available' : `${sentiment.toFixed(3)} on a −1 to +1 scale`}</p>
             </div>
-            {/* Custom Legend */}
-            <div className="flex flex-wrap justify-center gap-3 sm:gap-4 mt-3 sm:mt-4">
-              {chartData.map((entry, index) => (
-                <div key={index} className="flex items-center gap-1 sm:gap-2">
-                  <div 
-                    className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full" 
-                    style={{ backgroundColor: entry.color }}
-                  />
-                  <span className="text-white text-xs sm:text-sm">
-                    {entry.source}: {entry.count}
-                  </span>
-                </div>
-              ))}
+            <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+              <p className="text-sm text-slate-300">Scored news items</p>
+              <p className="mt-2 text-2xl font-semibold">{stockData.sentiment_metrics.sample_size.toLocaleString()}</p>
+              <p className="mt-1 text-sm text-slate-400">Text tone is separate from company value.</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+              <p className="text-sm text-slate-300">Filing events</p>
+              <p className="mt-2 text-2xl font-semibold">{filings.length.toLocaleString()}</p>
+              <p className="mt-1 text-sm text-slate-400">Read the original disclosures below.</p>
             </div>
           </div>
 
-          {/* Source Breakdown Bar Chart */}
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
-            <h3 className="text-lg sm:text-xl font-semibold text-white mb-3 sm:mb-4 flex items-center gap-2">
-              <BarChart className="h-4 w-4 sm:h-5 sm:w-5" />
-              Source Breakdown
-            </h3>
-            <div className="h-48 sm:h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                  <XAxis 
-                    dataKey="source" 
-                    stroke="rgba(255,255,255,0.7)" 
-                    fontSize={isMobile ? 10 : 12}
-                  />
-                  <YAxis 
-                    stroke="rgba(255,255,255,0.7)" 
-                    fontSize={isMobile ? 10 : 12}
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'rgba(0,0,0,0.8)', 
-                      border: 'none', 
-                      borderRadius: '8px',
-                      color: 'white',
-                      fontSize: isMobile ? '12px' : '14px'
-                    }} 
-                  />
-                  <Bar dataKey="count" fill={CHART_COLORS.PRIMARY} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-
-        {/* Source Details Table - Mobile optimized */}
-        <div className="mt-4 sm:mt-6 bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
-          <h3 className="text-lg sm:text-xl font-semibold text-white mb-3 sm:mb-4">Source Details</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-white">
-              <thead>
-                <tr className="border-b border-white/20">
-                  <th className="text-left py-2 text-sm sm:text-base">Source</th>
-                  <th className="text-right py-2 text-sm sm:text-base">Posts</th>
-                  <th className="text-right py-2 text-sm sm:text-base hidden sm:table-cell">Avg Sentiment</th>
-                  <th className="text-right py-2 text-sm sm:text-base hidden md:table-cell">Last Updated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stockData.sources.map((source) => (
-                  <tr key={source.source} className="border-b border-white/10">
-                    <td className="py-3">
-                      <div className="flex items-center gap-1 sm:gap-2">
-                        <div 
-                          className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full" 
-                          style={{ 
-                            backgroundColor: getSourceColor(source.source)
-                          }}
-                        />
-                        <span className="text-sm sm:text-base">{source.source}</span>
-                      </div>
-                    </td>
-                    <td className="text-right py-3 text-sm sm:text-base">{source.count.toLocaleString()}</td>
-                    <td className="text-right py-3 hidden sm:table-cell">
-                      <span style={{ 
-                        color: getSentimentColor(source.avg_sentiment)
-                      }} className="text-sm sm:text-base">
-                        {source.avg_sentiment.toFixed(3)}
-                      </span>
-                    </td>
-                    <td className="text-right py-3 text-white/60 text-sm hidden md:table-cell">
-                      {new Date(source.latest_update).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+          <div className="overflow-x-auto rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6">
+            <h3 className="mb-4 text-lg font-semibold">Source coverage</h3>
+            <table className="w-full text-left text-sm">
+              <thead className="text-slate-400"><tr><th className="pb-3 pr-4">Source</th><th className="pb-3 pr-4">Items</th><th className="pb-3 pr-4">Text tone</th><th className="pb-3">Latest publication</th></tr></thead>
+              <tbody>{stockData.sources.map(source => <tr key={source.source} className="border-t border-white/10">
+                <td className="py-3 pr-4 font-medium">{source.source}</td>
+                <td className="py-3 pr-4">{source.count}</td>
+                <td className="py-3 pr-4">{source.avg_sentiment == null ? 'Not scored' : source.avg_sentiment.toFixed(3)}</td>
+                <td className="py-3">{source.source === 'SEC' ? source.latest_update?.slice(0, 10) ?? 'Unknown' : displayDate(source.latest_update)}<span className="mt-1 block text-xs text-slate-400">{source.freshness}{source.unknown_timestamps > 0 ? ` · ${source.unknown_timestamps} undated` : ''}</span></td>
+              </tr>)}</tbody>
             </table>
           </div>
-        </div>
 
-        {/* Key Metrics - Mobile optimized grid */}
-        <div className="mt-6 sm:mt-8 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white/70 text-xs sm:text-sm">Total Posts</p>
-                <p className="text-xl sm:text-3xl font-bold text-white">{(stockData.total_posts ?? 0).toLocaleString()}</p>
-              </div>
-              <MessageSquare className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
-            </div>
+          <div className="flex flex-wrap gap-3">
+            <button disabled={detailsLoading || refreshing} onClick={() => loadDetails('research')} className="flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-3 text-sm disabled:opacity-50"><FileText className="h-4 w-4" />Research summary</button>
+            <button disabled={detailsLoading || refreshing} onClick={() => loadDetails('quantitative')} className="flex items-center gap-2 rounded-lg bg-slate-700 px-4 py-3 text-sm disabled:opacity-50"><Activity className="h-4 w-4" />Metric availability</button>
+            <Link href={`/fundamentals/${encodeURIComponent(symbol)}`} className="rounded-lg border border-slate-600 px-4 py-3 text-sm">Company fundamentals</Link>
           </div>
+          {detailsLoading && <p role="status" className="text-sm text-slate-300">Loading research details…</p>}
 
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white/70 text-xs sm:text-sm">Avg Sentiment</p>
-                <p className="text-xl sm:text-3xl font-bold" style={{ color: sentimentColor }}>
-                  {avgSentiment.toFixed(3)}
-                </p>
-                <p className="text-xs sm:text-sm text-white/60">{sentimentEmoji} {avgSentiment > 0 ? 'Positive' : avgSentiment < 0 ? 'Negative' : 'Neutral'}</p>
-              </div>
-              {avgSentiment > 0 ? 
-                <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 text-green-400" /> : 
-                <TrendingDown className="h-6 w-6 sm:h-8 sm:w-8 text-red-400" />
-              }
-            </div>
+          {research && <div className="rounded-xl border border-blue-400/30 bg-blue-950/20 p-5">
+            <h3 className="text-lg font-semibold">Research summary</h3>
+            <p className="mt-3 text-slate-200">{research.summary}</p>
+            <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-slate-300">{research.observations.map((observation, i) => <li key={i}>{observation}</li>)}</ul>
+            <h4 className="mt-5 font-medium">Evidence limitations</h4>
+            <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-amber-200">{research.limitations.map((limitation, i) => <li key={i}>{limitation}</li>)}</ul>
+          </div>}
+          {quantitative && <div className="rounded-xl border border-slate-600 bg-slate-800/50 p-5"><h3 className="font-semibold">Quantitative metrics unavailable</h3><p className="mt-2 text-sm text-slate-300">{quantitative.reason}</p></div>}
+
+          <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+            <h3 className="text-lg font-semibold">SEC filing events</h3>
+            <p className="mt-1 text-sm text-slate-400">A filing type alone does not indicate good or bad news. These events are excluded from the news-tone score.</p>
+            {filings.length === 0 ? <p className="mt-4 text-sm text-slate-300">No saved filing events are available.</p> : <ul className="mt-4 divide-y divide-white/10">{filings.map((filing, i) => <li key={`${filing.url}-${i}`} className="py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium">{filing.form_type} · {filing.description}</span>{safeSourceUrl(filing.url) && <a href={safeSourceUrl(filing.url)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-sm text-blue-300">Read filing <ExternalLink className="h-3 w-3" /></a>}</div>
+              <p className="mt-1 text-sm text-slate-400">Filed: {filing.filing_date ?? 'Unknown'}</p>
+            </li>)}</ul>}
           </div>
+        </>}
 
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white/70 text-xs sm:text-sm">News Articles</p>
-                <p className="text-xl sm:text-3xl font-bold text-white">{newsCount.toLocaleString()}</p>
-              </div>
-              <Newspaper className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
-            </div>
-          </div>
-
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white/70 text-xs sm:text-sm">SEC Filings</p>
-                <p className="text-xl sm:text-3xl font-bold text-white">{secCount.toLocaleString()}</p>
-              </div>
-              <FileText className="h-6 w-6 sm:h-8 sm:w-8 text-purple-400" />
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Actions - Enhanced with more information */}
-        <div className="mt-6 sm:mt-8 bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20">
-          <h3 className="text-lg sm:text-xl font-semibold text-white mb-3 sm:mb-4">Quick Actions</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <button 
-              onClick={getInvestmentAdvice}
-              disabled={loadingAdvice}
-              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 sm:p-4 rounded-lg transition-all duration-200 flex flex-col items-center justify-center gap-2 text-sm sm:text-base hover:scale-105"
-            >
-              <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="font-semibold">AI Investment Advice</span>
-              </div>
-              {loadingAdvice ? (
-                <span className="text-xs text-blue-200">Loading analysis...</span>
-              ) : (
-                <span className="text-xs text-blue-200">BUY/SELL/HOLD + Risk Level</span>
-              )}
-            </button>
-
-            <button 
-              onClick={getQuantitativeAnalysis}
-              disabled={loadingAnalysis}
-              className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 sm:p-4 rounded-lg transition-all duration-200 flex flex-col items-center justify-center gap-2 text-sm sm:text-base hover:scale-105"
-            >
-              <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="font-semibold">Technical Analysis</span>
-              </div>
-              {loadingAnalysis ? (
-                <span className="text-xs text-purple-200">Computing metrics...</span>
-              ) : (
-                <span className="text-xs text-purple-200">RSI, MACD, Sharpe Ratio</span>
-              )}
-            </button>
-
-            <button 
-              onClick={showRecentPosts}
-              className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white p-3 sm:p-4 rounded-lg transition-all duration-200 flex flex-col items-center justify-center gap-2 text-sm sm:text-base hover:scale-105"
-            >
-              <div className="flex items-center gap-2">
-                <Newspaper className="h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="font-semibold">Latest Sentiment</span>
-              </div>
-              <span className="text-xs text-green-200">
-                {stockData.total_posts > 0 ? `${stockData.total_posts.toLocaleString()} posts analyzed` : 'View news & posts'}
-              </span>
-            </button>
-
-            <a
-              href={`/fundamentals/${symbol}`}
-              className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white p-3 sm:p-4 rounded-lg transition-all duration-200 flex flex-col items-center justify-center gap-2 text-sm sm:text-base hover:scale-105 text-center"
-            >
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="font-semibold">Fundamentals</span>
-              </div>
-              <span className="text-xs text-orange-200">Revenue, Margins, Cash Flow</span>
-            </a>
-          </div>
-
-          {/* Additional Quick Info Row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-            <div className="bg-white/5 rounded-lg p-3 text-center border border-white/10">
-              <div className="text-xs text-white/60 mb-1">Sentiment Trend</div>
-              <div className={`text-sm font-semibold flex items-center justify-center gap-1 ${
-                avgSentiment > 0.1 ? 'text-green-400' : 
-                avgSentiment < -0.1 ? 'text-red-400' : 'text-yellow-400'
-              }`}>
-                {avgSentiment > 0.1 ? '📈 Bullish' : 
-                 avgSentiment < -0.1 ? '📉 Bearish' : '➡️ Neutral'}
-              </div>
-            </div>
-
-            <div className="bg-white/5 rounded-lg p-3 text-center border border-white/10">
-              <div className="text-xs text-white/60 mb-1">Data Sources</div>
-              <div className="text-sm font-semibold text-white">
-                {stockData.sources.length} Active
-              </div>
-            </div>
-
-            <div className="bg-white/5 rounded-lg p-3 text-center border border-white/10">
-              <div className="text-xs text-white/60 mb-1">Last Updated</div>
-              <div className="text-sm font-semibold text-white">
-                {stockData.last_updated ? new Date(stockData.last_updated).toLocaleDateString() : 'N/A'}
-              </div>
-            </div>
-
-            <div className="bg-white/5 rounded-lg p-3 text-center border border-white/10">
-              <div className="text-xs text-white/60 mb-1">Analysis Score</div>
-              <div className="text-sm font-semibold text-white">
-                {stockData.data_quality_score ? `${(stockData.data_quality_score * 100).toFixed(0)}%` : 'N/A'}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Investment Advice Modal - Mobile optimized */}
-        {showAdviceModal && investmentAdvice && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
-            <div className="bg-gradient-to-br from-slate-900 to-purple-900 rounded-xl p-4 sm:p-6 max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto border border-white/20">
-              <div className="flex items-center justify-between mb-4 sm:mb-6">
-                <h2 className="text-xl sm:text-2xl font-bold text-white">Investment Advice for {symbol}</h2>
-                <button
-                  onClick={() => setShowAdviceModal(false)}
-                  className="text-white/60 hover:text-white transition-colors p-1"
-                >
-                  <X className="h-5 w-5 sm:h-6 sm:w-6" />
-                </button>
-              </div>
-              
-              <div className="space-y-4 sm:space-y-6">
-                {/* Recommendation */}
-                <div className="bg-white/10 rounded-lg p-3 sm:p-4">
-                  <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-                    <Target className="h-5 w-5 sm:h-6 sm:w-6 text-blue-400" />
-                    <h3 className="text-base sm:text-lg font-semibold text-white">Recommendation</h3>
-                  </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                    <span className={`px-3 sm:px-4 py-2 rounded-full font-bold text-xs sm:text-sm w-fit ${
-                      investmentAdvice.recommendation === 'BUY' ? 'bg-green-600 text-white' :
-                      investmentAdvice.recommendation === 'SELL' ? 'bg-red-600 text-white' :
-                      'bg-yellow-600 text-white'
-                    }`}>
-                      {investmentAdvice.recommendation}
-                    </span>
-                    <div className="text-white text-sm sm:text-base">
-                      <span className="text-white/70">Confidence: </span>
-                      <span className="font-semibold">{(investmentAdvice.confidence * 100).toFixed(1)}%</span>
-                    </div>
-                    {investmentAdvice.target_price && (
-                      <div className="text-white text-sm sm:text-base">
-                        <span className="text-white/70">Target: </span>
-                        <span className="font-semibold">${investmentAdvice.target_price.toFixed(2)}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Risk Level */}
-                <div className="bg-white/10 rounded-lg p-3 sm:p-4">
-                  <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-                    <Shield className="h-5 w-5 sm:h-6 sm:w-6 text-orange-400" />
-                    <h3 className="text-base sm:text-lg font-semibold text-white">Risk Assessment</h3>
-                  </div>
-                  <span className={`px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${
-                    investmentAdvice.risk_level === 'LOW' ? 'bg-green-600/20 text-green-300' :
-                    investmentAdvice.risk_level === 'HIGH' ? 'bg-red-600/20 text-red-300' :
-                    'bg-yellow-600/20 text-yellow-300'
-                  }`}>
-                    {investmentAdvice.risk_level} RISK
-                  </span>
-                </div>
-
-                {/* Reasoning */}
-                <div className="bg-white/10 rounded-lg p-3 sm:p-4">
-                  <h3 className="text-base sm:text-lg font-semibold text-white mb-2 sm:mb-3">Analysis Reasoning</h3>
-                  <ul className="space-y-2">
-                    {investmentAdvice.reasoning.map((reason, index) => (
-                      <li key={index} className="text-white/80 flex items-start gap-2 text-sm sm:text-base">
-                        <span className="text-blue-400 mt-1">•</span>
-                        <span>{reason}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                {/* Factors */}
-                {investmentAdvice.factors && (
-                  <div className="grid grid-cols-1 gap-3 sm:gap-4">
-                    {investmentAdvice.factors.positive.length > 0 && (
-                      <div className="bg-green-600/20 rounded-lg p-3 sm:p-4">
-                        <h4 className="font-semibold text-green-300 mb-2 text-sm sm:text-base">Positive Factors</h4>
-                        <ul className="space-y-1">
-                          {investmentAdvice.factors.positive.map((factor, index) => (
-                            <li key={index} className="text-green-200 text-xs sm:text-sm">• {factor}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    
-                    {investmentAdvice.factors.negative.length > 0 && (
-                      <div className="bg-red-600/20 rounded-lg p-3 sm:p-4">
-                        <h4 className="font-semibold text-red-300 mb-2 text-sm sm:text-base">Risk Factors</h4>
-                        <ul className="space-y-1">
-                          {investmentAdvice.factors.negative.map((factor, index) => (
-                            <li key={index} className="text-red-200 text-xs sm:text-sm">• {factor}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    
-                    {investmentAdvice.factors.neutral.length > 0 && (
-                      <div className="bg-gray-600/20 rounded-lg p-3 sm:p-4">
-                        <h4 className="font-semibold text-gray-300 mb-2 text-sm sm:text-base">Neutral Factors</h4>
-                        <ul className="space-y-1">
-                          {investmentAdvice.factors.neutral.map((factor, index) => (
-                            <li key={index} className="text-gray-200 text-xs sm:text-sm">• {factor}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Quantitative Analysis Modal */}
-        {showAnalysisModal && quantAnalysis && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-gradient-to-br from-slate-900 to-purple-900 rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto border border-white/20">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-white">Quantitative Analysis for {symbol}</h2>
-                <button
-                  onClick={() => setShowAnalysisModal(false)}
-                  className="text-white/60 hover:text-white transition-colors"
-                >
-                  <X className="h-6 w-6" />
-                </button>
-              </div>
-              
-              <div className="space-y-6">
-                {/* Metrics */}
-                {quantAnalysis.metrics && (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {quantAnalysis.metrics.sharpe_ratio && (
-                      <div className="bg-white/10 rounded-lg p-4 text-center">
-                        <div className="text-2xl font-bold text-white">{quantAnalysis.metrics.sharpe_ratio.toFixed(2)}</div>
-                        <div className="text-white/70 text-sm">Sharpe Ratio</div>
-                      </div>
-                    )}
-                    {quantAnalysis.metrics.volatility && (
-                      <div className="bg-white/10 rounded-lg p-4 text-center">
-                        <div className="text-2xl font-bold text-white">{(quantAnalysis.metrics.volatility * 100).toFixed(1)}%</div>
-                        <div className="text-white/70 text-sm">Volatility</div>
-                      </div>
-                    )}
-                    {quantAnalysis.metrics.beta && (
-                      <div className="bg-white/10 rounded-lg p-4 text-center">
-                        <div className="text-2xl font-bold text-white">{quantAnalysis.metrics.beta.toFixed(2)}</div>
-                        <div className="text-white/70 text-sm">Beta</div>
-                      </div>
-                    )}
-                    {quantAnalysis.metrics.alpha && (
-                      <div className="bg-white/10 rounded-lg p-4 text-center">
-                        <div className="text-2xl font-bold text-white">{(quantAnalysis.metrics.alpha * 100).toFixed(1)}%</div>
-                        <div className="text-white/70 text-sm">Alpha</div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Signals */}
-                {quantAnalysis.signals && (
-                  <div className="bg-white/10 rounded-lg p-4">
-                    <h3 className="text-lg font-semibold text-white mb-3">Technical Signals</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {quantAnalysis.signals.rsi && (
-                        <div className="text-center">
-                          <div className="text-xl font-bold text-white">{quantAnalysis.signals.rsi.toFixed(1)}</div>
-                          <div className="text-white/70 text-sm">RSI</div>
-                        </div>
-                      )}
-                      {quantAnalysis.signals.macd && (
-                        <div className="text-center">
-                          <div className="text-xl font-bold text-white">{quantAnalysis.signals.macd.toFixed(3)}</div>
-                          <div className="text-white/70 text-sm">MACD</div>
-                        </div>
-                      )}
-                      {quantAnalysis.signals.bollinger_bands && (
-                        <div className="text-center">
-                          <div className="text-xl font-bold text-white">{quantAnalysis.signals.bollinger_bands}</div>
-                          <div className="text-white/70 text-sm">Bollinger Bands</div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Recommendation */}
-                <div className="bg-white/10 rounded-lg p-4">
-                  <h3 className="text-lg font-semibold text-white mb-3">Quantitative Recommendation</h3>
-                  <div className="flex items-center gap-4">
-                    <span className="text-xl font-bold text-blue-400">{quantAnalysis.recommendation}</span>
-                    <div className="text-white">
-                      <span className="text-sm text-white/70">Confidence: </span>
-                      <span className="font-semibold">{(quantAnalysis.confidence * 100).toFixed(1)}%</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Recent News & Posts Modal */}
-        {showNewsModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-gradient-to-br from-slate-900 to-purple-900 rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto border border-white/20">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-white">Recent News & Posts for {symbol}</h2>
-                <button
-                  onClick={() => setShowNewsModal(false)}
-                  className="text-white/60 hover:text-white transition-colors"
-                >
-                  <X className="h-6 w-6" />
-                </button>
-              </div>
-              
-              <div className="space-y-4">
-                {stockData?.sources.map((source) => (
-                  <div key={source.source} className="bg-white/10 rounded-lg p-4">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div 
-                        className="w-3 h-3 rounded-full" 
-                        style={{ 
-                          backgroundColor: getSourceColor(source.source)
-                        }}
-                      />
-                      <h3 className="text-lg font-semibold text-white">{source.source}</h3>
-                      <span className="text-white/60 text-sm">({source.count} posts)</span>
-                    </div>
-                    <div className="text-white/80">
-                      <p>Average Sentiment: <span className={`font-semibold ${
-                        source.avg_sentiment > 0.1 ? 'text-green-400' : 
-                        source.avg_sentiment < -0.1 ? 'text-red-400' : 'text-yellow-400'
-                      }`}>
-                        {source.avg_sentiment.toFixed(3)}
-                      </span></p>
-                      <p className="text-sm text-white/60">Last Updated: {new Date(source.latest_update).toLocaleString()}</p>
-                    </div>
-                  </div>
-                ))}
-                
-                <div className="bg-white/10 rounded-lg p-4">
-                  <div className="flex items-center gap-2 text-white/80">
-                    <AlertCircle className="h-5 w-5" />
-                    <span>Individual posts and articles are processed and aggregated into the sentiment metrics shown above.</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Delete Confirmation Modal */}
-        {showDeleteConfirm && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-gradient-to-br from-slate-900 to-red-900 rounded-xl p-6 max-w-md w-full border border-red-500/20">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="bg-red-600/20 rounded-full p-2">
-                  <X className="h-6 w-6 text-red-400" />
-                </div>
-                <h2 className="text-xl font-bold text-white">Delete Stock Data</h2>
-              </div>
-              
-              <div className="mb-6">
-                <p className="text-white/80 mb-3">
-                  Are you sure you want to delete all data for <strong className="text-white">{symbol}</strong>?
-                </p>
-                <p className="text-red-300 text-sm">
-                  This will permanently remove all sentiment analysis files, and this action cannot be undone.
-                </p>
-              </div>
-              
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  disabled={isDeleting}
-                  className="flex-1 bg-white/10 hover:bg-white/20 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDeleteStock}
-                  disabled={isDeleting}
-                  className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
-                >
-                  {isDeleting ? (
-                    <>
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                      Deleting...
-                    </>
-                  ) : (
-                    'Delete Forever'
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {getAuthSession()?.role === 'admin' && stockData && <div className="border-t border-white/10 pt-5">
+          {!confirmDelete ? <button disabled={refreshing} onClick={() => setConfirmDelete(true)} className="flex items-center gap-1 text-sm text-red-300"><X className="h-4 w-4" />Delete saved research for {symbol}</button> : <div className="flex flex-wrap items-center gap-3 text-sm"><p>Delete all saved research for {symbol}?</p><button disabled={deleting || refreshing} onClick={deleteStock} className="rounded bg-red-700 px-3 py-2">{deleting ? 'Deleting…' : 'Delete'}</button><button disabled={deleting} onClick={() => setConfirmDelete(false)} className="rounded bg-slate-700 px-3 py-2">Cancel</button></div>}
+        </div>}
       </div>
-    </div>
+    </section>
   )
 }

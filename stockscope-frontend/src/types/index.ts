@@ -8,6 +8,10 @@ export interface LoginRequest {
 export interface SimpleAuthResponse {
   success: boolean
   message: string
+  role: 'admin' | 'demo' | 'guest'
+  access_token: string
+  token_type: 'bearer'
+  expires_in_seconds: number
 }
 
 export interface AuthState {
@@ -17,12 +21,14 @@ export interface AuthState {
 export interface StockMetadata {
   symbol: string
   companyName?: string
-  currentPrice?: number
-  priceChange?: number
-  priceChangePercent?: number
+  price_as_of?: string | null
+  currentPrice?: number | null
+  priceChange?: number | null
+  priceChangePercent?: number | null
   total_posts: number
-  avg_sentiment: number
-  last_updated: string
+  avg_sentiment: number | null
+  last_updated: string | null
+  freshness?: DataFreshness
   sources: string[] // This endpoint returns simple strings
 }
 
@@ -41,11 +47,22 @@ export interface SentimentData {
 }
 
 // Backend returns SourceAnalysis objects for the analysis endpoint
+export type DataFreshness = 'recent' | 'stale' | 'unknown'
+
 export interface SourceAnalysis {
   source: string
   count: number
-  avg_sentiment: number
-  latest_update: string
+  avg_sentiment: number | null
+  latest_update: string | null
+  freshness: DataFreshness
+  unknown_timestamps: number
+}
+
+export interface FilingEvent {
+  form_type: string
+  filing_date: string | null
+  url: string
+  description: string
 }
 
 // Enhanced interfaces for new components
@@ -95,62 +112,44 @@ export interface SortOption {
 }
 
 export interface SentimentMetrics {
-  avg_sentiment: number
-  sentiment_distribution: {
-    positive: number
-    neutral: number
-    negative: number
-  }
-  confidence_score: number
-  trend: string
+  avg_sentiment: number | null
+  sentiment_distribution: { positive: number; neutral: number; negative: number }
+  trend: 'positive' | 'negative' | 'neutral' | 'unavailable'
+  sample_size: number
+  method: string
 }
 
 export interface StockAnalysis {
-  ticker: string // Backend uses 'ticker' not 'symbol'
+  ticker: string
   total_posts: number
   sentiment_metrics: SentimentMetrics
-  sources: SourceAnalysis[] // This endpoint returns SourceAnalysis objects
-  last_updated: string
-  data_quality_score: number
-  // Legacy fields for backward compatibility
-  symbol?: string
-  avg_sentiment?: number
-  positive_posts?: number
-  negative_posts?: number
-  neutral_posts?: number
-  recent_posts?: SentimentData[]
-  sentiment_over_time?: SentimentData[]
+  sources: SourceAnalysis[]
+  last_updated: string | null
+  source_as_of: string | null
+  freshness: DataFreshness
+  generated_at: string
+  filings: FilingEvent[]
 }
 
 export interface InvestmentAdvice {
-  symbol: string
-  recommendation: 'BUY' | 'SELL' | 'HOLD'
-  confidence: number
-  risk_level: 'LOW' | 'MEDIUM' | 'HIGH'
-  target_price?: number
-  reasoning: string[]
-  factors: {
-    positive: string[]
-    negative: string[]
-    neutral: string[]
-  }
+  ticker: string
+  status: 'research_only'
+  summary: string
+  observations: string[]
+  limitations: string[]
+  sources: SourceAnalysis[]
+  as_of: string | null
+  generated_at: string
+  filings: FilingEvent[]
 }
 
 export interface QuantitativeAnalysis {
   symbol: string
-  metrics: {
-    sharpe_ratio?: number
-    volatility?: number
-    beta?: number
-    alpha?: number
-  }
-  signals: {
-    rsi?: number
-    macd?: number
-    bollinger_bands?: string
-  }
-  recommendation: string
-  confidence: number
+  status: 'unavailable'
+  reason: string
+  metrics: Record<string, never>
+  signals: Record<string, never>
+  strategies?: Record<string, never>
 }
 
 export interface APIResponse<T> {
@@ -191,28 +190,7 @@ export interface StockData {
   changePercent: number;
 }
 
-export interface AnalysisResult {
-  ticker: string;
-  total_posts: number;
-  sentiment_metrics: {
-    avg_sentiment: number;
-    sentiment_distribution: {
-      positive: number;
-      neutral: number;
-      negative: number;
-    };
-    confidence_score: number;
-    trend: string;
-  };
-  sources: Array<{
-    source: string;
-    count: number;
-    avg_sentiment: number;
-    latest_update: string;
-  }>;
-  last_updated: string;
-  data_quality_score: number;
-}
+export type AnalysisResult = StockAnalysis
 
 // Fundamentals Analytics Types
 export interface FundamentalPoint {
@@ -221,33 +199,44 @@ export interface FundamentalPoint {
 }
 
 export interface FundamentalsSeries {
-  revenue_q: FundamentalPoint[];
-  operating_income_q: FundamentalPoint[];
-  operating_margin_q: FundamentalPoint[];
-  fcf_q: FundamentalPoint[];
-  fcf_margin_q: FundamentalPoint[];
-  ebitda_q: FundamentalPoint[];
+  revenue_q?: FundamentalPoint[];
+  operating_income_q?: FundamentalPoint[];
+  operating_margin_q?: FundamentalPoint[];
+  fcf_q?: FundamentalPoint[];
+  fcf_margin_q?: FundamentalPoint[];
+  ebitda_q?: FundamentalPoint[];
+}
+
+export interface GrowthBasis {
+  basis: 'ttm' | 'fiscal_year' | 'unavailable';
+  status: 'available' | 'non_positive_prior' | 'insufficient_history';
+  current_period_end?: string;
+  prior_period_end?: string;
+  absolute_change?: number;
 }
 
 export interface FundamentalsTTM {
   ticker: string;
-  revenue_ttm: number | null;
-  operating_income_ttm: number | null;
-  operating_margin_ttm: number | null;
-  fcf_ttm: number | null;
-  fcf_margin_ttm: number | null;
-  ebitda_ttm: number | null;
-  revenue_growth_yoy: number | null;
-  fcf_growth_yoy: number | null;
-  ebitda_growth_yoy: number | null;
-  margin_growth_yoy_pp: number | null;
-  debt_to_cash: number | null;
+  revenue_ttm?: number | null;
+  operating_income_ttm?: number | null;
+  operating_margin_ttm?: number | null;
+  fcf_ttm?: number | null;
+  fcf_margin_ttm?: number | null;
+  ebitda_ttm?: number | null;
+  revenue_growth_yoy?: number | null;
+  fcf_growth_yoy?: number | null;
+  ebitda_growth_yoy?: number | null;
+  margin_growth_yoy_pp?: number | null;
+  debt_to_cash?: number | null;
   insufficient_data: boolean;
+  growth_metadata?: Record<string, GrowthBasis>;
+  period_metadata?: Record<string, { basis: string; quarter_ends: string[]; period_end: string }>;
 }
 
 export interface FundamentalsResponse {
   ttm: FundamentalsTTM;
   series: FundamentalsSeries;
+  metadata?: { source?: string; retrieved_at?: string };
 }
 
 export interface CompareRequest {
@@ -269,5 +258,12 @@ export interface ScreenerRequest {
 export interface ScreenerResponse {
   results: FundamentalsTTM[];
   total_screened: number;
+  total_attempted: number;
+  total_failed: number;
+  total_insufficient: number;
+  total_evaluated: number;
+  total_matches: number;
+  universe_name: string;
+  universe_as_of?: string | null;
   filters_applied: Record<string, string | number | boolean | null | undefined>;
 }

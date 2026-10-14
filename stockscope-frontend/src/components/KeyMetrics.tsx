@@ -1,27 +1,35 @@
 'use client'
 
+import { apiFetch } from '@/lib/api'
+
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { TrendingUp, DollarSign, BarChart3, Building2, ChevronDown, ChevronUp, RefreshCw, Info } from 'lucide-react'
 
 interface KeyMetrics {
-  currentPrice: number
-  marketCap: number
-  peRatio: number
-  dividendYield: number
-  dayRange: {
-    low: number
-    high: number
-  }
-  fiftyTwoWeekRange: {
-    low: number
-    high: number
-  }
-  volume: number
-  averageVolume: number
-  beta: number
-  eps: number
-  priceToBook: number
-  priceToSales: number
+  currentPrice: number | null
+  marketCap: number | null
+  peRatio: number | null
+  dividendYield: number | null
+  dayRange: { low: number | null; high: number | null }
+  fiftyTwoWeekRange: { low: number | null; high: number | null }
+  volume: number | null
+  averageVolume: number | null
+  beta: number | null
+  eps: number | null
+  priceToBook: number | null
+  priceToSales: number | null
+  currency: string | null
+  quoteAsOf: string | null
+  retrievedAt: string | null
+}
+
+const observedNumber = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+
+const formatTimestamp = (value: string | null) => {
+  if (!value) return 'Unavailable'
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? 'Unavailable' : parsed.toLocaleString()
 }
 
 interface KeyMetricsProps {
@@ -34,24 +42,17 @@ export default function KeyMetricsComponent({ symbol, className = '' }: KeyMetri
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-
-  const getPasswordParam = () => {
-    const password = localStorage.getItem('stockscope_password')
-    return password ? `?password=${encodeURIComponent(password)}` : ''
-  }
-
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [showTooltip, setShowTooltip] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const fetchMetrics = useCallback(async () => {
-    if (!isRefreshing) setLoading(true)
+  const fetchMetrics = useCallback(async (refreshing = false) => {
+    if (!refreshing) setLoading(true)
     setError(null)
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stocks/${symbol}/info${getPasswordParam()}`)
+      const response = await apiFetch(`/api/stocks/${symbol}/info`)
       
       if (!response.ok) {
         throw new Error('Failed to fetch key metrics')
@@ -60,36 +61,42 @@ export default function KeyMetricsComponent({ symbol, className = '' }: KeyMetri
       const data = await response.json()
       
       setMetrics({
-        currentPrice: data.currentPrice || 0,
-        marketCap: data.marketCap || 0,
-        peRatio: data.priceToEarningsRatio || 0,
-        dividendYield: data.dividendYield || 0,
+        currentPrice: observedNumber(data.currentPrice),
+        marketCap: observedNumber(data.marketCap),
+        peRatio: observedNumber(data.priceToEarningsRatio),
+        dividendYield: observedNumber(data.dividendYield),
         dayRange: {
-          low: data.dayLow || 0,
-          high: data.dayHigh || 0
+          low: observedNumber(data.dayLow),
+          high: observedNumber(data.dayHigh)
         },
         fiftyTwoWeekRange: {
-          low: data.fiftyTwoWeekLow || 0,
-          high: data.fiftyTwoWeekHigh || 0
+          low: observedNumber(data.fiftyTwoWeekLow),
+          high: observedNumber(data.fiftyTwoWeekHigh)
         },
-        volume: data.volume || 0,
-        averageVolume: data.averageVolume || 0,
-        beta: data.beta || 0,
-        eps: data.earningsPerShare || 0,
-        priceToBook: data.priceToBook || 0,
-        priceToSales: data.priceToSalesTrailing12Months || 0
+        volume: observedNumber(data.volume),
+        averageVolume: observedNumber(data.averageVolume),
+        beta: observedNumber(data.beta),
+        eps: observedNumber(data.earningsPerShare),
+        priceToBook: observedNumber(data.priceToBook),
+        priceToSales: observedNumber(data.priceToSalesTrailing12Months),
+        currency: typeof data.currency === 'string' && /^[A-Z]{3}$/.test(data.currency) ? data.currency : null,
+        quoteAsOf: typeof data.quote_as_of === 'string' ? data.quote_as_of : null,
+        retrievedAt: typeof data.retrieved_at === 'string' ? data.retrieved_at : null
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
-      if (!isRefreshing) setLoading(false)
+      setLoading(false)
     }
-  }, [symbol, isRefreshing, API_BASE_URL])
+  }, [symbol])
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
-    await fetchMetrics()
-    setTimeout(() => setIsRefreshing(false), 500)
+    try {
+      await fetchMetrics(true)
+    } finally {
+      setIsRefreshing(false)
+    }
   }
 
   const toggleSection = (section: string) => {
@@ -102,29 +109,20 @@ export default function KeyMetricsComponent({ symbol, className = '' }: KeyMetri
     }
   }, [symbol, fetchMetrics])
 
-  const formatPrice = (price: number) => {
+  const formatPrice = (price: number | null, compact = false) => {
+    if (price === null) return 'Unavailable'
     return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
+      ...(metrics?.currency ? { style: 'currency', currency: metrics.currency } : { style: 'decimal' }),
+      notation: compact ? 'compact' : 'standard',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     }).format(price)
   }
 
-  const formatLargeNumber = (num: number) => {
-    if (num >= 1e12) {
-      return `$${(num / 1e12).toFixed(2)}T`
-    } else if (num >= 1e9) {
-      return `$${(num / 1e9).toFixed(2)}B`
-    } else if (num >= 1e6) {
-      return `$${(num / 1e6).toFixed(2)}M`
-    } else if (num >= 1e3) {
-      return `$${(num / 1e3).toFixed(2)}K`
-    }
-    return `$${num.toFixed(2)}`
-  }
+  const formatLargeNumber = (num: number | null) => formatPrice(num, true)
 
-  const formatVolume = (volume: number) => {
+  const formatVolume = (volume: number | null) => {
+    if (volume === null) return 'Unavailable'
     if (volume >= 1e9) {
       return `${(volume / 1e9).toFixed(2)}B`
     } else if (volume >= 1e6) {
@@ -135,15 +133,20 @@ export default function KeyMetricsComponent({ symbol, className = '' }: KeyMetri
     return volume.toString()
   }
 
-  const formatPercent = (value: number) => {
-    if (value === 0) return 'N/A'
+  const formatPercent = (value: number | null) => {
+    if (value === null) return 'Unavailable'
     return `${(value * 100).toFixed(2)}%`
   }
 
-  const formatRatio = (value: number) => {
-    if (value === 0) return 'N/A'
+  const formatRatio = (value: number | null) => {
+    if (value === null) return 'Unavailable'
     return value.toFixed(2)
   }
+
+  const formatRange = (range: { low: number | null; high: number | null }) =>
+    range.low === null || range.high === null
+      ? 'Unavailable'
+      : `${formatPrice(range.low)} – ${formatPrice(range.high)}`
 
   if (loading) {
     return (
@@ -206,7 +209,7 @@ export default function KeyMetricsComponent({ symbol, className = '' }: KeyMetri
       title: 'Price & Valuation',
       icon: DollarSign,
       metrics: [
-        { label: 'Current Price', value: formatPrice(metrics.currentPrice), tooltip: 'Current stock price' },
+        { label: 'Quote Price', value: formatPrice(metrics.currentPrice), tooltip: 'Latest price returned by the provider; see quote time below' },
         { label: 'Market Cap', value: formatLargeNumber(metrics.marketCap), tooltip: 'Total market value of company' },
         { label: 'P/E Ratio', value: formatRatio(metrics.peRatio), tooltip: 'Price-to-Earnings ratio' },
         { label: 'P/B Ratio', value: formatRatio(metrics.priceToBook), tooltip: 'Price-to-Book ratio' },
@@ -217,9 +220,9 @@ export default function KeyMetricsComponent({ symbol, className = '' }: KeyMetri
       title: 'Trading & Performance',
       icon: TrendingUp,
       metrics: [
-        { label: 'Day Range', value: `${formatPrice(metrics.dayRange.low)} - ${formatPrice(metrics.dayRange.high)}`, tooltip: "Today's price range" },
-        { label: '52W Range', value: `${formatPrice(metrics.fiftyTwoWeekRange.low)} - ${formatPrice(metrics.fiftyTwoWeekRange.high)}`, tooltip: '52-week price range' },
-        { label: 'Volume', value: formatVolume(metrics.volume), tooltip: 'Trading volume today' },
+        { label: 'Day Range', value: formatRange(metrics.dayRange), tooltip: 'Price range for the provider’s reported trading session' },
+        { label: '52W Range', value: formatRange(metrics.fiftyTwoWeekRange), tooltip: '52-week price range' },
+        { label: 'Volume', value: formatVolume(metrics.volume), tooltip: 'Trading volume for the provider’s reported session' },
         { label: 'Avg Volume', value: formatVolume(metrics.averageVolume), tooltip: 'Average daily volume' },
         { label: 'Beta', value: formatRatio(metrics.beta), tooltip: 'Stock volatility vs market' }
       ]
@@ -258,7 +261,7 @@ export default function KeyMetricsComponent({ symbol, className = '' }: KeyMetri
           onClick={handleRefresh}
           disabled={isRefreshing}
           className="p-2 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-white transition-all disabled:opacity-50 touch-manipulation"
-          title="Refresh metrics"
+          title="Reload metrics (provider responses may be cached for up to one hour)"
         >
           <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
         </button>
@@ -357,7 +360,14 @@ export default function KeyMetricsComponent({ symbol, className = '' }: KeyMetri
       <div className="mt-6 pt-4 border-t border-white/20">
         <div className="text-center">
           <p className="text-xs text-white/60">
-            📊 Last updated: {new Date().toLocaleTimeString()}
+            Quote as of: {formatTimestamp(metrics.quoteAsOf)}
+          </p>
+          <p className="text-xs text-white/60 mt-1">
+            Retrieved: {formatTimestamp(metrics.retrievedAt)}
+          </p>
+          <p className="text-xs text-white/60 mt-1">
+            Provider data may be delayed; responses are cached for up to one hour.
+            {!metrics.currency && ' Currency unavailable.'}
           </p>
         </div>
       </div>

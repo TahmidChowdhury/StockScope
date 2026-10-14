@@ -1,11 +1,13 @@
-"""S&P 500 universe data loader."""
+"""Load the repository's curated US-stock list, not current S&P 500 membership."""
 
 import json
 import os
 from typing import List
 
+CURATED_UNIVERSE_NAME = "Curated US-stock list (membership date unknown)"
+
 def load_sp500_universe() -> List[str]:
-    """Load S&P 500 tickers from JSON file."""
+    """Legacy function name retained for callers; this is a curated subset."""
     try:
         current_dir = os.path.dirname(os.path.abspath(__file__))
         sp500_path = os.path.join(current_dir, "sp500.json")
@@ -15,20 +17,13 @@ def load_sp500_universe() -> List[str]:
         
         # Handle different JSON structures
         if isinstance(data, list):
-            return data
+            return list(dict.fromkeys(str(ticker).upper().replace('.', '-') for ticker in data))
         elif isinstance(data, dict) and 'tickers' in data:
-            return data['tickers']
+            return list(dict.fromkeys(str(ticker).upper().replace('.', '-') for ticker in data['tickers']))
         elif isinstance(data, dict) and 'symbols' in data:
-            return data['symbols']
+            return list(dict.fromkeys(str(ticker).upper().replace('.', '-') for ticker in data['symbols']))
         else:
-            # Fallback: extract values if it's a dict
-            return list(data.values()) if isinstance(data, dict) else []
+            raise ValueError("Curated stock universe has an unsupported format")
             
     except (FileNotFoundError, json.JSONDecodeError) as e:
-        print(f"Warning: Could not load S&P 500 universe: {e}")
-        # Fallback to a small set of common tickers
-        return [
-            "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NVDA", "BRK.B",
-            "JPM", "JNJ", "V", "PG", "UNH", "HD", "MA", "DIS", "PYPL", "ADBE",
-            "NFLX", "INTC", "CRM", "VZ", "T", "PFE", "WMT", "BAC", "KO", "NKE"
-        ]
+        raise ValueError("Curated stock universe is unavailable") from e

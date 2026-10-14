@@ -2,49 +2,59 @@
 
 from typing import List, Dict, Any, Optional
 import asyncio
-import os
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.core.cache import cached
+from backend.core.auth import verify_password_with_role
 from backend.services.fundamentals import compute_ttm_metrics, compute_quarterly_series, compact
 from backend.models.fundamentals import (
     FundamentalsTTM, FundamentalsSeries, FundamentalsResponse,
     CompareRequest, ScreenerRequest, ScreenerResponse
 )
-from backend.data.universe.sp500 import load_sp500_universe
+from backend.data.universe.sp500 import load_sp500_universe, CURATED_UNIVERSE_NAME
+from backend.services.research import normalized_symbol, saved_sec_facts
+from backend.services.sec_facts import is_sec_configured
 
 router = APIRouter()
 
-# Use the exact same authentication logic as the main API
-async def verify_password_dependency(password: str = Query(..., description="Password")):
-    """Use the same authentication logic as the main API for consistency"""
-    
-    # Load the same password variables as main API
-    ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-    DEMO_PASSWORD = os.getenv("DEMO_PASSWORD") 
-    GUEST_PASSWORD = os.getenv("GUEST_PASSWORD")
-    MASTER_PASSWORD = os.getenv("STOCKSCOPE_PASSWORD", ADMIN_PASSWORD)
-    
-    def get_user_role(password: str) -> str:
-        """Determine user role based on password - same logic as main API"""
-        if password == ADMIN_PASSWORD:
-            return "admin"
-        elif password == DEMO_PASSWORD:
-            return "demo"
-        elif password == GUEST_PASSWORD:
-            return "guest"
-        elif password == MASTER_PASSWORD:
-            return "admin"  # Backward compatibility
-        else:
-            return None
-    
-    role = get_user_role(password)
-    if not role:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid password"
-        )
-    return role
+
+@router.get("/{ticker}/sec-facts")
+async def get_saved_sec_facts(
+    ticker: str,
+    concept: Optional[str] = Query(default=None, max_length=200),
+    unit: Optional[str] = Query(default=None, max_length=100),
+    offset: int = Query(default=0, ge=0, le=1000000),
+    limit: int = Query(default=200, ge=1, le=200),
+    current_user: str = Depends(verify_password_with_role),
+):
+    """Read a saved SEC snapshot. This route never contacts external providers."""
+    try:
+        symbol = normalized_symbol(ticker)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    snapshot = await asyncio.to_thread(saved_sec_facts, symbol)
+    configured = is_sec_configured()
+    rows = [row for row in (snapshot or {}).get("facts", []) if isinstance(row, dict)]
+    concepts = {}
+    for row in rows:
+        key = f"{row.get('taxonomy', '')}:{row.get('concept', '')}"
+        if key not in concepts:
+            concepts[key] = {"key": key, "taxonomy": row.get("taxonomy"), "concept": row.get("concept"),
+                             "label": row.get("label"), "units": set(), "count": 0}
+        concepts[key]["count"] += 1
+        if isinstance(row.get("unit"), str):
+            concepts[key]["units"].add(row["unit"])
+    options = [{**item, "units": sorted(item["units"])} for _, item in sorted(concepts.items())]
+    filtered = [row for row in rows if
+                (concept is None or f"{row.get('taxonomy', '')}:{row.get('concept', '')}" == concept)
+                and (unit is None or row.get("unit") == unit)]
+    # Stable newest-filing-first ordering; unknown dates remain at the end.
+    filtered.sort(key=lambda row: (row.get("filed") or "", row.get("end") or "", row.get("fact_id") or ""), reverse=True)
+    return {"symbol": symbol, "configured": configured, "saved": snapshot is not None,
+            "status": (snapshot or {}).get("status", "not_saved"), "cik": (snapshot or {}).get("cik"),
+            "entity_name": (snapshot or {}).get("entity_name"), "metadata": (snapshot or {}).get("metadata") or {},
+            "facts": filtered[offset:offset + limit], "total": len(filtered), "total_saved": len(rows),
+            "offset": offset, "limit": limit, "has_more": offset + limit < len(filtered), "concepts": options}
 
 
 @cached
@@ -74,7 +84,7 @@ def _compute_full_cached(ticker: str) -> dict:
 
 
 @router.get("/{ticker}/ttm")
-async def get_ttm_fundamentals(ticker: str, current_user: str = Depends(verify_password_dependency)):
+async def get_ttm_fundamentals(ticker: str, current_user: str = Depends(verify_password_with_role)):
     """Get TTM fundamentals data for a single ticker - returns only available fields."""
     try:
         result = _compute_ttm_cached(ticker.upper())
@@ -85,7 +95,7 @@ async def get_ttm_fundamentals(ticker: str, current_user: str = Depends(verify_p
 
 
 @router.get("/{ticker}/series")
-async def get_series_fundamentals(ticker: str, current_user: str = Depends(verify_password_dependency)):
+async def get_series_fundamentals(ticker: str, current_user: str = Depends(verify_password_with_role)):
     """Get series fundamentals data for a single ticker - returns only available series."""
     try:
         result = _compute_series_cached(ticker.upper())
@@ -96,7 +106,7 @@ async def get_series_fundamentals(ticker: str, current_user: str = Depends(verif
 
 
 @router.get("/{ticker}", response_model=FundamentalsResponse)
-async def get_fundamentals(ticker: str, current_user: str = Depends(verify_password_dependency)):
+async def get_fundamentals(ticker: str, current_user: str = Depends(verify_password_with_role)):
     """Get fundamentals data (TTM and series) for a single ticker - compact format."""
     try:
         result = _compute_full_cached(ticker.upper())
@@ -107,7 +117,7 @@ async def get_fundamentals(ticker: str, current_user: str = Depends(verify_passw
 
 
 @router.post("/compare")
-async def compare_fundamentals(request: CompareRequest, current_user: str = Depends(verify_password_dependency)):
+async def compare_fundamentals(request: CompareRequest, current_user: str = Depends(verify_password_with_role)):
     """Compare TTM fundamentals across multiple tickers - returns compacted data."""
     try:
         if not request.tickers:
@@ -164,11 +174,12 @@ async def _fetch_ticker_screener(ticker: str, loop: asyncio.AbstractEventLoop) -
 
 
 @router.post("/screener", response_model=ScreenerResponse)
-async def screen_fundamentals(request: ScreenerRequest, current_user: str = Depends(verify_password_dependency)):
+async def screen_fundamentals(request: ScreenerRequest, current_user: str = Depends(verify_password_with_role)):
     """Screen stocks based on fundamental criteria - returns compacted results."""
     try:
-        # Use provided universe or load S&P 500
+        # The bundled list is curated and has no verified membership date.
         universe = request.universe if request.universe else load_sp500_universe()
+        universe = list(dict.fromkeys(t.strip().upper().replace('.', '-') for t in universe if t.strip()))
         
         if len(universe) > 500:
             raise HTTPException(
@@ -186,6 +197,7 @@ async def screen_fundamentals(request: ScreenerRequest, current_user: str = Depe
 
         results = []
         total_screened = 0
+        total_insufficient = 0
 
         for compacted in raw_results:
             if compacted is None:
@@ -194,6 +206,7 @@ async def screen_fundamentals(request: ScreenerRequest, current_user: str = Depe
 
             # Skip if insufficient data
             if compacted.get("insufficient_data", True):
+                total_insufficient += 1
                 continue
 
             # Apply filters - only check fields that exist
@@ -241,11 +254,11 @@ async def screen_fundamentals(request: ScreenerRequest, current_user: str = Depe
         sort_field = request.sort_by if request.sort_by in valid_sort_fields else 'revenue_growth_yoy'
         sort_reverse = request.sort_dir.lower() == 'desc'
         
-        def sort_key(x):
-            value = x.get(sort_field)
-            return value if value is not None else -999999
-        
-        results.sort(key=sort_key, reverse=sort_reverse)
+        # Keep missing values last for both ascending and descending order.
+        available = [row for row in results if row.get(sort_field) is not None]
+        missing = [row for row in results if row.get(sort_field) is None]
+        available.sort(key=lambda row: row[sort_field], reverse=sort_reverse)
+        results = available + missing
         
         # Apply limit
         limited_results = results[:request.limit]
@@ -263,9 +276,17 @@ async def screen_fundamentals(request: ScreenerRequest, current_user: str = Depe
         return ScreenerResponse(
             results=limited_results,
             total_screened=total_screened,
-            filters_applied=filters_applied
+            filters_applied=filters_applied,
+            total_attempted=len(tickers),
+            total_failed=len(tickers) - total_screened,
+            total_insufficient=total_insufficient,
+            total_evaluated=total_screened - total_insufficient,
+            total_matches=len(results),
+            universe_name="Custom stock list" if request.universe else CURATED_UNIVERSE_NAME,
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,

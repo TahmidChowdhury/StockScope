@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: stockscope_test
+          POSTGRES_USER: stockscope_ci
+          POSTGRES_PASSWORD: disposable-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U stockscope_ci -d stockscope_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install backend dependencies
+        run: |
+          python -m venv venv
+          venv/bin/python -m pip install --upgrade pip
+          venv/bin/python -m pip install -r requirements.txt
+      - name: Migrate disposable PostgreSQL database
+        env:
+          DATABASE_URL: postgresql+psycopg://stockscope_ci:disposable-ci-password@localhost:5432/stockscope_test
+        run: |
+          # Simulate Supabase API-role default grants before the migration seals our tables.
+          venv/bin/python - <<'PYTHON'
+          import os
+          from sqlalchemy import text
+          from backend.db.engine import create_database_engine
+          engine = create_database_engine(os.environ["DATABASE_URL"])
+          with engine.begin() as connection:
+              connection.execute(text("CREATE ROLE anon NOLOGIN"))
+              connection.execute(text("CREATE ROLE authenticated NOLOGIN"))
+              connection.execute(text("ALTER DEFAULT PRIVILEGES GRANT ALL ON TABLES TO anon, authenticated"))
+              connection.execute(text("ALTER DEFAULT PRIVILEGES GRANT ALL ON SEQUENCES TO anon, authenticated"))
+          engine.dispose()
+          PYTHON
+          venv/bin/alembic upgrade head
+      - name: Run backend and PostgreSQL integration tests
+        env:
+          STOCKSCOPE_TEST_DATABASE_URL: postgresql+psycopg://stockscope_ci:disposable-ci-password@localhost:5432/stockscope_test
+        run: venv/bin/python -m pytest backend/tests -q
+      - name: Check Python syntax
+        run: venv/bin/python -m compileall -q backend scraping scripts migrations main.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stockscope-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: stockscope-frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000

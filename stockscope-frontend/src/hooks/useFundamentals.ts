@@ -1,3 +1,4 @@
+import { apiFetch, ApiError } from '@/lib/api'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { 
   FundamentalsResponse, 
@@ -7,24 +8,15 @@ import {
   ScreenerResponse 
 } from '@/types'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-// Get the password from localStorage for API calls
-const getPassword = () => {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem('stockscope_password') || ''
-  }
-  return ''
-}
 
 // Fundamentals API hooks
 export const useFundamentals = (ticker: string) => {
   return useQuery({
     queryKey: ['fundamentals', ticker],
     queryFn: async (): Promise<FundamentalsResponse> => {
-      const password = getPassword()
-      const response = await fetch(
-        `${API_BASE}/api/fundamentals/${ticker}?password=${encodeURIComponent(password)}`
+      const response = await apiFetch(
+        `/api/fundamentals/${ticker}`
       )
       
       if (!response.ok) {
@@ -35,16 +27,15 @@ export const useFundamentals = (ticker: string) => {
     },
     enabled: !!ticker && ticker.length > 0,
     staleTime: 5 * 60 * 1000, // 5 minutes
-    retry: 2
+    retry: (count, error) => !(error instanceof ApiError && error.status === 401) && count < 2
   })
 }
 
 export const useCompare = () => {
   return useMutation({
     mutationFn: async (request: CompareRequest): Promise<FundamentalsTTM[]> => {
-      const password = getPassword()
-      const response = await fetch(
-        `${API_BASE}/api/fundamentals/compare?password=${encodeURIComponent(password)}`,
+      const response = await apiFetch(
+        `/api/fundamentals/compare`,
         {
           method: 'POST',
           headers: {
@@ -66,9 +57,8 @@ export const useCompare = () => {
 export const useScreener = () => {
   return useMutation({
     mutationFn: async (request: ScreenerRequest): Promise<ScreenerResponse> => {
-      const password = getPassword()
-      const response = await fetch(
-        `${API_BASE}/api/fundamentals/screener?password=${encodeURIComponent(password)}`,
+      const response = await apiFetch(
+        `/api/fundamentals/screener`,
         {
           method: 'POST',
           headers: {

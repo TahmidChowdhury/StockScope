@@ -1,10 +1,10 @@
 'use client'
 
+import { apiFetch } from '@/lib/api'
+
 import { useState, useCallback } from 'react'
 import { useCompare } from '@/hooks/useFundamentals'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-const getPassword = () => typeof window !== 'undefined' ? localStorage.getItem('stockscope_password') || '' : ''
 import { 
   ComposedChart, 
   Bar, 
@@ -22,9 +22,9 @@ import { FundamentalsTTM } from '@/types'
 
 interface ChartDataItem {
   ticker: string
-  fcf_margin_ttm: number
-  operating_margin_ttm: number
-  revenue_ttm: number
+  fcf_margin_ttm: number | null
+  operating_margin_ttm: number | null
+  revenue_ttm: number | null
   fill: string
 }
 
@@ -47,8 +47,8 @@ export default function ComparePage() {
     setValidating(true)
     setTickerError(null)
     try {
-      const res = await fetch(
-        `${API_BASE}/api/stocks/validate/${symbol}?password=${encodeURIComponent(getPassword())}`
+      const res = await apiFetch(
+        `/api/stocks/validate/${symbol}`
       )
       if (!res.ok) throw new Error('Validation request failed')
       const data = await res.json()
@@ -84,8 +84,8 @@ export default function ComparePage() {
     }).format(value)
   }
 
-  const formatCurrency = (value: number | null, compact = true) => {
-    if (value === null) return 'N/A'
+  const formatCurrency = (value: number | null | undefined, compact = true) => {
+    if (value == null || !Number.isFinite(value)) return 'N/A'
     if (compact && Math.abs(value) >= 1e9) {
       return `$${(value / 1e9).toFixed(1)}B`
     } else if (compact && Math.abs(value) >= 1e6) {
@@ -101,9 +101,9 @@ export default function ComparePage() {
   const prepareChartData = (data: FundamentalsTTM[]): ChartDataItem[] => {
     return data.map((item, index) => ({
       ticker: item.ticker,
-      fcf_margin_ttm: (item.fcf_margin_ttm || 0) * 100,
-      operating_margin_ttm: (item.operating_margin_ttm || 0) * 100,
-      revenue_ttm: (item.revenue_ttm || 0) / 1e9, // Convert to billions
+      fcf_margin_ttm: item.fcf_margin_ttm == null ? null : item.fcf_margin_ttm * 100,
+      operating_margin_ttm: item.operating_margin_ttm == null ? null : item.operating_margin_ttm * 100,
+      revenue_ttm: item.revenue_ttm == null ? null : item.revenue_ttm / 1e9, // Convert to billions
       fill: COLORS[index % COLORS.length]
     }))
   }
@@ -317,7 +317,7 @@ export default function ComparePage() {
                         <YAxis stroke="rgba(255,255,255,0.4)" tick={{ fontSize: 11 }} />
                         <Tooltip
                           contentStyle={{ backgroundColor: 'rgba(15,15,25,0.95)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: 'white', fontSize: 13 }}
-                          formatter={(value: number, name: string) => [`${value?.toFixed(1)}%`, name === 'fcf_margin_ttm' ? 'FCF Margin' : 'Op. Margin']}
+                          formatter={(value, name) => [typeof value === 'number' ? `${value.toFixed(1)}%` : 'N/A', String(name ?? '')]}
                         />
                         <Legend wrapperStyle={{ fontSize: 12 }} />
                         <Bar dataKey="fcf_margin_ttm" fill="#6366f1" name="FCF Margin %" radius={[3, 3, 0, 0]} />
@@ -336,7 +336,7 @@ export default function ComparePage() {
                         <YAxis stroke="rgba(255,255,255,0.4)" tick={{ fontSize: 11 }} />
                         <Tooltip
                           contentStyle={{ backgroundColor: 'rgba(15,15,25,0.95)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: 'white', fontSize: 13 }}
-                          formatter={(value: number) => [`$${value?.toFixed(1)}B`, 'Revenue TTM']}
+                          formatter={(value) => [typeof value === 'number' ? `$${value.toFixed(1)}B` : 'N/A', 'Revenue TTM']}
                         />
                         <Bar dataKey="revenue_ttm" fill="#a855f7" name="Revenue ($B)" radius={[4, 4, 0, 0]} />
                       </ComposedChart>

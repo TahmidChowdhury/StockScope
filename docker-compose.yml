@@ -5,8 +5,10 @@ services:
       dockerfile: Dockerfile.backend
     ports:
       - "8000:8000"
+    env_file: .env
     environment:
       - PYTHONPATH=/app
+      - STOCKSCOPE_DATA_DIR=/app/data
     volumes:
       - ./data:/app/data
     restart: unless-stopped
@@ -15,17 +17,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
     ports:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
       - backend
-    restart: unless-stopped
-
-  # Optional: Add Redis for caching in production
-  redis:
-    image: redis:alpine
-    ports:
-      - "6379:6379"
     restart: unless-stopped

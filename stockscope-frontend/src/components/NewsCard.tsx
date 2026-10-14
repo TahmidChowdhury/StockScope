@@ -1,6 +1,6 @@
 'use client'
 
-import { ExternalLink, Calendar, TrendingUp, TrendingDown } from 'lucide-react'
+import { ExternalLink, Calendar } from 'lucide-react'
 import SentimentBadge, { SentimentProgress } from './SentimentBadge'
 
 interface NewsArticle {

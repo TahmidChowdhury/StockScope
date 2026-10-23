@@ -222,3 +222,12 @@ class CollectionSourceOutcome(Base):
     message = Column(Text, nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
     __table_args__ = (CheckConstraint("record_count >= 0", name="nonnegative_count"),)
+
+
+class TradingDocument(Base):
+    """Shared paper ledgers, disclosure evidence, and immutable backtest snapshots."""
+    __tablename__ = "trading_documents"
+    id = Column(String(80), primary_key=True)
+    kind = Column(String(20), nullable=False, index=True)
+    payload = Column(JSON, nullable=False)
+    summary = Column(JSON, nullable=False)

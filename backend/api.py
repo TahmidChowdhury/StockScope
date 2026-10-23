@@ -54,6 +54,9 @@ from backend.services.research import (
 
 # Import fundamentals router
 from backend.routers.fundamentals import router as fundamentals_router
+from backend.routers.trading import router as trading_router
+from backend.routers.sentiment_lab import router as sentiment_lab_router
+from backend.routers.valuation import router as valuation_router
 
 
 def finite_number(value) -> Optional[float]:
@@ -132,7 +135,6 @@ def get_company_info(symbol: str) -> tuple[bool, dict]:
             "priceToBook": "priceToBook",
             "priceToSalesTrailing12Months": "priceToSalesTrailing12Months",
             "earningsPerShare": "trailingEps",
-            "dividendYield": "dividendYield",
             "beta": "beta",
             "fiftyDayAverage": "fiftyDayAverage",
             "twoHundredDayAverage": "twoHundredDayAverage",
@@ -153,6 +155,22 @@ def get_company_info(symbol: str) -> tuple[bool, dict]:
         }
         if company_data["currentPrice"] is None:
             company_data["currentPrice"] = finite_number(info.get("regularMarketPrice"))
+
+        # Yahoo's generic dividendYield can be percentage points (e.g. 0.31
+        # for 0.31%). Use explicit trailing annual observations, expressed as
+        # a decimal, rather than guessing units from their magnitude.
+        annual_dividend = finite_number(info.get("trailingAnnualDividendRate"))
+        trailing_yield = finite_number(info.get("trailingAnnualDividendYield"))
+        quote_price = company_data["currentPrice"]
+        company_data["dividendYield"] = None
+        company_data["dividendYieldBasis"] = None
+        if annual_dividend is not None and annual_dividend >= 0 and quote_price is not None and quote_price > 0:
+            company_data["dividendYield"] = finite_number(annual_dividend / quote_price)
+            if company_data["dividendYield"] is not None:
+                company_data["dividendYieldBasis"] = "trailing_annual_rate_over_quote"
+        elif trailing_yield is not None and trailing_yield >= 0:
+            company_data["dividendYield"] = trailing_yield
+            company_data["dividendYieldBasis"] = "provider_trailing_annual"
 
         # Quote time is supplied by the provider; fetching now does not make it current.
         quote_time = finite_number(info.get("regularMarketTime"))
@@ -328,11 +346,15 @@ async def database_unavailable(request, exc):
 
 # Include fundamentals router with correct path prefix
 app.include_router(fundamentals_router, prefix="/api/fundamentals", tags=["Fundamentals"])
+app.include_router(trading_router, prefix="/api/trading", tags=["Paper trading"])
+app.include_router(sentiment_lab_router, prefix="/api/sentiment-lab", tags=["Tone research"])
+app.include_router(valuation_router, prefix="/api/valuation", tags=["Valuation research"])
 
 # Enhanced CORS configuration with optional env overrides
 frontend_origins_env = os.getenv("FRONTEND_ORIGINS", "")
 allowed_origins = [
     "http://localhost:3000",
+    "http://127.0.0.1:3000",
     "https://stockscope.vercel.app",
     "https://stock-scope-green.vercel.app",
     "https://stock-scope-juj13l2pn-tahmids-projects-c2f4375b.vercel.app",
@@ -869,15 +891,18 @@ def get_price_history(
         # Convert to list of dictionaries for frontend consumption
         price_data = []
         for date, row in hist.iterrows():
+            prices = {name.lower(): finite_number(row[name]) for name in ('Open', 'High', 'Low', 'Close')}
+            if any(value is None for value in prices.values()):
+                continue
+            volume = finite_number(row.get('Volume'))
             price_data.append({
                 "date": date.strftime("%Y-%m-%d"),
                 "timestamp": int(date.timestamp() * 1000),  # JavaScript timestamp
-                "open": round(float(row['Open']), 2),
-                "high": round(float(row['High']), 2),
-                "low": round(float(row['Low']), 2),
-                "close": round(float(row['Close']), 2),
-                "volume": int(row['Volume'])
+                **{name: round(value, 2) for name, value in prices.items()},
+                "volume": int(volume) if volume is not None and volume >= 0 else None
             })
+        if not price_data:
+            raise HTTPException(status_code=404, detail="No valid historical price data found")
         
         # A failed quote request must not discard independently retrieved history.
         try:
@@ -891,7 +916,7 @@ def get_price_history(
         price_change = finite_number(info.get('regularMarketChange'))
         price_change_percent = finite_number(info.get('regularMarketChangePercent'))
         quote_time = parse_timestamp(info.get('regularMarketTime')) if current_price is not None else None
-        historical_close = finite_number(hist['Close'].iloc[-1])
+        historical_close = price_data[-1]['close']
         
         result = {
             "symbol": symbol,
@@ -903,7 +928,7 @@ def get_price_history(
             "quote_as_of": quote_time.isoformat() if quote_time else None,
             "price_source": "Yahoo Finance",
             "lastHistoricalClose": historical_close,
-            "lastHistoricalCloseDate": hist.index[-1].strftime("%Y-%m-%d") if historical_close is not None else None,
+            "lastHistoricalCloseDate": price_data[-1]['date'],
             "data": price_data
         }
         

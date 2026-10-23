@@ -167,6 +167,14 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
   const sentimentLabel = sentiment == null ? 'Unavailable' : sentiment >= 0.05 ? 'Positive' : sentiment <= -0.05 ? 'Negative' : 'Neutral'
   const freshness = stockData?.freshness ?? 'unknown'
   const filings = stockData?.filings ?? []
+  const mixedFreshness = freshness !== 'recent' && stockData?.sources.some(source => source.freshness === 'recent')
+  const providerNames: Record<string, string> = {
+    news: 'News', 'news.company_ir_rss': 'Company releases', 'news.finviz': 'Finviz',
+    'news.gdelt': 'GDELT discovery', 'news.google_news': 'Google News',
+    'news.rss': 'Publisher RSS', 'news.stocktwits': 'Stocktwits',
+    'news.yahoo_finance': 'Yahoo Finance', sec_facts: 'SEC facts',
+  }
+
 
   return (
     <section className={`${embedded ? '' : 'min-h-screen bg-slate-950 p-4 sm:p-8'} text-white`} aria-label={`${symbol} research`}>
@@ -185,10 +193,10 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
 
         {error && <p role="alert" className="rounded-lg border border-red-400/40 bg-red-950/40 p-4 text-sm text-red-200">{error}</p>}
         {message && <p role="status" className="rounded-lg bg-blue-950/50 p-4 text-sm text-blue-200">{message}</p>}
-        {Object.keys(providerResults).length > 0 && <ul className="grid gap-2 text-sm text-slate-300 sm:grid-cols-2" aria-label="Refresh results">{Object.entries(providerResults).map(([source, outcome]) => <li key={source} className="rounded-lg border border-white/10 p-3"><span className="font-medium uppercase">{source}</span>: {outcome.status.replaceAll('_', ' ')} · {outcome.count} items<p className="mt-1 text-xs text-slate-400">{outcome.message}</p></li>)}</ul>}
+        {Object.keys(providerResults).length > 0 && <ul className="grid gap-2 text-sm text-slate-300 sm:grid-cols-2" aria-label="Refresh results">{Object.entries(providerResults).map(([source, outcome]) => <li key={source} className="rounded-lg border border-white/10 p-3"><span className="font-medium">{providerNames[source] || source}</span>: {outcome.status.replaceAll('_', ' ')} · {outcome.count} items<p className="mt-1 text-xs text-slate-400">{/timed?\s*out|timeout/i.test(outcome.message) ? 'The provider timed out. Results from other sources remain available.' : outcome.message}</p></li>)}</ul>}
         {loading ? <p role="status" className="py-12 text-center text-slate-300">Loading saved research…</p> : stockData && <>
           <div className={`rounded-xl border p-4 ${freshness === 'recent' ? 'border-slate-600 bg-slate-800/50' : 'border-amber-500/40 bg-amber-950/20'}`}>
-            <p className="font-medium">{freshness === 'recent' ? 'Recent source material' : freshness === 'stale' ? 'Source material is stale' : 'Source freshness is unknown'}</p>
+            <p className="font-medium">{freshness === 'recent' ? 'Recent source material' : mixedFreshness ? 'Mixed freshness: some sources are stale or undated' : freshness === 'stale' ? 'Source material is stale' : 'Source freshness is unknown'}</p>
             <p className="mt-1 text-sm text-slate-300">Latest source publication: {displayDate(stockData.source_as_of)}. Summary generated: {displayDate(stockData.generated_at)}.</p>
             <p className="mt-1 text-xs text-slate-400">Generating a summary does not make its underlying articles or filings newer. Review each source date before using it.</p>
           </div>

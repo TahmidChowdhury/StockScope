@@ -52,6 +52,9 @@ def test_hand_calculated_totals_and_margins_preserve_zero_debt():
     assert result.total_debt == 0
     assert result.debt_to_cash == 0
     assert result.net_debt == -20
+    expected_period = quarterly()["debt"].index[-1].date().isoformat()
+    for field in ("total_debt", "cash_and_equivalents", "net_debt", "debt_to_cash"):
+        assert result.period_metadata[field] == {"basis": "balance_sheet", "period_end": expected_period}
 
 
 def test_missing_capex_is_unknown_fcf_in_both_quarterly_and_annual_paths():

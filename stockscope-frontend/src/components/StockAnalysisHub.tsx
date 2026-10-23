@@ -1,13 +1,24 @@
 'use client'
 
-import { useState } from 'react'
-import { ArrowLeftIcon, ChartBarIcon, NewspaperIcon, MagnifyingGlassIcon, HomeIcon } from '@heroicons/react/24/outline'
-import StockDashboard from './StockDashboard'
+import Link from 'next/link'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  ChartNoAxesCombined,
+  FileText,
+  Newspaper,
+} from 'lucide-react'
 import PriceChart from './PriceChart'
 import NewsComponent from './NewsComponent'
-import KeyMetricsComponent from './KeyMetrics'
-import StockSearch from './StockSearch'
+import KeyMetrics from './KeyMetrics'
+import StockDashboard from './StockDashboard'
+import SecFactsPanel from './SecFactsPanel'
+import SentimentLabPanel from './SentimentLabPanel'
+import ValuationPanel from './ValuationPanel'
+import CompanyLogo from './CompanyLogo'
 import type { StockMetadata } from '@/types'
+import { researchReturn } from '@/lib/research-workflow'
 
 interface StockAnalysisHubProps {
   symbol: string
@@ -16,204 +27,163 @@ interface StockAnalysisHubProps {
   stocks?: StockMetadata[]
 }
 
-type ViewMode = 'charts' | 'analysis'
+const tabs = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'news', label: 'News' },
+  { id: 'tone', label: 'Tone lab' },
+  { id: 'sources', label: 'SEC evidence' },
+  { id: 'analysis', label: 'Research summary' },
+] as const
 
-export default function StockAnalysisHub({ symbol, onBack, onStockSelect, stocks = [] }: StockAnalysisHubProps) {
-  const [activeView, setActiveView] = useState<ViewMode>('charts') // Start with charts & news
-  const [showStockSwitcher, setShowStockSwitcher] = useState(false)
-  const [isTransitioning, setIsTransitioning] = useState(false)
-
-  // Handle view switching with transition
-  const handleViewChange = (newView: ViewMode) => {
-    if (newView === activeView) return
-    
-    setIsTransitioning(true)
-    setTimeout(() => {
-      setActiveView(newView)
-      setIsTransitioning(false)
-    }, 150) // Quick transition
+export default function StockAnalysisHub({
+  symbol,
+  onBack,
+  stocks = [],
+}: StockAnalysisHubProps) {
+  const search = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  const active = tabs.some((tab) => tab.id === search.get('tab'))
+    ? search.get('tab')
+    : 'overview'
+  const company = stocks.find((stock) => stock.symbol === symbol)
+  const returnDestination = researchReturn(search.get('returnTo'))
+  const selectTab = (tab: string) => {
+    const params = new URLSearchParams(search.toString())
+    if (tab === 'overview') params.delete('tab')
+    else params.set('tab', tab)
+    router.push(`${pathname}${params.size ? `?${params}` : ''}`, {
+      scroll: false,
+    })
   }
-
-  // Handle stock switching
-  const handleStockSwitch = (newSymbol: string) => {
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    }
-    setShowStockSwitcher(false)
-    if (onStockSelect) {
-      onStockSelect(newSymbol)
-    }
-  }
-
-  if (showStockSwitcher) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-        <div className="bg-slate-800/50 backdrop-blur-sm border-b border-purple-500/20">
-          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-14 sm:h-16">
-              <button 
-                onClick={() => setShowStockSwitcher(false)}
-                className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors touch-manipulation"
-              >
-                <ArrowLeftIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="hidden sm:inline">Back to {symbol}</span>
-                <span className="sm:hidden">Back</span>
-              </button>
-              <h1 className="text-lg sm:text-xl font-bold text-white">Switch Stock</h1>
-              <button 
-                onClick={onBack}
-                className="flex items-center space-x-1 text-gray-300 hover:text-white transition-colors touch-manipulation"
-                title="Back to Home"
-              >
-                <HomeIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="hidden sm:inline">Home</span>
-              </button>
-            </div>
-          </div>
-        </div>
-        <div className="max-w-4xl mx-auto p-4 sm:p-8 space-y-6">
-          <StockSearch
-            onAnalyze={handleStockSwitch}
-            isLoading={false}
-          />
-
-          <div className="bg-white/5 border border-purple-500/20 rounded-xl p-4 sm:p-5 backdrop-blur-sm">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-white font-semibold">Your analyzed stocks</h2>
-              <span className="text-xs text-white/60">{stocks.length} total</span>
-            </div>
-            {stocks.length === 0 ? (
-              <p className="text-sm text-white/60">No saved stocks yet. Search above to add one.</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {stocks.map((stock) => (
-                  <button
-                    key={stock.symbol}
-                    onClick={() => handleStockSwitch(stock.symbol)}
-                    className="px-3 py-2 rounded-lg bg-slate-700/60 hover:bg-slate-600/70 text-white text-sm transition-colors touch-manipulation"
-                  >
-                    {stock.symbol}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 pb-16 lg:pb-0">
-      {/* Navigation Header - Mobile optimized */}
-      <div className="bg-slate-800/50 backdrop-blur-sm border-b border-purple-500/20 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between h-auto sm:h-16 py-3 sm:py-0">
-            {/* Left side - Back button and symbol */}
-            <div className="flex items-center space-x-2 sm:space-x-4 min-w-0 flex-shrink">
-              <button 
-                onClick={onBack}
-                className="flex items-center space-x-1 sm:space-x-2 text-gray-300 hover:text-white transition-colors touch-manipulation"
-                title="Back to Home"
-              >
-                <ArrowLeftIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="hidden sm:inline">Home</span>
-                <span className="sm:hidden">Back</span>
-              </button>
-              <div className="h-4 w-px bg-gray-600 hidden sm:block"></div>
-              <h1 className="text-lg sm:text-2xl font-bold text-white truncate">{symbol}</h1>
-            </div>
-            
-            {/* Right side - Stock switcher */}
-            <div className="flex items-center flex-shrink-0 justify-end">
-              <button
-                onClick={() => setShowStockSwitcher(true)}
-                className="bg-slate-700/60 hover:bg-slate-600/60 text-gray-300 hover:text-white px-3 sm:px-4 py-2 rounded-lg transition-colors flex items-center gap-1 sm:gap-2 touch-manipulation w-full sm:w-auto justify-center"
-                title="Switch to another stock"
-              >
-                <MagnifyingGlassIcon className="h-3 w-3 sm:h-4 sm:w-4" />
-                <span className="sm:hidden">Switch</span>
-                <span className="hidden sm:inline md:inline">Switch Stock</span>
-              </button>
-            </div>
+    <>
+      <button
+        onClick={onBack}
+        className="mb-6 inline-flex items-center gap-2 text-xs text-slate-400 hover:text-white"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" />
+        {returnDestination?.label || 'Back to overview'}
+      </button>
+      <div className="mb-7 flex flex-wrap items-center justify-between gap-5">
+        <div className="flex min-w-0 items-center gap-4">
+          <CompanyLogo symbol={symbol} size="large" />
+          <div className="min-w-0">
+            <p className="eyebrow mb-1">Company research</p>
+            <h1 className="page-title break-words">
+              {company?.companyName || symbol}
+            </h1>
+            <p className="mt-1 text-xs font-medium text-slate-400">
+              {symbol}
+              <span className="mx-2 text-slate-600">/</span>Financials, context,
+              and original sources
+            </p>
           </div>
         </div>
-
-        {/* Mobile Tab Navigation - Below header for better mobile UX */}
-        <div className="border-t border-slate-700/50">
-          <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8">
-            <div className="flex items-center justify-center">
-              <div className="flex items-center bg-slate-700/30 rounded-lg p-1 my-2 w-full sm:w-auto">
-                <button
-                  onClick={() => handleViewChange('charts')}
-                  className={`flex-1 px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all flex items-center justify-center gap-1 sm:gap-2 min-w-[120px] touch-manipulation ${
-                    activeView === 'charts'
-                      ? 'bg-purple-600 text-white shadow-lg'
-                      : 'text-gray-300 hover:text-white hover:bg-slate-600/50'
-                  }`}
-                >
-                  <NewspaperIcon className="h-3 w-3 sm:h-4 sm:w-4" />
-                  <span className="hidden sm:inline">Charts & News</span>
-                  <span className="sm:hidden">Charts</span>
-                </button>
-                <button
-                  onClick={() => handleViewChange('analysis')}
-                  className={`flex-1 px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all flex items-center justify-center gap-1 sm:gap-2 min-w-[120px] touch-manipulation ${
-                    activeView === 'analysis'
-                      ? 'bg-purple-600 text-white shadow-lg'
-                      : 'text-gray-300 hover:text-white hover:bg-slate-600/50'
-                  }`}
-                >
-                  <ChartBarIcon className="h-3 w-3 sm:h-4 sm:w-4" />
-                  <span className="hidden sm:inline">Analysis & Metrics</span>
-                  <span className="sm:hidden">Analysis</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <Link
+          href={`/fundamentals/${encodeURIComponent(symbol)}${returnDestination ? `?${new URLSearchParams({ returnTo: returnDestination.href })}` : ''}`}
+          className="button-primary"
+        >
+          Explore financials
+          <ArrowUpRight className="h-4 w-4" />
+        </Link>
       </div>
-
-      {/* Content Area - Better mobile scrolling */}
-      <div className="relative">
-        {isTransitioning ? (
-          <div className="min-h-[60vh] flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-400"></div>
-          </div>
-        ) : activeView === 'charts' ? (
-          <div className="animate-fadeIn">
-            <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-4 sm:py-6 lg:py-8">
-              <div className="space-y-4 sm:space-y-6">
-                {/* Price Chart - Full width on mobile */}
-                <div className="w-full">
-                  <PriceChart symbol={symbol} className="shadow-sm" />
-                </div>
-                
-                {/* News Component - Full width */}
-                <div className="w-full">
-                  <NewsComponent symbol={symbol} className="shadow-sm" />
+      {search.get('collection') === 'partial' && (
+        <p
+          role="status"
+          className="surface mb-5 border-amber-400/20 p-4 text-sm text-amber-200"
+        >
+          Research collection completed with partial results. Some sources were
+          unavailable. Review the research summary for collection details.
+        </p>
+      )}
+      <nav
+        aria-label="Company research sections"
+        className="mb-7 flex gap-6 overflow-x-auto border-b border-white/10"
+      >
+        {tabs.map((tab) => (
+          <Link
+            key={tab.id}
+            href={`${pathname}?${new URLSearchParams({ ...Object.fromEntries(search), tab: tab.id })}`}
+            aria-current={active === tab.id ? 'page' : undefined}
+            onClick={(e) => {
+              e.preventDefault()
+              selectTab(tab.id)
+            }}
+            className={`whitespace-nowrap border-b-2 pb-3.5 text-sm transition-colors ${active === tab.id ? 'border-violet-400 font-medium text-violet-200' : 'border-transparent text-slate-500 hover:text-slate-200'}`}
+          >
+            {tab.label}
+          </Link>
+        ))}
+      </nav>
+      <div key={`${symbol}-${active}`} className="animate-fadeIn">
+        {active === 'overview' && (
+          <>
+            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+              <div className="min-w-0 space-y-5">
+                <PriceChart symbol={symbol} className="company-panel" />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {[
+                    {
+                      tab: 'news',
+                      Icon: Newspaper,
+                      title: 'The story around the numbers',
+                      text: 'Read dated articles and company releases.',
+                    },
+                    {
+                      tab: 'sources',
+                      Icon: FileText,
+                      title: 'Go straight to the source',
+                      text: 'Inspect SEC facts and original filings.',
+                    },
+                  ].map(({ tab, Icon, title, text }) => (
+                    <button
+                      key={tab}
+                      onClick={() => selectTab(tab)}
+                      className="surface group p-5 text-left transition-colors hover:border-violet-400/30"
+                    >
+                      <div className="mb-3 flex items-center justify-between">
+                        <Icon className="h-4 w-4 text-violet-300" />
+                        <ArrowUpRight className="h-4 w-4 text-slate-500" />
+                      </div>
+                      <h2 className="text-sm font-medium text-slate-200">
+                        {title}
+                      </h2>
+                      <p className="mt-2 text-xs leading-5 text-slate-500">
+                        {text}
+                      </p>
+                    </button>
+                  ))}
                 </div>
               </div>
+              <KeyMetrics symbol={symbol} />
             </div>
-          </div>
-        ) : (
-          <div className="animate-fadeIn">
-            <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-4 sm:py-6 lg:py-8">
-              <div className="space-y-6 lg:space-y-8">
-                {/* Top Section - Key Metrics */}
-                <div className="w-full">
-                  <KeyMetricsComponent symbol={symbol} className="shadow-sm" />
-                </div>
-                
-                {/* Bottom Section - Sentiment Analysis */}
-                <div className="w-full">
-                  <StockDashboard symbol={symbol} onBack={onBack} embedded={true} />
-                </div>
-              </div>
+            <div className="mt-5">
+              <ValuationPanel symbol={symbol} />
             </div>
+            <div className="surface mt-5 flex items-start gap-3 px-5 py-4">
+              <ChartNoAxesCombined className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+              <p className="text-xs leading-6 text-slate-400">
+                Price history shows market context. Financial statements and
+                original filings provide the business context. Provider
+                observations can be delayed; check each panel’s source date.
+              </p>
+            </div>
+          </>
+        )}
+        {active === 'news' && (
+          <NewsComponent symbol={symbol} className="company-panel" />
+        )}
+        {active === 'tone' && <SentimentLabPanel symbol={symbol} />}
+        {active === 'sources' && (
+          <div className="surface p-4 sm:p-6">
+            <SecFactsPanel symbol={symbol} />
           </div>
         )}
+        {active === 'analysis' && (
+          <StockDashboard symbol={symbol} onBack={onBack} embedded />
+        )}
       </div>
-    </div>
+    </>
   )
 }

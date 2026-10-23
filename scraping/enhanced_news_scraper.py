@@ -11,6 +11,8 @@ import yfinance as yf
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from bs4 import BeautifulSoup
 import time
+import re
+from urllib.parse import urlsplit
 from scraping.research_sources import ResearchNewsSources, canonical_url, explicit_timestamp
 from urllib3.util import Timeout
 
@@ -23,12 +25,22 @@ analyzer = SentimentIntensityAnalyzer()
 
 # RSS feeds that reliably include stock/market news with real article URLs
 RSS_FEEDS = {
-    "MarketWatch":  "https://feeds.marketwatch.com/marketwatch/realtimeheadlines/",
-    "Reuters Business": "https://feeds.reuters.com/reuters/businessNews",
+    "MarketWatch":  "https://feeds.content.dowjones.io/public/rss/mw_topstories",
     "CNBC":         "https://www.cnbc.com/id/10000664/device/rss/rss.html",
     "Seeking Alpha": None,  # built per-ticker: https://seekingalpha.com/api/sa/combined/{ticker}.xml
     "Benzinga":     "https://www.benzinga.com/feed",
+    "NPR Business": "https://feeds.npr.org/1006/rss.xml",
 }
+
+def is_article_candidate(title, url):
+    """Reject known quote/listing pages rather than presenting them as stories."""
+    canonical = canonical_url(url)
+    if not canonical:
+        return False
+    parts = urlsplit(canonical)
+    if parts.hostname == 'seekingalpha.com' and re.match(r'^/symbol/[^/]+(?:/(?:news|analysis))?/?$', parts.path):
+        return False
+    return not re.search(r'stock price, news, quote\s*&\s*history|stock quotes, company news and chart analysis|stock forecast and price target \d{4}|stock chart\s*(?:-\s*ChartMill)?$', str(title), re.IGNORECASE)
 
 class EnhancedNewsScraper:
     """Enhanced news scraper with multiple sources including Yahoo Finance and web scraping."""
@@ -224,7 +236,7 @@ class EnhancedNewsScraper:
                 try:
                     title = item.get('title', '')
                     url = item.get('url', '')
-                    description = item.get('description', '')
+                    description = BeautifulSoup(item.get('description', '') or '', 'html.parser').get_text(' ', strip=True)
                     publisher = item.get('publisher', {})
                     source_name = publisher.get('title', 'Google News') if isinstance(publisher, dict) else str(publisher)
                     pub_date = item.get('published date', '')
@@ -268,13 +280,11 @@ class EnhancedNewsScraper:
         ticker_upper = ticker.upper()
         company_lower = company_name.lower() if company_name else ""
 
-        feed_urls = {
-            "Seeking Alpha": f"https://seekingalpha.com/api/sa/combined/{ticker_upper}.xml",
-            "MarketWatch": "https://feeds.marketwatch.com/marketwatch/realtimeheadlines/",
-            "Reuters Business": "https://feeds.reuters.com/reuters/businessNews",
-            "CNBC": "https://www.cnbc.com/id/10000664/device/rss/rss.html",
-            "Benzinga": "https://www.benzinga.com/feed",
-        }
+        feed_urls = {**RSS_FEEDS, "Seeking Alpha": f"https://seekingalpha.com/api/sa/combined/{ticker_upper}.xml"}
+        company = self.research_sources.config['companies'].get(ticker_upper, {})
+        aliases = [ticker_upper, *company.get('aliases', [])]
+        if company_lower:
+            aliases.append(company_lower)
 
         for source_name, feed_url in feed_urls.items():
             if self._deadline is not None and time.monotonic() >= self._deadline:
@@ -301,7 +311,7 @@ class EnhancedNewsScraper:
                         # For global feeds, filter to ticker/company mentions only
                         if source_name != "Seeking Alpha":
                             combined = f"{title} {summary}".lower()
-                            if ticker_upper.lower() not in combined and (not company_lower or company_lower not in combined):
+                            if not any(re.search(r'(?<!\w)' + re.escape(alias) + r'(?!\w)', combined, re.IGNORECASE) for alias in aliases):
                                 continue
 
                         # Parse date
@@ -566,7 +576,7 @@ class EnhancedNewsScraper:
         for article in all_articles:
             title_key = str(article.get('title', '')).lower().strip()
             url = canonical_url(article.get('url'))
-            if len(title_key) <= 5 or (url in seen_urls if url else title_key in seen_titles):
+            if not is_article_candidate(title_key, url) or len(title_key) <= 5 or (url in seen_urls if url else title_key in seen_titles):
                 continue
             if url:
                 seen_urls.add(url)

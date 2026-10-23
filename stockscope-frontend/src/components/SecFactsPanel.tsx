@@ -226,7 +226,7 @@ export default function SecFactsPanel({ symbol }: { symbol: string }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 id="sec-facts-heading" className="text-2xl font-semibold">SEC reported financial facts</h2>
-          <p className="mt-2 max-w-3xl text-sm text-slate-300">Read the company’s reported values alongside the calculations above. These are raw filing facts, not TTM totals. A quarter label can accompany a year-to-date value: compare the exact dates and units.</p>
+          <p className="mt-2 max-w-3xl text-sm text-slate-300">Read the company’s reported values alongside the provider financial metrics. These are raw filing facts, not TTM totals. A quarter label can accompany a year-to-date value: compare the exact dates and units.</p>
         </div>
         <button type="button" onClick={() => void refresh()} disabled={busy || !currentData?.configured} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
           {refreshing ? 'Collecting SEC evidence…' : 'Refresh SEC evidence'}

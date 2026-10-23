@@ -1,0 +1,7 @@
+# Optional local research runtime, compatible with the app's Python 3.9 venv.
+# Docker preinstalls torch from the official CPU-only index before this file.
+# The exact CPU build satisfies this version; do not use a global extra-index.
+# Model weights are a separate explicit setup step; API requests never download.
+transformers==4.57.6
+torch==2.8.0
+langdetect==1.0.9

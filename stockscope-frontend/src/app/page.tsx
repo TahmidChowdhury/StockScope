@@ -1,667 +1,243 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
+import {
+  ArrowRight,
+  ArrowUpRight,
+  BookOpen,
+  Building2,
+  ScanLine,
+  Scale,
+} from 'lucide-react'
+import AppShell from '@/components/AppShell'
 import StockSearch from '@/components/StockSearch'
-import StockAnalysisHub from '@/components/StockAnalysisHub'
-import LoadingScreen from '@/components/LoadingScreen'
-import SideNav from '@/components/SideNav'
+import Watchlist from '@/components/Watchlist'
+import { useWatchlist } from '@/hooks/useWatchlist'
 import { useAnalysisProgress } from '@/hooks/useAnalysisProgress'
-import type { ViewType, StockMetadata } from '@/types'
-import { apiFetch, clearAuthSession, getAuthSession } from '@/lib/api'
-
+import { apiFetch } from '@/lib/api'
 
 export default function Home() {
-  const [currentView, setCurrentView] = useState<ViewType>('search')
-  const [selectedStock, setSelectedStock] = useState<string>('')
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [analysisStatus, setAnalysisStatus] = useState<string | null>(null)
-  const [stocks, setStocks] = useState<StockMetadata[]>([])
-
-  // Use the analysis progress hook
-  const { progress, message, currentPhase } = useAnalysisProgress({
-    symbol: selectedStock,
-    isAnalyzing,
-    onComplete: (completed) => {
-      setIsAnalyzing(false)
-      setCurrentView('dashboard')
-      setAnalysisStatus(completed.status === 'partial' ? completed.message : null)
+  const router = useRouter()
+  const queryClient = useQueryClient()
+  const { data: stocks = [], isPending: watchlistPending } = useWatchlist()
+  const [symbol, setSymbol] = useState('')
+  const [starting, setStarting] = useState(false)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [notice, setNotice] = useState('')
+  const { progress, message } = useAnalysisProgress({
+    symbol,
+    isAnalyzing: analyzing,
+    onComplete: (result) => {
+      setAnalyzing(false)
+      void queryClient.invalidateQueries({ queryKey: ['watchlist'] })
+      const destination = `/stock/${encodeURIComponent(symbol)}`
+      router.push(
+        result.status === 'partial'
+          ? `${destination}?collection=partial`
+          : destination,
+      )
     },
     onError: (error) => {
-      setIsAnalyzing(false)
-      setAnalysisStatus(`❌ ${error}`)
-    }
+      setAnalyzing(false)
+      setNotice(error)
+    },
   })
-
-  // Fetch portfolio data when authenticated
-  useEffect(() => {
-    const fetchPortfolioData = async () => {
-      
-      try {
-        const response = await apiFetch(`/api/stocks`)
-        
-        if (response.ok) {
-          const data = await response.json()
-          // Handle both old format (array of strings) and new format (array of objects)
-          if (Array.isArray(data.stocks)) {
-            if (data.stocks.length > 0 && typeof data.stocks[0] === 'string') {
-              // Old format: convert strings to objects
-              setStocks(data.stocks.map((symbol: string) => ({
-                symbol,
-                total_posts: 0,
-                avg_sentiment: null,
-                last_updated: null,
-                sources: []
-              })))
-            } else {
-              // New format: use objects directly
-              setStocks(data.stocks || [])
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch portfolio:', error)
-      }
-    }
-    
-    fetchPortfolioData()
-    
-    const interval = setInterval(fetchPortfolioData, 30000)
-    return () => clearInterval(interval)
-  }, [])
-
-  // Progress updates are now handled entirely via useAnalysisProgress callbacks (onComplete/onError)
-
-  const handleLogout = () => clearAuthSession()
-
-  const handleAnalyze = async (symbol: string) => {
-    
+  const openCompany = async (ticker: string) => {
+    if (starting || analyzing) return
+    setStarting(true)
+    setNotice('')
+    setSymbol(ticker)
     try {
-      // First check if data already exists
-      const existingDataResponse = await apiFetch(`/api/stocks/${symbol}`)
-      if (existingDataResponse.ok) {
-        setSelectedStock(symbol)
-        setCurrentView('dashboard')
-        refreshPortfolioData()
+      const existing = await apiFetch(
+        `/api/stocks/${encodeURIComponent(ticker)}`,
+      )
+      if (existing.ok) {
+        router.push(`/stock/${encodeURIComponent(ticker)}`)
         return
       }
-
-      // Start analysis and enable progress tracking
-      setSelectedStock(symbol)
-      setAnalysisStatus(`Starting analysis for ${symbol}...`)
-
-      // Start new analysis
-      const response = await apiFetch(`/api/stocks/analyze`, {
+      if (existing.status !== 404)
+        throw new Error(
+          'Saved research could not be checked. Please try again.',
+        )
+      const response = await apiFetch('/api/stocks/analyze', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          symbol: symbol,
-          sources: ['news', 'sec_facts']  // Removed reddit since it's not implemented
+          symbol: ticker,
+          sources: ['news', 'sec_facts'],
         }),
       })
-
-      if (!response.ok) {
-        throw new Error('Failed to start analysis')
-      }
-
-      setIsAnalyzing(true)
-      // Kick off a portfolio refresh in the background so new symbols appear
-      refreshPortfolioData()
-
-      // The progress hook will handle polling and completion
-      
+      if (!response.ok)
+        throw new Error('Research could not be started. Please try again.')
+      setAnalyzing(true)
     } catch (error) {
-      console.error('Error starting analysis:', error)
-      setIsAnalyzing(false)
-      setAnalysisStatus(`❌ Failed to analyze ${symbol}: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      
-      setTimeout(() => {
-        setAnalysisStatus(null)
-      }, 5000)
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : 'Research could not be loaded.',
+      )
+    } finally {
+      setStarting(false)
     }
   }
-
-  const handleViewDashboard = (symbol: string) => {
-    setSelectedStock(symbol)
-    setCurrentView('dashboard')
-  }
-
-  const handleBackToSearch = () => {
-    setCurrentView('search')
-    setSelectedStock('')
-    setAnalysisStatus(null)
-  }
-
-  // Refresh portfolio data function
-  const refreshPortfolioData = async () => {
-    try {
-      const response = await apiFetch(`/api/stocks`)
-      if (response.ok) {
-        const data = await response.json()
-        if (Array.isArray(data.stocks)) {
-          if (data.stocks.length > 0 && typeof data.stocks[0] === 'string') {
-            setStocks(data.stocks.map((symbol: string) => ({
-              symbol,
-              total_posts: 0,
-              avg_sentiment: null,
-              last_updated: null,
-              sources: []
-            })))
-          } else {
-            setStocks(data.stocks || [])
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to refresh portfolio:', error)
-    }
-  }
-
-  if (currentView === 'dashboard' && selectedStock) {
-    return (
-      <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-        <SideNav
-          stocks={stocks}
-          onLogout={handleLogout}
-          onStockSelect={handleAnalyze}
-          currentStock={selectedStock}
-          activePage="dashboard"
-          hideMobileToggle
-        />
-        <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">
-          <StockAnalysisHub
-            symbol={selectedStock}
-            onBack={handleBackToSearch}
-            stocks={stocks}
-            onStockSelect={(symbol) => { handleAnalyze(symbol) }}
-          />
-        </main>
-      </div>
-    )
-  }
-
   return (
-    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <SideNav
-        stocks={stocks}
-        onLogout={handleLogout}
-        onStockSelect={handleAnalyze}
-        activePage="dashboard"
-      />
-
-      <main className="flex-1 overflow-y-auto">
-        {/* Bottom nav spacer on mobile */}
-        {/* Loading screen — fixed full-viewport overlay */}
-        {isAnalyzing && (
-          <LoadingScreen
-            progress={progress}
-            details={currentPhase}
-            message={message}
-            symbol={selectedStock || undefined}
+    <AppShell>
+      <div className="mb-7 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="eyebrow mb-2">Your research, in focus</p>
+          <h1 className="page-title">Workspace overview</h1>
+          <p className="mt-2 text-sm text-slate-400">
+            A clearer view of the companies you follow.
+          </p>
+        </div>
+        <span className="text-xs text-slate-500">
+          Shared watchlist · Saved research
+        </span>
+      </div>
+      <section className="research-hero relative mb-6 rounded-2xl border border-white/10 p-6 sm:p-8">
+        <div className="relative z-10 max-w-2xl">
+          <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-400/[0.08] px-3 py-1 text-[11px] font-medium text-violet-200">
+            <span className="h-1 w-1 rounded-full bg-violet-300" />
+            The company comes first
+          </span>
+          <h2 className="text-2xl font-medium tracking-tight text-white sm:text-3xl">
+            Start with a question.
+            <br />
+            <span className="text-slate-400">Get closer to the evidence.</span>
+          </h2>
+          <p className="mb-6 mt-3 max-w-lg text-sm leading-6 text-slate-400">
+            Explore financials, read the news, and trace the numbers back to
+            their sources.
+          </p>
+          <StockSearch
+            onAnalyze={openCompany}
+            isLoading={starting || analyzing}
           />
-        )}
-
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-24 lg:pb-8 space-y-6">
-          {/* Dashboard header */}
-          <div className="flex items-end justify-between">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-white">Dashboard</h1>
-              <p className="text-white/40 text-sm mt-0.5">
-                {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-              </p>
-            </div>
-            <div className="text-xs text-green-400/80 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-              Secure Session
-            </div>
+        </div>
+      </section>
+      {(analyzing || starting || notice) && (
+        <div role="status" aria-live="polite" className="surface mb-6 p-4">
+          <div className="flex items-center justify-between gap-4 text-sm">
+            <span className={notice ? 'text-amber-200' : 'text-slate-300'}>
+              {notice ||
+                (starting
+                  ? `Opening research for ${symbol}…`
+                  : `${symbol} · ${message || 'Collecting research…'}`)}
+            </span>
+            {analyzing && (
+              <span className="text-xs tabular-nums text-violet-300">
+                {Math.round(progress)}%
+              </span>
+            )}
           </div>
-
-          {/* Search */}
-          <StockSearch onAnalyze={handleAnalyze} isLoading={isAnalyzing} />
-
-          {/* Analysis status */}
-          {analysisStatus && (
-            <div className="rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 p-4 text-center">
-              <p className="text-white text-sm">{analysisStatus}</p>
-              {isAnalyzing && (
-                <div className="mt-3 w-full bg-white/20 rounded-full h-1.5">
-                  <div
-                    className="bg-gradient-to-r from-blue-500 to-purple-500 h-1.5 rounded-full animate-pulse"
-                    style={{ width: `${Math.max(progress, 20)}%` }}
-                  />
-                </div>
-              )}
+          {analyzing && (
+            <div
+              role="progressbar"
+              aria-label="Research collection"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progress)}
+              className="mt-3 h-1 overflow-hidden rounded-full bg-white/10"
+            >
+              <div
+                className="h-full rounded-full bg-violet-400 transition-all"
+                style={{ width: `${progress}%` }}
+              />
             </div>
           )}
-
-          {/* Portfolio */}
-          <PortfolioView
-            onViewDashboard={handleViewDashboard}
-            onStocksChange={setStocks}
-          />
-
-
-        </div>
-      </main>
-    </div>
-  )
-}
-
-// Portfolio component to show existing analyzed stocks
-function PortfolioView({ onViewDashboard, onStocksChange }: {
-  onViewDashboard: (symbol: string) => void
-  onStocksChange?: (stocks: StockMetadata[]) => void
-}) {
-  const [stocks, setStocks] = useState<StockMetadata[]>([])
-  const [loading, setLoading] = useState(true)
-  const [isAdmin] = useState(() => getAuthSession()?.role === 'admin')
-  const [selectedStocks, setSelectedStocks] = useState<Set<string>>(new Set())
-  const [isSelectionMode, setIsSelectionMode] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [deletingStock, setDeletingStock] = useState<string | null>(null)
-
-  // Toast + confirm modal
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
-  const showToast = (message: string, type: 'success' | 'error') => {
-    setToast({ message, type })
-    setTimeout(() => setToast(null), 4000)
-  }
-  const [confirmModal, setConfirmModal] = useState<{
-    title: string
-    body: string
-    onConfirm: () => void
-  } | null>(null)
-
-  // Helper: update local state AND notify parent (keeps SideNav in sync)
-  const applyStocks = useCallback((raw: StockMetadata[] | string[]) => {
-    const normalised: StockMetadata[] = raw.length > 0 && typeof raw[0] === 'string'
-      ? (raw as string[]).map((symbol) => ({ symbol, total_posts: 0, avg_sentiment: null, last_updated: null, sources: [] }))
-      : raw as StockMetadata[]
-    setStocks(normalised)
-    onStocksChange?.(normalised)
-  }, [onStocksChange])
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await apiFetch(`/api/stocks`)
-        if (response.ok) {
-          const data = await response.json()
-          if (Array.isArray(data.stocks)) {
-            applyStocks(data.stocks)
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch stocks:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-    
-    fetchData()
-    
-    // Reload the saved watchlist to catch completed analyses.
-    const interval = setInterval(() => {
-      fetchData()
-    }, 30000) // Refresh every 30 seconds instead of 10
-    
-    return () => clearInterval(interval)
-  }, [applyStocks])
-
-  const handleStockSelection = (symbol: string) => {
-    const newSelected = new Set(selectedStocks)
-    if (newSelected.has(symbol)) {
-      newSelected.delete(symbol)
-    } else {
-      newSelected.add(symbol)
-    }
-    setSelectedStocks(newSelected)
-  }
-
-  const handleSelectAll = () => {
-    if (selectedStocks.size === stocks.length) {
-      setSelectedStocks(new Set())
-    } else {
-      setSelectedStocks(new Set(stocks.map(s => s.symbol)))
-    }
-  }
-
-  const handleDeleteStock = async (symbol: string) => {
-    setConfirmModal({
-      title: `Delete ${symbol}`,
-      body: `All sentiment analysis data for ${symbol} will be permanently removed. This cannot be undone.`,
-      onConfirm: async () => {
-        setConfirmModal(null)
-        setDeletingStock(symbol)
-        try {
-          const response = await apiFetch(`/api/stocks/${symbol}`, {
-            method: 'DELETE'
-          })
-
-          if (response.ok) {
-            const result = await response.json()
-            showToast(`Deleted ${result.deleted_files.length} file${result.deleted_files.length !== 1 ? 's' : ''} for ${symbol}`, 'success')
-            const refreshResponse = await apiFetch(`/api/stocks`)
-            if (refreshResponse.ok) {
-              const data = await refreshResponse.json()
-              if (Array.isArray(data.stocks)) { applyStocks(data.stocks) }
-            }
-          } else {
-            const error = await response.json()
-            throw new Error(error.detail || 'Failed to delete stock')
-          }
-        } catch (error) {
-          console.error('Error deleting stock:', error)
-          showToast(error instanceof Error ? error.message : 'Failed to delete stock data', 'error')
-        } finally {
-          setDeletingStock(null)
-        }
-      }
-    })
-  }
-
-  const handleBulkDelete = async () => {
-    if (selectedStocks.size === 0) return
-
-    const stocksList = Array.from(selectedStocks).join(', ')
-    setConfirmModal({
-      title: `Delete ${selectedStocks.size} stock${selectedStocks.size !== 1 ? 's' : ''}`,
-      body: `All data for ${stocksList} will be permanently removed. This cannot be undone.`,
-      onConfirm: async () => {
-        setConfirmModal(null)
-        setIsDeleting(true)
-        let deletedCount = 0
-        const failedStocks: string[] = []
-
-        try {
-          for (const symbol of selectedStocks) {
-            try {
-              const response = await apiFetch(`/api/stocks/${symbol}`, {
-                method: 'DELETE'
-              })
-              if (response.ok) {
-                deletedCount++
-              } else {
-                failedStocks.push(symbol)
-              }
-            } catch {
-              failedStocks.push(symbol)
-            }
-          }
-
-          if (failedStocks.length === 0) {
-            showToast(`Deleted ${deletedCount} stock${deletedCount !== 1 ? 's' : ''} successfully`, 'success')
-          } else {
-            showToast(`Deleted ${deletedCount}. Failed: ${failedStocks.join(', ')}`, 'error')
-          }
-
-          setSelectedStocks(new Set())
-          setIsSelectionMode(false)
-
-          const refreshResponse = await apiFetch(`/api/stocks`)
-          if (refreshResponse.ok) {
-            const data = await refreshResponse.json()
-            if (Array.isArray(data.stocks)) { applyStocks(data.stocks) }
-          }
-        } catch (error) {
-          console.error('Error in bulk delete:', error)
-          showToast('Bulk delete failed', 'error')
-        } finally {
-          setIsDeleting(false)
-        }
-      }
-    })
-  }
-
-  const exitSelectionMode = () => {
-    setIsSelectionMode(false)
-    setSelectedStocks(new Set())
-  }
-
-  if (loading) {
-    return (
-      <div className="max-w-4xl mx-auto mb-8 sm:mb-12 px-2 sm:px-0">
-        <div className="text-center">
-          <div className="h-6 w-6 sm:h-8 sm:w-8 animate-spin rounded-full border-2 border-white/30 border-t-white mx-auto mb-2" />
-          <p className="text-white/60 text-sm sm:text-base">Loading the watchlist...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (stocks.length === 0) {
-    return (
-      <div className="max-w-4xl mx-auto mb-8 sm:mb-12 text-center px-2 sm:px-0">
-        <div className="bg-white/5 backdrop-blur-sm rounded-xl p-6 sm:p-8 border border-white/10">
-          <div className="text-3xl sm:text-4xl mb-2 sm:mb-4">📈</div>
-          <h3 className="text-lg sm:text-xl font-semibold text-white mb-1 sm:mb-2">No Stocks Analyzed Yet</h3>
-          <p className="text-sm sm:text-base text-white/70">Use the search above to analyze your first stock and start building the shared watchlist</p>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <>
-      {/* Toast notification */}
-      {toast && (
-        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl border text-sm font-medium ${
-          toast.type === 'success'
-            ? 'bg-green-900/90 border-green-500/40 text-green-100'
-            : 'bg-red-900/90 border-red-500/40 text-red-100'
-        }`}>
-          <span>{toast.type === 'success' ? '✓' : '✕'}</span>
-          {toast.message}
         </div>
       )}
-
-      {/* Confirm modal */}
-      {confirmModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-slate-900 to-red-900/60 rounded-2xl p-6 max-w-sm w-full border border-red-500/20 shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="bg-red-600/20 rounded-full p-2 flex-shrink-0">
-                <span className="text-red-400 text-lg">×</span>
-              </div>
-              <h2 className="text-lg font-bold text-white">{confirmModal.title}</h2>
+      <div className="mb-9 grid grid-cols-3 gap-2 sm:gap-3">
+        {[
+          {
+            label: 'Companies followed',
+            value: stocks.length,
+            detail: 'In the shared watchlist',
+            Icon: Building2,
+          },
+          {
+            label: 'Saved evidence',
+            value: stocks.some((stock) => stock.total_posts == null)
+              ? '—'
+              : stocks
+                  .reduce((sum, stock) => sum + (stock.total_posts ?? 0), 0)
+                  .toLocaleString(),
+            detail: 'News and filing records',
+            Icon: BookOpen,
+          },
+          {
+            label: 'Sources',
+            value: new Set(stocks.flatMap((stock) => stock.sources)).size,
+            detail: 'Across saved research',
+            Icon: ScanLine,
+          },
+        ].map(({ label, value, detail, Icon }) => (
+          <div
+            key={label}
+            className="surface flex items-start gap-4 p-3 sm:p-5"
+          >
+            <span className="hidden rounded-lg border border-white/[0.06] bg-white/[0.03] p-2.5 text-slate-400 lg:block">
+              <Icon className="h-4 w-4" />
+            </span>
+            <div>
+              <p className="text-[10px] text-slate-400 sm:text-xs">{label}</p>
+              <p className="mt-1.5 text-xl font-semibold tracking-tight tabular-nums text-white">
+                {watchlistPending ? '—' : value}
+              </p>
+              <p className="mt-1 hidden text-[11px] text-slate-500 sm:block">
+                {detail}
+              </p>
             </div>
-            <p className="text-white/70 text-sm mb-6 leading-relaxed">{confirmModal.body}</p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setConfirmModal(null)}
-                className="flex-1 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg transition-colors text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmModal.onConfirm}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
-              >
-                Delete Forever
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-    <div className="max-w-6xl mx-auto mb-8 sm:mb-12 px-3 sm:px-4">
-      {/* Portfolio Header with Controls - Mobile optimized */}
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl sm:text-2xl font-bold text-white">Shared watchlist</h2>
-        
-        <div className="flex items-center gap-2 sm:gap-3">
-          {isAdmin && (isSelectionMode ? (
-            <>
-              <span className="text-white/70 text-sm">
-                <span className="hidden sm:inline">{selectedStocks.size} of {stocks.length} selected</span>
-                <span className="sm:hidden">{selectedStocks.size}/{stocks.length}</span>
-              </span>
-              <button
-                onClick={handleSelectAll}
-                className="text-blue-400 hover:text-blue-300 text-sm"
-              >
-                <span className="hidden sm:inline">{selectedStocks.size === stocks.length ? 'Deselect All' : 'Select All'}</span>
-                <span className="sm:hidden">All</span>
-              </button>
-              <button
-                onClick={handleBulkDelete}
-                disabled={selectedStocks.size === 0 || isDeleting}
-                className="bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2"
-              >
-                {isDeleting ? (
-                  <>
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                    <span className="hidden sm:inline">Deleting...</span>
-                  </>
-                ) : (
-                  <>
-                    Delete ({selectedStocks.size})
-                  </>
-                )}
-              </button>
-              <button
-                onClick={exitSelectionMode}
-                className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-lg text-sm transition-colors"
-              >
-                <span className="hidden sm:inline">Cancel</span>
-                <span className="sm:hidden">✕</span>
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => setIsSelectionMode(true)}
-              className="bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg text-sm transition-colors border border-white/20 flex items-center gap-2"
-            >
-              <span className="hidden sm:inline">Manage Watchlist</span>
-              <span className="sm:hidden">Manage</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Portfolio Grid - MUCH better mobile layout */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6">
-        {stocks.map((stock) => (
-          <div key={stock.symbol} className="relative group">
-            {/* Selection Mode Overlay */}
-            {isSelectionMode && (
-              <div
-                role="checkbox"
-                aria-checked={selectedStocks.has(stock.symbol)}
-                aria-label={`Select ${stock.symbol}`}
-                tabIndex={0}
-                className="absolute inset-0 z-10 bg-black/50 rounded-xl flex items-center justify-center cursor-pointer"
-                onClick={() => handleStockSelection(stock.symbol)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    handleStockSelection(stock.symbol)
-                  }
-                }}
-              >
-                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                  selectedStocks.has(stock.symbol) 
-                    ? 'bg-blue-500 border-blue-500' 
-                    : 'border-white bg-transparent'
-                }`}>
-                  {selectedStocks.has(stock.symbol) && (
-                    <span className="text-white text-sm">✓</span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Stock Card - Much larger and more readable */}
-            <button
-              onClick={() => !isSelectionMode && onViewDashboard(stock.symbol)}
-              disabled={isSelectionMode}
-              className="w-full min-h-[144px] bg-gradient-to-br from-white/10 to-white/5 hover:from-white/20 hover:to-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20 transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-white/10 disabled:hover:scale-100 disabled:cursor-default flex flex-col justify-between group"
-              aria-label={`View ${stock.symbol} dashboard`}
-            >
-              {/* Top Section */}
-              <div className="text-center">
-                {/* Stock Symbol - Much larger */}
-                <div className="text-lg sm:text-xl font-bold text-white mb-2">{stock.symbol}</div>
-                
-                {/* Company Name - Better truncation */}
-                {stock.companyName && stock.companyName !== stock.symbol && (
-                  <div className="text-xs sm:text-sm text-white/60 mb-2 line-clamp-1 leading-tight" title={stock.companyName}>
-                    {stock.companyName}
-                  </div>
-                )}
-              </div>
-
-              {/* Middle Section - Price or Post Count */}
-              <div className="text-center">
-                {stock.currentPrice && stock.currentPrice > 0 ? (
-                  <div className="space-y-1">
-                    <div className="text-base sm:text-lg font-semibold text-white">
-                      ${stock.currentPrice.toFixed(2)}
-                    </div>
-                    <div className="text-xs text-white/50">Latest close · {stock.price_as_of?.slice(0, 10) ?? 'Date unknown'}</div>
-                    {/* Price Change */}
-                    {stock.priceChange != null && stock.priceChangePercent != null && (
-                      <div className={`text-sm flex items-center justify-center gap-1 ${
-                        stock.priceChange > 0 ? 'text-green-400' : 
-                        stock.priceChange < 0 ? 'text-red-400' : 'text-white/60'
-                      }`}>
-                        {stock.priceChange > 0 ? '↗' : stock.priceChange < 0 ? '↘' : '→'}
-                        {stock.priceChange > 0 ? '+' : ''}{stock.priceChangePercent.toFixed(1)}%
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-sm text-white/70">
-                    {stock.total_posts > 0 ? `${stock.total_posts.toLocaleString()} posts` : 'View Dashboard'}
-                  </div>
-                )}
-              </div>
-              
-              {/* Bottom Section - Sentiment */}
-              <div className="text-center">
-                <div className={`text-sm flex items-center justify-center gap-1 ${
-                  stock.avg_sentiment == null ? 'text-white/50' :
-                  stock.avg_sentiment >= 0.05 ? 'text-green-400' :
-                  stock.avg_sentiment <= -0.05 ? 'text-red-400' : 'text-yellow-400'
-                }`}>
-                  {stock.avg_sentiment == null ? 'Sentiment unavailable' :
-                   stock.avg_sentiment >= 0.05 ? 'Positive news' :
-                   stock.avg_sentiment <= -0.05 ? 'Negative news' : 'Neutral news'}
-                </div>
-              </div>
-            </button>
-
-            {/* Individual Delete Button - Better positioned */}
-            {isAdmin && !isSelectionMode && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleDeleteStock(stock.symbol)
-                }}
-                disabled={deletingStock === stock.symbol}
-                className="absolute -top-2 -right-2 bg-red-600 hover:bg-red-700 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
-                title={`Delete ${stock.symbol}`}
-              >
-                {deletingStock === stock.symbol ? (
-                  <div className="h-3 w-3 animate-spin rounded-full border border-white/30 border-t-white" />
-                ) : (
-                  '×'
-                )}
-              </button>
-            )}
           </div>
         ))}
       </div>
-
-      {/* Bulk Selection Help Text */}
-      {isSelectionMode && (
-        <div className="mt-6 text-center text-white/60 text-sm">
-          <span className="hidden sm:inline">Click on stocks to select them for bulk deletion, or use &quot;Select All&quot; to choose all stocks.</span>
-          <span className="sm:hidden">Tap stocks to select for deletion</span>
-        </div>
-      )}
-    </div>
-    </>
+      <Watchlist />
+      <div className="mt-9 grid gap-4 md:grid-cols-2">
+        {[
+          {
+            href: '/screener',
+            title: 'Find a company worth studying',
+            description:
+              'Filter the curated universe by growth, margins, and balance sheet strength.',
+            Icon: ScanLine,
+            action: 'Open screener',
+          },
+          {
+            href: '/compare',
+            title: 'Put the numbers in perspective',
+            description:
+              'Compare company fundamentals side by side to see what stands out.',
+            Icon: Scale,
+            action: 'Compare companies',
+          },
+        ].map(({ href, title, description, Icon, action }) => (
+          <Link
+            key={href}
+            href={href}
+            className="surface group p-6 transition-colors hover:border-violet-400/30"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <Icon className="h-5 w-5 text-violet-300" />
+              <ArrowUpRight className="h-4 w-4 text-slate-500 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+            </div>
+            <h3 className="text-sm font-medium text-slate-100">{title}</h3>
+            <p className="mt-2 max-w-md text-xs leading-6 text-slate-400">
+              {description}
+            </p>
+            <span className="mt-4 inline-flex items-center gap-2 text-xs font-medium text-violet-300">
+              {action}
+              <ArrowRight className="h-3 w-3" />
+            </span>
+          </Link>
+        ))}
+      </div>
+      <p className="mt-8 text-center text-[11px] leading-5 text-slate-500">
+        Research has a timestamp. Check source dates and coverage before drawing
+        conclusions.
+      </p>
+    </AppShell>
   )
 }

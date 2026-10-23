@@ -1,24 +1,48 @@
-# Backend Dockerfile
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies needed for building Python packages
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    STOCKSCOPE_HF_CACHE=/opt/stockscope/models \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    TOKENIZERS_PARALLELISM=false \
+    OMP_NUM_THREADS=2
+
 RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-sentiment.txt ./
+RUN python -m pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Keep the tested local runtime while avoiding Linux CUDA/NVIDIA packages.
+# Disable only for a deliberately smaller deployment without challenger models.
+ARG INSTALL_SENTIMENT_MODELS=true
+RUN if [ "$INSTALL_SENTIMENT_MODELS" = "true" ]; then \
+      python -m pip install --no-cache-dir torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu \
+      && python -m pip install --no-cache-dir -r requirements-sentiment.txt; \
+    elif [ "$INSTALL_SENTIMENT_MODELS" != "false" ]; then \
+      echo "INSTALL_SENTIMENT_MODELS must be true or false" >&2; exit 1; \
+    fi
+
 COPY . .
 
-# Expose port
+# Explicit build-time download, pinned to reviewed revisions. No weights enter
+# Git or .env; a failed or incomplete download fails the image build.
+RUN if [ "$INSTALL_SENTIMENT_MODELS" = "true" ]; then \
+      python -m scripts.cache_sentiment_models --download --verify; \
+    fi
+
+# Requests only use the baked local safetensors cache, including on cold starts.
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
+
+# Exercise the production offline environment and CPU kernels before release.
+RUN if [ "$INSTALL_SENTIMENT_MODELS" = "true" ]; then \
+      python -m scripts.cache_sentiment_models --smoke-test; \
+    fi
+
 EXPOSE 8000
 
-# Start the API server
 CMD ["sh", "-c", "exec uvicorn backend.api:app --host 0.0.0.0 --port ${PORT:-8000}"]

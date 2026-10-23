@@ -1,502 +1,535 @@
 'use client'
 
-import { useState } from 'react'
-import { useScreener } from '@/hooks/useFundamentals'
-import { FunnelIcon, MagnifyingGlassIcon, ChartBarIcon } from '@heroicons/react/24/outline'
-import SideNav from '@/components/SideNav'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
+import { ArrowUpRight, ScanLine, SlidersHorizontal } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import AppShell from '@/components/AppShell'
+import { useScreener } from '@/hooks/useFundamentals'
+import { useWatchlist } from '@/hooks/useWatchlist'
+import { useWorkspaceDraft } from '@/hooks/useWorkspaceDraft'
+import { amount, parseSymbols, percent, ratio } from '@/lib/financial-format'
+import { companyResearchHref, snapshotTime } from '@/lib/research-workflow'
+import type { FundamentalsTTM, ScreenerRequest } from '@/types'
+import { completeScreen, draftFinancialRows, editScreenDraft, initialScreenerDraft, isScreenerDraft, replaceResearchUrl, screenCriteriaFromUrl, screenCriteriaKey, screenCriteriaParams, type ScreenCriteria } from '@/lib/research-drafts'
 
-interface FilterState {
-  min_revenue_growth_yoy: number | undefined
-  min_fcf_growth_yoy: number | undefined
-  min_margin_growth_yoy_pp: number | undefined
-  min_ebitda_growth_yoy: number | undefined
-  max_debt_to_cash: number | undefined
-  sort_by: string
-  sort_dir: 'asc' | 'desc'
-  limit: number
-}
+const filterFields = [
+  {
+    key: 'min_revenue_growth_yoy',
+    label: 'Minimum revenue growth',
+    unit: '% YoY',
+    placeholder: 'e.g. 10',
+    divisor: 100,
+  },
+  {
+    key: 'min_fcf_growth_yoy',
+    label: 'Minimum free cash flow growth',
+    unit: '% YoY',
+    placeholder: 'e.g. 15',
+    divisor: 100,
+  },
+  {
+    key: 'min_margin_growth_yoy_pp',
+    label: 'Minimum operating margin growth',
+    unit: 'percentage points',
+    placeholder: 'e.g. 1',
+    divisor: 1,
+  },
+  {
+    key: 'min_ebitda_growth_yoy',
+    label: 'Minimum EBITDA growth',
+    unit: '% YoY',
+    placeholder: 'e.g. 12',
+    divisor: 100,
+  },
+  {
+    key: 'max_debt_to_cash',
+    label: 'Maximum debt / cash',
+    unit: 'ratio',
+    placeholder: 'e.g. 2',
+    divisor: 1,
+  },
+] as const
+const sortOptions = [
+  ['revenue_growth_yoy', 'Revenue growth'],
+  ['fcf_growth_yoy', 'Free cash flow growth'],
+  ['ebitda_growth_yoy', 'EBITDA growth'],
+  ['fcf_margin_ttm', 'Free cash flow margin'],
+  ['operating_margin_ttm', 'Operating margin'],
+  ['revenue_ttm', 'Revenue · TTM'],
+]
+const columns: {
+  key: keyof FundamentalsTTM
+  label: string
+  format: (value?: number | null) => string
+}[] = [
+  { key: 'revenue_ttm', label: 'Revenue · TTM', format: amount },
+  { key: 'revenue_growth_yoy', label: 'Revenue growth', format: percent },
+  { key: 'fcf_margin_ttm', label: 'FCF margin', format: percent },
+  { key: 'fcf_growth_yoy', label: 'FCF growth', format: percent },
+  { key: 'operating_margin_ttm', label: 'Operating margin', format: percent },
+  { key: 'ebitda_growth_yoy', label: 'EBITDA growth', format: percent },
+  { key: 'debt_to_cash', label: 'Debt / cash', format: ratio },
+]
 
 export default function ScreenerPage() {
-  const [filters, setFilters] = useState<FilterState>({
-    min_revenue_growth_yoy: undefined,
-    min_fcf_growth_yoy: undefined,
-    min_margin_growth_yoy_pp: undefined,
-    min_ebitda_growth_yoy: undefined,
-    max_debt_to_cash: undefined,
-    sort_by: 'revenue_growth_yoy',
-    sort_dir: 'desc',
-    limit: 50
-  })
-
-  const [useTestUniverse, setUseTestUniverse] = useState(false)
-
-  const screener = useScreener()
-
-  const handleFilterChange = (key: keyof FilterState, value: string | number | undefined) => {
-    setFilters(prev => ({ ...prev, [key]: value }))
-  }
-
-  const handleScreen = () => {
-    const request = {
-      ...filters,
-      // Add test universe if enabled
-      universe: useTestUniverse ? ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'NFLX', 'ADBE', 'CRM'] : undefined
-    }
-    screener.mutate(request)
-  }
-
-  const clearFilters = () => {
-    setFilters({
-      min_revenue_growth_yoy: undefined,
-      min_fcf_growth_yoy: undefined,
-      min_margin_growth_yoy_pp: undefined,
-      min_ebitda_growth_yoy: undefined,
-      max_debt_to_cash: undefined,
-      sort_by: 'revenue_growth_yoy',
-      sort_dir: 'desc',
-      limit: 50
-    })
-  }
-
-  const formatPercent = (value: number | null | undefined) => {
-    if (value === null || value === undefined || isNaN(value)) return 'N/A'
-    return new Intl.NumberFormat('en-US', {
-      style: 'percent',
-      maximumFractionDigits: 1
-    }).format(value)
-  }
-
-  const formatCurrency = (value: number | null | undefined, compact = true) => {
-    if (value === null || value === undefined || isNaN(value)) return 'N/A'
-    if (compact && Math.abs(value) >= 1e9) {
-      return `$${(value / 1e9).toFixed(1)}B`
-    } else if (compact && Math.abs(value) >= 1e6) {
-      return `$${(value / 1e6).toFixed(1)}M`
-    }
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0
-    }).format(value)
-  }
-
-  const formatNumber = (value: number | null | undefined, decimals = 2) => {
-    if (value === null || value === undefined || isNaN(value)) return 'N/A'
-    return value.toFixed(decimals)
-  }
-
-  const getChangeColor = (value: number | null | undefined) => {
-    if (value === null || value === undefined || isNaN(value)) return 'text-white/60'
-    return value > 0 ? 'text-green-400' : value < 0 ? 'text-red-400' : 'text-white/60'
-  }
-
-  const sortOptions = [
-    { value: 'revenue_growth_yoy', label: 'Revenue Growth YoY' },
-    { value: 'fcf_growth_yoy', label: 'FCF Growth YoY' },
-    { value: 'ebitda_growth_yoy', label: 'EBITDA Growth YoY' },
-    { value: 'fcf_margin_ttm', label: 'FCF Margin TTM' },
-    { value: 'operating_margin_ttm', label: 'Operating Margin TTM' },
-    { value: 'revenue_ttm', label: 'Revenue TTM' }
-  ]
-
   return (
-    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <SideNav activePage="screener" />
-      <main className="flex-1 overflow-y-auto">
-      <div className="lg:hidden h-4" />
-      <div className="container mx-auto px-4 py-4 lg:py-6 pb-24 lg:pb-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4 lg:mb-8">
-          <div className="flex items-center gap-4">
-            <div>
-              <h1 className="text-2xl lg:text-4xl font-bold text-white">Stock Screener</h1>
-              <p className="text-sm lg:text-base text-white/70">Filter stocks by financial criteria and performance</p>
-            </div>
+    <Suspense fallback={<div className="min-h-dvh bg-[#101218]" />}>
+      <ScreenerWorkspace />
+    </Suspense>
+  )
+}
+function ScreenerWorkspace() {
+  return <ScreenForm />
+}
+function ScreenForm() {
+  const search = useSearchParams()
+  const queryClient = useQueryClient()
+  const draft = useWorkspaceDraft('screener', initialScreenerDraft, isScreenerDraft)
+  const { value, setValue, ready, generation, reset } = draft
+  const url = search.toString()
+  const lastUrl = useRef<string | null>(null)
+  const internalUrls = useRef(new Set<string>())
+  const [appliedUrl, setAppliedUrl] = useState<string | null>(null)
+  const { data: stocks = [] } = useWatchlist()
+  const { filters, universe, custom, sort, direction, limit } = value.criteria
+  const syncUrl = (params: URLSearchParams) => {
+    const nextUrl = params.toString()
+    internalUrls.current = new Set([...internalUrls.current, nextUrl].slice(-50))
+    replaceResearchUrl(window.history, '/screener', params)
+  }
+  const updateCriteria = (changes: Partial<ScreenCriteria>) => setValue((current) => editScreenDraft(current, changes, syncUrl))
+  const setFilters = (filters: Record<string, string>) => updateCriteria({ filters: Object.fromEntries(filterFields.map(({ key }) => [key, (filters[key] || '').slice(0, 40)])) })
+  const setUniverse = (universe: string) => updateCriteria({ universe: universe as ScreenCriteria['universe'] })
+  const setCustom = (custom: string) => updateCriteria({ custom })
+  const setSort = (sort: string) => updateCriteria({ sort })
+  const setDirection = (direction: string) => updateCriteria({ direction: direction as ScreenCriteria['direction'] })
+  const setLimit = (limit: string) => updateCriteria({ limit: limit.slice(0, 8) })
+  const [error, setError] = useState('')
+  const screener = useScreener()
+  const { snapshot, selected } = value
+  const formKey = screenCriteriaKey(value.criteria)
+  const run = () => {
+    setError('')
+    const symbols =
+      universe === 'watchlist'
+        ? stocks.map((stock) => stock.symbol)
+        : universe === 'custom'
+          ? parseSymbols(custom)
+          : undefined
+    if (symbols && (!symbols.length || symbols.length > 500)) {
+      setError('Choose between 1 and 500 symbols for this universe.')
+      return
+    }
+    if (
+      universe === 'custom' &&
+      custom
+        .trim()
+        .split(/[\s,]+/)
+        .some((symbol) => !/^[A-Z][A-Z0-9.-]{0,9}$/i.test(symbol))
+    ) {
+      setError('Use valid ticker symbols, separated by commas or spaces.')
+      return
+    }
+    const request: ScreenerRequest = {
+      universe: symbols,
+      sort_by: sort,
+      sort_dir: direction,
+      limit: Number(limit),
+    }
+    for (const field of filterFields)
+      if (filters[field.key] !== '') {
+        const value = Number(filters[field.key]) / field.divisor
+        if (!Number.isFinite(value)) {
+          setError('Every filter must be a valid number.')
+          return
+        }
+        request[field.key] = value
+      }
+    const universeName =
+      universe === 'watchlist'
+        ? 'Shared watchlist'
+        : universe === 'custom'
+          ? 'Custom stock list'
+          : ''
+    const id = crypto.randomUUID()
+    const criteria = value.criteria
+    setValue((current) => ({ ...current, requestId: id }))
+    syncUrl(screenCriteriaParams(criteria))
+    void screener.mutateAsync(request).then((data) => {
+      const { total_attempted, total_evaluated, total_matches, total_failed, total_insufficient, universe_name } = data
+      setValue((current) => completeScreen(current, id, {
+        criteria, universeName, capturedAt: new Date().toISOString(),
+        data: { results: draftFinancialRows(data.results), total_attempted, total_evaluated, total_matches, total_failed, total_insufficient, universe_name },
+      }), generation)
+    }).catch(() => { /* The mutation exposes the request error without replacing saved evidence. */ })
+  }
+  useEffect(() => {
+    if (!ready || lastUrl.current === url) return
+    lastUrl.current = url
+    const internallyUpdated = internalUrls.current.delete(url)
+    if (!internallyUpdated) {
+      const criteria = screenCriteriaFromUrl(new URLSearchParams(url))
+      if (criteria) setValue((current) => ({ ...current, criteria }))
+    }
+    setAppliedUrl(url)
+  }, [ready, url, setValue])
+  useEffect(() => {
+    const navigatingHistory = () => internalUrls.current.clear()
+    window.addEventListener('popstate', navigatingHistory)
+    return () => window.removeEventListener('popstate', navigatingHistory)
+  }, [])
+  const data = snapshot?.data
+  const returnTo = `/screener?${screenCriteriaParams(value.criteria)}`
+  if (!ready || appliedUrl === null) return <AppShell><p role="status" className="text-sm text-slate-400">Restoring saved screen…</p></AppShell>
+  return (
+    <AppShell>
+      <header className="mb-7">
+        <p className="eyebrow mb-2">Discover with a clear set of criteria</p>
+        <h1 className="page-title">Stock screener</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+          Narrow the field by growth, cash generation, and balance sheet
+          strength. Coverage is shown alongside every result.
+        </p>
+      </header>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+        <p role="status">{draft.status === 'saved' ? `Draft saved in this browser · ${snapshotTime(draft.savedAt!)}` : 'Screening draft stays in this browser.'}{draft.message ? ` ${draft.message}` : ''}</p>
+        <button type="button" className="button-secondary !text-xs" onClick={() => {
+          reset()
+          internalUrls.current.clear()
+          screener.reset()
+          setError('')
+          queryClient.removeQueries({ queryKey: ['workspace', 'screener-snapshot'] })
+          syncUrl(new URLSearchParams())
+        }}>Clear saved screen</button>
+      </div>
+      <form
+        className="surface mb-6 p-5 sm:p-6"
+        onSubmit={(event) => {
+          event.preventDefault()
+          run()
+        }}
+      >
+        <fieldset disabled={screener.isPending} className="min-w-0">
+          <div className="mb-6 flex items-center gap-2">
+            <SlidersHorizontal className="h-4 w-4 text-violet-300" />
+            <h2 className="text-sm font-semibold">Screening criteria</h2>
+            <span className="ml-auto text-[11px] text-slate-500">
+              Leave any filter blank to skip it
+            </span>
           </div>
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20">
-            <MagnifyingGlassIcon className="h-8 w-8 text-white/70" />
-          </div>
-        </div>
-
-        {/* Filter Panel */}
-        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 lg:p-6 border border-white/20 mb-4 lg:mb-8">
-          <h2 className="text-lg lg:text-xl font-semibold text-white mb-4 lg:mb-6 flex items-center gap-2">
-            <FunnelIcon className="h-5 w-5" />
-            Screening Criteria
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-            {/* Revenue Growth Filter */}
-            <div>
-              <label className="block text-sm font-medium text-white/70 mb-2">
-                Min Revenue Growth YoY (%)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                value={filters.min_revenue_growth_yoy !== undefined ? (filters.min_revenue_growth_yoy * 100) : ''}
-                onChange={(e) => handleFilterChange('min_revenue_growth_yoy',
-                  e.target.value ? parseFloat(e.target.value) / 100 : undefined)}
-                placeholder="e.g., 10 for 10%"
-                className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent backdrop-blur-sm"
-              />
-            </div>
-
-            {/* FCF Growth Filter */}
-            <div>
-              <label className="block text-sm font-medium text-white/70 mb-2">
-                Min FCF Growth YoY (%)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                value={filters.min_fcf_growth_yoy !== undefined ? (filters.min_fcf_growth_yoy * 100) : ''}
-                onChange={(e) => handleFilterChange('min_fcf_growth_yoy',
-                  e.target.value ? parseFloat(e.target.value) / 100 : undefined)}
-                placeholder="e.g., 15 for 15%"
-                className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent backdrop-blur-sm"
-              />
-            </div>
-
-            {/* Margin Growth Filter */}
-            <div>
-              <label className="block text-sm font-medium text-white/70 mb-2">
-                Min Margin Growth YoY (pp)
-              </label>
-              <input
-                type="number"
-                step="0.1"
-                value={filters.min_margin_growth_yoy_pp ?? ''}
-                onChange={(e) => handleFilterChange('min_margin_growth_yoy_pp',
-                  e.target.value ? parseFloat(e.target.value) : undefined)}
-                placeholder="e.g., 1.0 for 1pp"
-                className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent backdrop-blur-sm"
-              />
-            </div>
-
-            {/* EBITDA Growth Filter */}
-            <div>
-              <label className="block text-sm font-medium text-white/70 mb-2">
-                Min EBITDA Growth YoY (%)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                value={filters.min_ebitda_growth_yoy !== undefined ? (filters.min_ebitda_growth_yoy * 100) : ''}
-                onChange={(e) => handleFilterChange('min_ebitda_growth_yoy',
-                  e.target.value ? parseFloat(e.target.value) / 100 : undefined)}
-                placeholder="e.g., 12 for 12%"
-                className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent backdrop-blur-sm"
-              />
-            </div>
-
-            {/* Debt to Cash Filter */}
-            <div>
-              <label className="block text-sm font-medium text-white/70 mb-2">
-                Max Debt/Cash Ratio
-              </label>
-              <input
-                type="number"
-                step="0.1"
-                value={filters.max_debt_to_cash ?? ''}
-                onChange={(e) => handleFilterChange('max_debt_to_cash',
-                  e.target.value ? parseFloat(e.target.value) : undefined)}
-                placeholder="e.g., 2.0"
-                className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent backdrop-blur-sm"
-              />
-            </div>
-
-            {/* Results Limit */}
-            <div>
-              <label className="block text-sm font-medium text-white/70 mb-2">
-                Max Results
-              </label>
+          <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <label className="field-label">
+              Company universe
               <select
-                value={filters.limit}
-                onChange={(e) => handleFilterChange('limit', parseInt(e.target.value))}
-                className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent backdrop-blur-sm"
+                className="field-input"
+                value={universe}
+                onChange={(e) => setUniverse(e.target.value)}
               >
-                <option value={25} className="bg-slate-800">25</option>
-                <option value={50} className="bg-slate-800">50</option>
-                <option value={100} className="bg-slate-800">100</option>
+                <option value="curated">Curated US-stock list</option>
+                <option value="watchlist">
+                  Shared watchlist ({stocks.length})
+                </option>
+                <option value="custom">Custom tickers</option>
               </select>
-            </div>
-          </div>
-
-          {/* Sort Options */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div>
-              <label className="block text-sm font-medium text-white/70 mb-2">
-                Sort By
+            </label>
+            {universe === 'custom' && (
+              <label className="field-label sm:col-span-2">
+                Ticker symbols
+                <input
+                  className="field-input"
+                  value={custom}
+                  onInput={(e) => setCustom(e.currentTarget.value.toUpperCase())}
+                  onChange={(e) => setCustom(e.target.value.toUpperCase())}
+                  placeholder="AAPL, MSFT, NVDA"
+                  required
+                  maxLength={6000}
+                />
               </label>
+            )}
+          </div>
+          <p className="mb-6 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-[11px] leading-5 text-slate-400">
+            {universe === 'curated'
+              ? 'The bundled list is curated, with an unknown membership date. It is not the full current S&P 500. Larger screens may take a minute.'
+              : universe === 'watchlist'
+                ? 'Screen the companies already saved in this shared research workspace.'
+                : 'Supply up to 500 unique symbols. Missing data and provider failures will be reported.'}
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {filterFields.map((field) => (
+              <label key={field.key} className="field-label">
+                {field.label}
+                <span className="ml-1 text-[10px] text-slate-500">
+                  {' '}
+                  {field.unit}
+                </span>
+                <input
+                  className="field-input"
+                  type="number"
+                  step="any"
+                  min={field.key === 'max_debt_to_cash' ? 0 : undefined}
+                  value={filters[field.key]}
+                  placeholder={field.placeholder}
+                  onInput={(e) => setFilters({ ...filters, [field.key]: e.currentTarget.value })}
+                  onChange={(e) =>
+                    setFilters({ ...filters, [field.key]: e.target.value })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+          <div className="mt-6 grid gap-4 border-t border-white/[0.07] pt-6 sm:grid-cols-3">
+            <label className="field-label">
+              Sort by
               <select
-                value={filters.sort_by}
-                onChange={(e) => handleFilterChange('sort_by', e.target.value)}
-                className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent backdrop-blur-sm"
+                className="field-input"
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
               >
-                {sortOptions.map(option => (
-                  <option key={option.value} value={option.value} className="bg-slate-800">
-                    {option.label}
+                {sortOptions.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
                   </option>
                 ))}
               </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-white/70 mb-2">
-                Sort Direction
-              </label>
+            </label>
+            <label className="field-label">
+              Direction
               <select
-                value={filters.sort_dir}
-                onChange={(e) => handleFilterChange('sort_dir', e.target.value as 'asc' | 'desc')}
-                className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent backdrop-blur-sm"
+                className="field-input"
+                value={direction}
+                onChange={(e) => setDirection(e.target.value)}
               >
-                <option value="desc" className="bg-slate-800">Highest First</option>
-                <option value="asc" className="bg-slate-800">Lowest First</option>
+                <option value="desc">Highest first</option>
+                <option value="asc">Lowest first</option>
               </select>
-            </div>
-          </div>
-
-          <p className="mb-4 text-sm text-white/60">The default universe is a curated US-stock list with an unknown membership date. It is not the full current S&amp;P 500.</p>
-
-          {/* Test Universe Option */}
-          <div className="flex items-center gap-2 mb-8">
-            <input
-              type="checkbox"
-              checked={useTestUniverse}
-              onChange={(e) => setUseTestUniverse(e.target.checked)}
-              className="h-4 w-4 text-blue-600 bg-white/10 border-white/30 rounded focus:ring-blue-500"
-            />
-            <label className="text-sm font-medium text-white/70">
-              Use Small Example List (AAPL, MSFT, GOOGL, AMZN, NVDA, TSLA, META, NFLX, ADBE, CRM)
+            </label>
+            <label className="field-label">
+              Maximum results
+              <input
+                className="field-input"
+                type="number"
+                min={1}
+                max={500}
+                required
+                value={limit}
+                onInput={(e) => setLimit(e.currentTarget.value)}
+                onChange={(e) => setLimit(e.target.value)}
+              />
             </label>
           </div>
-
-          {/* Action Buttons */}
-          <div className="flex gap-4">
+          {error && (
+            <p role="alert" className="mt-4 text-xs text-rose-200">
+              {error}
+            </p>
+          )}
+          <div className="mt-6 flex flex-wrap items-center gap-3">
             <button
-              onClick={handleScreen}
-              disabled={screener.isPending}
-              className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium disabled:opacity-50 flex items-center gap-2"
+              className="button-primary disabled:opacity-40"
+              type="submit"
             >
-              {screener.isPending ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  Screening...
-                </>
-              ) : (
-                <>
-                  <MagnifyingGlassIcon className="h-4 w-4" />
-                  Run Screen
-                </>
-              )}
+              <ScanLine className="h-4 w-4" />
+              {screener.isPending ? 'Screening…' : 'Run screen'}
             </button>
-
             <button
-              onClick={clearFilters}
-              className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/30 text-white rounded-lg transition-colors font-medium backdrop-blur-sm"
+              type="button"
+              className="button-secondary"
+              onClick={() => {
+                setFilters(
+                  Object.fromEntries(
+                    filterFields.map((field) => [field.key, '']),
+                  ),
+                )
+                setError('')
+              }}
             >
-              Clear All
+              Clear filters
             </button>
+            <span className="text-[11px] text-slate-500">
+              Inputs save in this browser and in the URL.
+            </span>
           </div>
-        </div>
-
-        {/* Loading State */}
-        {screener.isPending && (
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-8 border border-white/20 text-center">
-            <div className="h-12 w-12 animate-spin rounded-full border-2 border-white/30 border-t-white mx-auto mb-4" />
-            <p className="text-white text-lg">Screening companies with your criteria...</p>
-            <p className="text-white/60 text-sm mt-2">This may take a moment</p>
+        </fieldset>
+      </form>
+      {screener.isPending && (
+        <p role="status" className="surface mb-5 p-5 text-sm text-violet-200">
+          Collecting financial data and evaluating your criteria…
+        </p>
+      )}
+      {screener.isError && (
+        <p
+          role="alert"
+          className="surface mb-5 border-rose-400/20 p-5 text-sm text-rose-200"
+        >
+          {screener.error.message} Run the screen again to retry.
+        </p>
+      )}
+      {snapshot && data ? (
+        <>
+          {screenCriteriaKey(snapshot.criteria) !== formKey && (
+            <p
+              role="status"
+              className="surface mb-4 border-amber-400/20 p-4 text-xs text-amber-200"
+            >
+              Criteria changed. The results below belong to your previous
+              screen. Run again to apply the new filters.
+            </p>
+          )}
+          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              ['Attempted', data.total_attempted],
+              ['Evaluated', data.total_evaluated],
+              ['Matches', data.total_matches],
+              [
+                'Failed / insufficient',
+                `${data.total_failed} / ${data.total_insufficient}`,
+              ],
+            ].map(([label, value]) => (
+              <div key={label} className="surface p-4">
+                <p className="text-[11px] text-slate-500">{label}</p>
+                <p className="mt-2 text-xl font-semibold tabular-nums">
+                  {value}
+                </p>
+              </div>
+            ))}
           </div>
-        )}
-
-        {/* Error State */}
-        {screener.isError && (
-          <div className="bg-red-500/20 backdrop-blur-sm rounded-xl p-6 border border-red-500/50 mb-8">
-            <h3 className="text-red-300 font-medium text-lg mb-2">⚠️ Screening Failed</h3>
-            <p className="text-red-200">{screener.error?.message}</p>
-          </div>
-        )}
-
-        {/* Results */}
-        {screener.data && (
-          <div className="space-y-6">
-            {/* Results Summary */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
-                <div className="flex items-center gap-3">
-                  <ChartBarIcon className="h-8 w-8 text-blue-400" />
-                  <div>
-                    <h3 className="text-2xl font-bold text-white">{screener.data.total_matches}</h3>
-                    <p className="text-white/70 text-sm">Total Matches</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
-                <div className="flex items-center gap-3">
-                  <MagnifyingGlassIcon className="h-8 w-8 text-green-400" />
-                  <div>
-                    <h3 className="text-2xl font-bold text-white">{screener.data.total_evaluated}</h3>
-                    <p className="text-white/70 text-sm">Companies Evaluated</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
-                <div className="flex items-center gap-3">
-                  <FunnelIcon className="h-8 w-8 text-purple-400" />
-                  <div>
-                    <h3 className="text-2xl font-bold text-white">
-                      {screener.data.total_evaluated > 0 ?
-                        `${((screener.data.total_matches / screener.data.total_evaluated) * 100).toFixed(1)}%` : '0%'}
-                    </h3>
-                    <p className="text-white/70 text-sm">Pass Rate</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-white/20 bg-white/5 p-4 text-sm text-white/70 space-y-2">
-              <p>{screener.data.universe_name} · {screener.data.total_attempted} unique symbols attempted.</p>
-              <p>{screener.data.total_failed} requests failed or timed out; {screener.data.total_insufficient} had insufficient financial data. Showing {screener.data.results.length} of {screener.data.total_matches} matches.</p>
-              <p>Growth may use TTM or fiscal-year comparisons; each result identifies its basis. Unavailable growth does not pass a growth filter.</p>
-            </div>
-
-            {/* Sort Information */}
-            <div className="bg-white/5 backdrop-blur-sm rounded-lg p-4 border border-white/10">
-              <p className="text-white/80 text-sm text-center">
-                📊 Sorted by <span className="font-medium text-white">{sortOptions.find(opt => opt.value === screener.data.filters_applied.sort_by)?.label}</span>
-                {' '}({screener.data.filters_applied.sort_dir === 'desc' ? 'Highest to Lowest' : 'Lowest to Highest'})
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Screening results</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                {snapshot.universeName || data.universe_name} · Showing{' '}
+                {data.results.length} of {data.total_matches} matches
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Saved {snapshotTime(snapshot.capturedAt)} · Run screen to refresh
               </p>
             </div>
-
-            {/* Results Table */}
-            {screener.data.results.length > 0 ? (
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 overflow-hidden">
-                <div className="px-6 py-4 border-b border-white/20">
-                  <h3 className="text-xl font-semibold text-white">Screening Results</h3>
-                </div>
-
-                {/* Desktop Table */}
-                <div className="hidden lg:block overflow-x-auto">
-                  <table className="min-w-full">
-                    <thead className="bg-white/5">
-                      <tr>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-white/70">Ticker</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-white/70">Revenue TTM</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-white/70">Rev Growth</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-white/70">FCF Margin</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-white/70">FCF Growth</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-white/70">Op Margin</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-white/70">EBITDA Growth</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-white/70">Debt/Cash</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-white/70">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {screener.data.results.map((company) => (
-                        <tr key={company.ticker} className="border-b border-white/10 hover:bg-white/5 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="font-medium text-white">{company.ticker}</div>
-                          </td>
-                          <td className="px-6 py-4 text-white font-medium">
-                            {formatCurrency(company.revenue_ttm)}
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className={`font-medium ${getChangeColor(company.revenue_growth_yoy)}`}>
-                              {formatPercent(company.revenue_growth_yoy)}
-                              <span className="block text-xs text-white/50">{company.growth_metadata?.revenue_growth_yoy?.basis === 'fiscal_year' ? 'Fiscal year' : company.growth_metadata?.revenue_growth_yoy?.status === 'available' ? 'TTM' : 'Unavailable'}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-white font-medium">
-                            {formatPercent(company.fcf_margin_ttm)}
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className={`font-medium ${getChangeColor(company.fcf_growth_yoy)}`}>
-                              {formatPercent(company.fcf_growth_yoy)}
-                              <span className="block text-xs text-white/50">{company.growth_metadata?.fcf_growth_yoy?.basis === 'fiscal_year' ? 'Fiscal year' : company.growth_metadata?.fcf_growth_yoy?.status === 'available' ? 'TTM' : 'Unavailable'}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-white font-medium">
-                            {formatPercent(company.operating_margin_ttm)}
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className={`font-medium ${getChangeColor(company.ebitda_growth_yoy)}`}>
-                              {formatPercent(company.ebitda_growth_yoy)}
-                              <span className="block text-xs text-white/50">{company.growth_metadata?.ebitda_growth_yoy?.basis === 'fiscal_year' ? 'Fiscal year' : company.growth_metadata?.ebitda_growth_yoy?.status === 'available' ? 'TTM' : 'Unavailable'}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-white font-medium">
-                            {formatNumber(company.debt_to_cash)}
-                          </td>
-                          <td className="px-6 py-4">
-                            <Link
-                              href={`/fundamentals/${company.ticker}`}
-                              className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
-                            >
-                              View Details →
-                            </Link>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile Card View */}
-                <div className="lg:hidden space-y-4 p-4">
-                  {screener.data.results.map((company) => (
-                    <div key={company.ticker} className="bg-white/5 rounded-lg p-4 space-y-3">
-                      <div className="flex justify-between items-center">
-                        <h4 className="text-lg font-bold text-white">{company.ticker}</h4>
-                        <Link
-                          href={`/fundamentals/${company.ticker}`}
-                          className="text-blue-400 text-sm font-medium"
-                        >
-                          View →
-                        </Link>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <span className="text-white/60">Revenue TTM:</span>
-                          <span className="text-white font-medium ml-2">{formatCurrency(company.revenue_ttm)}</span>
-                        </div>
-                        <div>
-                          <span className="text-white/60">FCF Margin:</span>
-                          <span className="text-white font-medium ml-2">{formatPercent(company.fcf_margin_ttm)}</span>
-                        </div>
-                        <div>
-                          <span className="text-white/60">Op Margin:</span>
-                          <span className="text-white font-medium ml-2">{formatPercent(company.operating_margin_ttm)}</span>
-                        </div>
-                        <div>
-                          <span className="text-white/60">Debt/Cash:</span>
-                          <span className="text-white font-medium ml-2">{formatNumber(company.debt_to_cash)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-12 text-center border border-white/20">
-                <FunnelIcon className="h-16 w-16 text-white/50 mx-auto mb-4" />
-                <h3 className="text-xl font-medium text-white mb-2">No Companies Match Your Filters</h3>
-                <p className="text-white/60 mb-6">Try adjusting your criteria or clearing some filters to see more results.</p>
-                <button
-                  onClick={clearFilters}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
-                >
-                  Reset Filters
-                </button>
-              </div>
-            )}
+            <Link
+              aria-disabled={selected.length < 2}
+              onClick={(e) => {
+                if (selected.length < 2) e.preventDefault()
+              }}
+              href={`/compare?tickers=${selected.join(',')}`}
+              className={`button-secondary ${selected.length < 2 ? 'opacity-40' : ''}`}
+            >
+              Compare selected ({selected.length})
+              <ArrowUpRight className="h-3 w-3" />
+            </Link>
           </div>
-        )}
-      </div>
-      </main>
-    </div>
+          {data.results.length ? (
+            <div className="surface overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-white/10 text-[10px] uppercase tracking-wider text-slate-500">
+                      <th className="p-4">
+                        <span className="sr-only">Select</span>
+                      </th>
+                      <th className="p-4">Company</th>
+                      {columns.map((column) => (
+                        <th
+                          key={column.key}
+                          className="whitespace-nowrap p-4 text-right font-medium"
+                        >
+                          {column.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.results.map((company) => (
+                      <tr
+                        key={company.ticker}
+                        className="border-b border-white/[0.05] last:border-0 hover:bg-white/[0.02]"
+                      >
+                        <td className="p-4">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${company.ticker} for comparison`}
+                            checked={selected.includes(company.ticker)}
+                            disabled={
+                              !selected.includes(company.ticker) &&
+                              selected.length >= 20
+                            }
+                            onChange={(e) => {
+                              const checked = e.target.checked
+                              setValue((current) => ({
+                                  ...current,
+                                  selected: checked
+                                    ? [...current.selected, company.ticker]
+                                    : current.selected.filter((ticker) => ticker !== company.ticker),
+                              }))
+                            }}
+                          />
+                        </td>
+                        <td className="p-4 font-semibold">
+                          <Link
+                            className="text-violet-200"
+                            href={companyResearchHref(company.ticker, returnTo)}
+                          >
+                            {company.ticker} ↗
+                          </Link>
+                        </td>
+                        {columns.map(({ key, format }) => {
+                          const value = company[key]
+                          const basis = company.growth_metadata?.[key]
+                          return (
+                            <td
+                              key={key}
+                              className="whitespace-nowrap p-4 text-right text-slate-200"
+                            >
+                              {format(typeof value === 'number' ? value : null)}
+                              {basis && (
+                                <span className="mt-1 block text-[10px] text-slate-500">
+                                  {basis.status === 'available'
+                                    ? basis.basis === 'fiscal_year'
+                                      ? 'Fiscal year'
+                                      : 'TTM'
+                                    : 'Unavailable'}
+                                </span>
+                              )}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="surface p-10 text-center">
+              <h3 className="text-sm font-medium">
+                No companies matched this screen
+              </h3>
+              <p className="mt-2 text-xs leading-6 text-slate-400">
+                Review coverage above, loosen the filters, or try a different
+                universe.
+              </p>
+            </div>
+          )}
+          <p className="mt-4 text-[11px] leading-6 text-slate-500">
+            Growth can use TTM or fiscal-year comparisons; each available growth
+            figure identifies its basis. Missing values stay unavailable and do
+            not pass a filter that requires them. Amounts use provider reporting
+            units; verify reporting currencies before comparing companies.
+          </p>
+        </>
+      ) : (
+        !screener.isPending && (
+          <div className="surface px-6 py-10 text-center">
+            <ScanLine className="mx-auto mb-4 h-7 w-7 text-violet-300" />
+            <h2 className="text-base font-medium">
+              Start broad. Find what deserves a closer look.
+            </h2>
+            <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-400">
+              Choose your universe and criteria, then run a screen. Select
+              results to carry them straight into a comparison.
+            </p>
+          </div>
+        )
+      )}
+    </AppShell>
   )
 }

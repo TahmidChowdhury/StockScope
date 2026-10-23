@@ -126,27 +126,32 @@ async def compare_fundamentals(request: CompareRequest, current_user: str = Depe
         if len(request.tickers) > 20:
             raise HTTPException(status_code=400, detail="Maximum 20 tickers allowed")
         
-        results = []
-        for ticker in request.tickers:
-            ticker = ticker.upper()
-            try:
-                # Use cached computation
-                compacted = _compute_ttm_cached(ticker)
-                if compacted:  # Only include if we got some data
-                    results.append(compacted)
-            except Exception as e:
-                # Continue with other tickers even if one fails
-                print(f"Error processing {ticker}: {e}")
-                continue
+        try:
+            tickers = list(dict.fromkeys(
+                normalized_symbol(ticker).replace('.', '-') for ticker in request.tickers
+            ))
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
 
-        # Sort by revenue_ttm (descending) if available
-        def sort_key(x):
-            return x.get("revenue_ttm", 0) if x.get("revenue_ttm") is not None else 0
-        
-        results.sort(key=sort_key, reverse=True)
+        # Share the screener's bounded thread pool and timeout. A slow provider
+        # must not block the event loop or discard the other companies.
+        loop = asyncio.get_running_loop()
+        raw_results = await asyncio.gather(
+            *[_fetch_ticker_screener(ticker, loop) for ticker in tickers]
+        )
+        results = [row for row in raw_results if row]
+
+        # Stable input order breaks revenue ties; missing values stay last,
+        # distinct from observed zero or negative revenue.
+        available = [row for row in results if row.get("revenue_ttm") is not None]
+        missing = [row for row in results if row.get("revenue_ttm") is None]
+        available.sort(key=lambda row: row["revenue_ttm"], reverse=True)
+        results = available + missing
         
         return results
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error comparing fundamentals: {str(e)}")
 

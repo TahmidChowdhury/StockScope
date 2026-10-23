@@ -9,7 +9,9 @@ StockScope is a personal stock-research workspace for a long-term investing core
 - **SEC reported facts:** an explicit refresh collects primary financial facts and recent filings. The fundamentals page exposes periods, units, filing versions, and original links alongside the existing yfinance metrics; SEC facts do not silently replace TTM calculations.
 - **Research:** news text-tone scores describe saved articles; SEC filing events and company press releases are unscored. Publication dates are distinct from summary-generation dates, and unknown dates stay unknown.
 - **Refresh:** collect new source snapshots explicitly, with completion, partial-result, and failure status. Merely opening saved research does not imply it was refreshed.
-- **Shared watchlist:** saved analyzed symbols are shared across authenticated roles. This is not a holdings ledger or a measure of actual portfolio returns.
+- **Shared watchlist:** saved analyzed symbols are shared across authenticated roles. This is not a holdings ledger or a measure of actual portfolio returns. Dashboard evidence counts include news and filing records, not just distinct articles.
+- **Workspace navigation:** dashboard, company research, financials, comparison, screening, and paper experiments share a responsive shell and watchlist. Saved backtests and paper portfolios have direct URLs. Screener selections carry into Compare; missing data and coverage remain visible.
+- **Browser drafts:** screening inputs/results/selections, comparison inputs/results, trading forms, per-portfolio order drafts, company valuation assumptions, and tone annotations/completed reports restore after refresh or return visits. Drafts use local browser storage separated by API connection and access role, not individual accounts or cross-device sync. Credentials remain in session storage. Saved snapshots retain their collection dates and do not trigger fresh screening, model inference, or trading actions. Clear controls affect only their local workspace; blocked or full browser storage displays an unsaved warning.
 - **Authentication:** a shared password for each role is exchanged for an expiring bearer token. The browser keeps tokens in sessionStorage, removes old stored passwords, and clears client data on logout/expiry. API credentials are no longer accepted in URL query parameters.
 
 Users sign in on the website with one of the app passwords configured on the backend. `ADMIN_PASSWORD` grants administrative deletion/cache access; `DEMO_PASSWORD` and `GUEST_PASSWORD` currently both allow research reads and refreshes. Everyone sees the same watchlist and saved research. There is no email signup, user-owned portfolio, or account password-reset flow yet. Supabase stores research; Supabase Auth is not connected to this login. The legacy `STOCKSCOPE_PASSWORD` also grants admin if set; remove that variable when deploying the three role passwords. Sessions last eight hours by default and are stored per browser tab; existing sessions must sign in again after the authentication migration.
@@ -125,6 +127,8 @@ Supabase currently lists **500 MB database storage** on Free and pauses inactive
 | [GDELT DOC 2](https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/) | Discover article metadata and original publisher links for configured company aliases | Discovery time is not publication time. Conservative title matching reduces, but cannot eliminate, irrelevant matches. Public availability varies; live smoke timed out on October 14, 2026. |
 | [SEC APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces) | Company Facts plus the recent submissions table | Actual contact identity required. Preserve reporting periods, units, and amendments; do not treat every duration as a quarter or TTM. Older submission archive files are not fetched. |
 | Existing Yahoo / Google News / publisher RSS / Finviz adapters | Additional headline coverage | Unofficial endpoints and feeds can change or fail. Provider outcomes and incomplete coverage remain visible. |
+| [MarketWatch Top Stories](https://feeds.content.dowjones.io/public/rss/mw_topstories), [CNBC Finance](https://www.cnbc.com/id/10000664/device/rss/rss.html), [NPR Business](https://feeds.npr.org/1006/rss.xml) | No-key publisher feeds, filtered using ticker boundaries and configured company aliases | Feeds were checked on October 14, 2026. The old MarketWatch endpoint was stale and the legacy Reuters RSS endpoint was unreachable; neither is used. A working feed can have no stories about the selected company. |
+| [Marketaux](https://www.marketaux.com/pricing) (not integrated) | Possible structured company/entity news alternative | Free tier: 100 requests/day, three articles/request; needs an API key. [Terms](https://www.marketaux.com/tos) limit use, including commercial activity. Free access does not establish public redistribution rights. |
 
 Collection stores metadata, summaries supplied by the feed, and original links; it does not scrape full article bodies. [NVIDIA RSS terms](https://www.nvidia.com/en-us/about-nvidia/rss/) and each publisher’s terms still apply. No full-text redistribution rights are implied. The active refresh does not use NewsAPI: its [free plan is development-only](https://newsapi.org/pricing). Legacy scripts are not the production collection path.
 
@@ -142,6 +146,128 @@ npm run build
 The backend regression suite uses controlled fixtures for authentication, accounting, reporting periods, source dates, and collection outcomes. Frontend tests exercise session handling and request authentication. CI installs from the npm lockfile and runs backend tests, frontend tests, lint, and the production build. Passing these checks does not establish a profitable investment strategy.
 
 Dependency check on October 14, 2026: `npm audit --omit=dev` reports no known production dependency vulnerabilities. The full audit reports seven high-severity development dependency entries stemming from a `braces` stack-exhaustion advisory in the Tailwind 3 / Next ESLint tooling chains. They remain open; resolving them requires a separately tested tooling migration. The lockfile includes patched React/Next versions and PostCSS dependency overrides. Recheck advisories before release.
+
+## Paper portfolios, backtesting, and Congress research
+
+Open **Paper & tests** (`/trading`) in the sidebar. This is a shared research workspace,
+not a brokerage connection. Admin can create portfolios, submit/cancel paper orders,
+refresh valuations, run saved backtests, and import disclosures. Demo and guest can
+read and export saved results. Role passwords do not provide individual account ownership.
+
+Saved records open at `/trading/backtests/{run_id}` and
+`/trading/portfolios/{portfolio_id}`. These URLs load the database record after
+refresh or sign-in and work with browser Back/Forward. Opening a saved record
+does not rerun it. Malformed IDs and unavailable records show explicit missing-record
+states. `/trading?tab=backtest&symbols=AAPL,MSFT` remains a research handoff;
+refreshing that URL preserves later draft edits, while a new Compare handoff
+updates the symbols without discarding other experiment inputs.
+
+**Before deploying this change**, run `venv/bin/python -m alembic upgrade head` with
+an appropriate database backup. Revision `20261015_02` adds `trading_documents`,
+sealed with RLS and anonymous-role privilege revocations. Do not run the migration
+against a live deployment still expecting the previous schema version; coordinate
+backend replacement. No DDL runs at application startup. Without `DATABASE_URL`,
+atomic files under `STOCKSCOPE_DATA_DIR/trading/` are authoritative. Configured
+Postgres failures never fall back to files. Portfolio writes serialize; a refresh
+that races a new order is rejected so it can be retried without losing the order.
+
+### Paper accounting
+
+- Starting cash and costs are fixed at portfolio creation. Buys use a cash budget
+  including costs; sales close the entire symbol. No leverage or shorting.
+- A thesis and server submission timestamp are recorded before outcomes exist.
+  Client order IDs make retries idempotent. Same-day queued orders can be cancelled;
+  the cancellation remains in the journal. Older orders must be evaluated.
+- Orders are eligible at the first observed session open **strictly after** their
+  submission date in America/New_York. Even a premarket submission waits until a
+  later date. Refresh uses daily sessions before today, so it is intentionally
+  slower than a live broker simulator. Opening a saved portfolio does not refresh it.
+- Cash/position checks occur at execution. Insufficient budgets, unmatched sells,
+  and position caps appear as explicit rejected signals; unexecuted end-of-window
+  signals remain pending.
+- Paper refreshes freeze observed bars and append new dates. Previously recorded
+  simulated fills do not change when the data provider revises historical prices.
+  Failed or concurrently outdated refreshes preserve the previous result.
+
+### Historical experiments
+
+Three strategies are available: equal-starting-budget buy-and-hold (without
+rebalancing), a one-symbol fast/slow moving-average rule, and copying one member's
+imported Congress disclosures. SMA signals use adjusted closes through the prior
+session and execute at the following open. There is no parameter optimization or
+automatic model selection. Use separate date ranges for exploratory and unseen
+validation tests, and repeat with less favorable cost/delay assumptions.
+
+The engine supports USD equities and ETFs, fractional shares, cash dividends,
+ordinary splits, and daily open/close observations. Yahoo historical OHLC is
+split-adjusted: the adapter reverses later split factors to reconstruct as-traded
+prices, then the ledger adjusts held shares on split dates. Stock/benchmark price
+observations, costs, resolved symbols, source disclosures, an engine version, and
+a SHA-256 of the input prices are saved with each run and exported as JSON. This
+supports inspecting and replaying a saved experiment without fetching new prices.
+The original observations and order history can also be exported for paper portfolios.
+
+Slippage plus half the configured full bid-ask spread shifts every fill against
+the strategy; each fill also incurs the configured flat commission. The benchmark
+buys at the first test-session open with the same starting cash and entry costs,
+then holds and accumulates dividends as cash. Ending values mark open positions
+at close; no hypothetical liquidation fee is deducted. Excess return is the
+strategy's cumulative return minus the benchmark's cumulative return in percentage
+points, not risk-adjusted alpha. Cash yields zero. CAGR is shown only for observed
+periods of at least 365 days. Drawdowns include the initial cash value and entry costs.
+
+Missing symbol data on any benchmark session aborts a test; symbols are never
+silently dropped or forward-filled. The benchmark's observed dates supply the
+session calendar (not an independently verified exchange calendar). The UI exposes
+the actual valuation date. A missing session in all supplied series may therefore
+remain undetected. Limits: 20 strategy symbols, ten years per test, 1,000 paper
+orders per portfolio, and 1,000 eligible Congress signals per test. Provider calls
+are bounded by per-symbol timeouts but can still take minutes for larger universes.
+
+These simulations do not model taxes, financing, cash interest, dividend payment-date
+timing, market impact beyond configured slippage, intraday stops, special corporate
+actions, or delisting proceeds. Dividends accrue on ex-date, which can make cash
+available earlier than a real broker would. Yahoo data is unofficial and revisable;
+metadata must identify USD stock/ETF instruments. Current-stock and famous-member
+selection can introduce survivorship and selection bias. Passing tests validates
+accounting and timing rules, not profitability.
+
+### Congress imports
+
+No paid provider or live feed is connected. Download the CSV header template from
+the Congress tab and supply source-backed transaction rows. Required columns in order:
+
+```csv
+disclosure_id,member,owner,symbol,side,transaction_date,available_date,asset_type,amount_range,source_url
+```
+
+`disclosure_id` identifies one transaction row, not an entire multi-row report.
+Use ISO dates (`YYYY-MM-DD`); `side` is `buy` or `sell`; `asset_type` is `stock`,
+`etf`, `option`, or `other`. Every field is required. `source_url` must be HTTPS;
+URLs are retained as evidence links and are not fetched by the importer. Quote
+CSV values containing commas. Dates, classifications, and public availability are
+user-supplied and are not independently verified. A filing date is not necessarily
+the date the public could access it. Verify against the
+[House portal](https://disclosures-clerk.house.gov/FinancialDisclosure) or
+[Senate portal](https://efdsearch.senate.gov/search/).
+
+Imports validate the whole batch before saving. Identical IDs/content are skipped;
+conflicting IDs reject the batch and cannot rewrite prior history. Amendments are
+not supported: do not upload a correction as a new trade. Maximum import size is
+2 MB/5,000 rows, and the workspace holds up to 10,000 disclosures.
+
+Congress tests start with cash and use only records with availability dates inside
+the requested window. An optional extra calendar-day delay precedes the next-open
+rule. Each buy uses a fixed fraction of initial cash, capped by available cash and
+the configured symbol weight at execution. A sale exits the copied symbol. Owners
+for the selected member are pooled. Reported dollar ranges do not identify exact
+allocations; partial sales, options, earlier holdings, and amendments are not
+replicated. Excluded option/other rows are visible. This measures a defined copying
+rule against a benchmark, not a reconstruction of a politician's actual return.
+
+Trading API routes live under `/api/trading`: `portfolios`, portfolio `orders`,
+`refresh`, and `export`; `backtests` and per-run `export`; `congress`,
+`congress/template`, and `congress/import`. All require bearer authentication.
 
 ## API overview
 
@@ -189,9 +315,44 @@ For local container testing, configure `.env`, then use `docker compose up --bui
 
 No automatic trade execution is implemented. No provider subscription or brokerage connection is required for the current research workflow. Free data access does not automatically grant redistribution or display rights; check the chosen provider's terms before sharing a deployment.
 
+## Local tone research, valuation and risk
+
+Company research includes a **Tone lab** tab. VADER remains the production news-tone method. The lab compares it with two allowlisted local research checkpoints: FinSense ModernBERT and ModernFinBERT. Every challenger result includes its pinned revision, text coverage, truncation and model probabilities. Softmax probabilities are uncalibrated tone estimates, not probabilities of investment success. SEC events, company releases, empty text and unsupported/unknown languages are excluded.
+
+Install the optional CPU research runtime, then explicitly cache the models (about 1.2 GB of model weights):
+
+```sh
+venv/bin/python -m pip install -r requirements-sentiment.txt
+venv/bin/python -m scripts.cache_sentiment_models
+venv/bin/python -m scripts.cache_sentiment_models --download
+```
+
+The default model cache is `.cache/huggingface` inside this repository, excluded from Git. `STOCKSCOPE_HF_CACHE` can select another cache. Web requests use cached safetensors only, prohibit remote model code and never download weights. Comparison is bounded to 30 saved news records and one active inference job. All research endpoints require the existing bearer session.
+
+The production Docker image installs the CPU-only tone runtime and bakes both pinned model revisions into `/opt/stockscope/models`. It verifies the cache and runs actual inference in offline mode during the build; incomplete downloads or incompatible models fail the build. Runtime model downloads stay disabled, and no model token or persistent model volume is needed. Allow at least 3 GiB RAM for inference alongside API and collection work. `INSTALL_SENTIMENT_MODELS=false` is an explicit build-time opt-out for deployments that only need the base app. Locally, `python -m scripts.cache_sentiment_models --verify --smoke-test` checks the same cache without downloading.
+
+FinSense's author-declared weight license is Apache-2.0, but its Financial PhraseBank training data carries noncommercial terms. ModernFinBERT is author-tagged Apache-2.0 with incomplete training-source disclosure. These are research candidates; the app does not certify commercial rights or claim either model improves investment performance. See the exact model-card links in the lab.
+
+For a reproducible comparison and explicit annotation workflow:
+
+```sh
+venv/bin/python -m scripts.benchmark_sentiment AAPL --limit 12 --template /tmp/aapl-labels.json
+venv/bin/python -m scripts.benchmark_sentiment AAPL --limit 12 --compare --output /tmp/aapl-tone-comparison.json
+# Fill explicit positive/neutral/negative labels in the template, then evaluate:
+venv/bin/python -m scripts.benchmark_sentiment AAPL --limit 12 --compare --labels /tmp/aapl-labels.json --output /tmp/aapl-tone-evaluation.json
+```
+
+Templates start with null labels. Accuracy and macro-F1 are unavailable until annotations are supplied; model agreement is not ground truth. Sample identifiers and text hashes reject annotations for changed text. These commands read saved evidence without replacing production scores or collecting new articles.
+
+**Business quality & valuation** appears in company Overview and Financials. It separates operating metrics from price-based ratios, retaining dates, unknown inputs and provider-declared financial currency. Cross-source ratios require matching supported currencies, a recent timestamped quote and dated four-quarter financials. Provider operating cash flow minus CapEx is not treated as verified FCFF or FCFE. Editable equity cash-flow scenarios use the user's explicit FCFE and share assumptions with cash-flow multiples; they are illustrative, save as a local company draft, and are not DCF forecasts or buy/sell ratings. Refreshed evidence preserves those assumptions; Reset uses current quote defaults. Tone annotations are tied to article IDs and text hashes. Saved tone reports are dated snapshots checked against current samples before restoration; changed samples withhold incompatible reports and labels while preserving them for local export.
+
+Saved backtests now include a **Risk profile** from QuantStats 0.0.77, the release pinned for this app's Python 3.9 environment. It uses the saved strategy and benchmark equity curves, including initial cash to first saved close. Sharpe/Sortino use zero risk-free rate, 252 sessions per year and the documented sample/downside estimators. Undefined ratios remain unavailable; measured zero volatility remains zero. Drawdown duration uses observed underwater sessions and calendar time, with recovery sessions excluded. Saved experiments and their data hashes remain unchanged.
+
+New read-only routes: `GET /api/valuation/{symbol}`, `GET /api/sentiment-lab/{symbol}`, `GET /api/sentiment-lab/{symbol}/labels`, and `GET /api/trading/backtests/{run_id}/risk`. The lab's `POST /api/sentiment-lab/{symbol}/evaluate` compares explicit supplied annotations without saving changes. SEC collection stays disabled unless configured separately.
+
 ## Next implementation stages
 
-1. Connect the prepared Supabase schema, import the existing research, and verify a coordinated preview deployment. Add storage retention controls and a durable worker queue before scaling.
-2. Build long-term research notes, valuation scenarios, actual holdings/contributions, and benchmark-relative performance.
-3. Add a separate paper-trading journal with planned risk, execution costs, and drawdowns.
-4. Evaluate any predictive strategy on point-in-time data and unseen periods before exposing predictive claims.
+1. Verify backup restoration and a coordinated deployed preview of the connected Supabase schema. Add storage retention controls and a durable worker queue before scaling.
+2. Add long-term research notes, account-based draft sync, actual holdings/contributions, and further benchmark-relative performance views.
+3. Extend the paper journal with precommitted risk plans and independently verified exchange-session coverage.
+4. Validate strategies on unseen periods and licensed point-in-time data; add a paid Congress feed only after verifying its coverage and access terms.

@@ -8,7 +8,9 @@ export function researchReturn(value: string | null): { href: string; label: str
       ? 'Back to screener'
       : url.pathname === '/compare'
         ? 'Back to comparison'
-        : null
+        : url.pathname === '/disclosures'
+          ? 'Back to disclosures'
+          : null
     return label ? { href: `${url.pathname}${url.search}`, label } : null
   } catch {
     return null

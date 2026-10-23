@@ -341,7 +341,15 @@ async def lifespan(app):
         await asyncio.to_thread(repo.check_ready)
         # This release supports one API process, not a distributed job queue.
         await asyncio.to_thread(repo.interrupt_active_runs)
-    yield
+    from backend.trading import disclosure_collector
+    stop = asyncio.Event()
+    task = asyncio.create_task(disclosure_collector.run_scheduler(stop)) if disclosure_collector.enabled() else None
+    app.state.disclosure_collection_task = task
+    try:
+        yield
+    finally:
+        if task is not None:
+            await disclosure_collector.stop_scheduler(task, stop)
 
 
 app = FastAPI(

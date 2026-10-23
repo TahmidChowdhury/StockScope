@@ -9,10 +9,12 @@ const compiled = ts.transpileModule(fs.readFileSync(`${__dirname}/research-workf
 const api = {}
 vm.runInNewContext(compiled, { exports: api, URL, URLSearchParams, Intl, Date })
 
-test('company return links accept only the two local research workspaces', () => {
+test('company return links accept only the supported local research workspaces', () => {
   assert.equal(api.researchReturn('/screener?universe=custom&symbols=AAPL%2CMSFT').label, 'Back to screener')
   assert.equal(api.researchReturn('/compare?tickers=AAPL%2CMSFT').href, '/compare?tickers=AAPL%2CMSFT')
-  for (const destination of [null, '', 'https://example.com/compare', '//example.com/compare', '/\\example.com/compare', '/trading', '/compare/extra', '/%63ompare', '/compare\n']) {
+  assert.equal(api.researchReturn('/disclosures?member=Example%20Member&symbol=AAPL').label, 'Back to disclosures')
+  assert.equal(api.researchReturn('/disclosures?member=Example%20Member&symbol=AAPL').href, '/disclosures?member=Example%20Member&symbol=AAPL')
+  for (const destination of [null, '', 'https://example.com/compare', '//example.com/compare', '/\\example.com/compare', '/trading', '/compare/extra', '/disclosures/extra', '/%63ompare', '/compare\n']) {
     assert.equal(api.researchReturn(destination), null)
   }
 })
@@ -24,4 +26,7 @@ test('company links preserve the entire return selection without turning it into
   assert.equal(url.searchParams.get('returnTo'), '/compare?tickers=BRK-B,AAPL&sort=revenue')
   assert.equal(url.searchParams.get('sort'), null)
   assert.equal(api.companyResearchHref('AAPL', '//example.com/compare'), '/stock/AAPL')
+  const disclosure = new URL(api.companyResearchHref('MSFT', '/disclosures?member=Example%20Member&symbol=MSFT'), 'https://stockscope.local')
+  assert.equal(disclosure.searchParams.get('returnTo'), '/disclosures?member=Example%20Member&symbol=MSFT')
+  assert.equal(disclosure.searchParams.get('member'), null)
 })

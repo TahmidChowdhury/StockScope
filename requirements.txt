@@ -1,5 +1,7 @@
 streamlit
 pandas
+# Checksummed congressional disclosure snapshots; Python 3.9 and 3.11 wheels.
+pyarrow==21.0.0
 numpy
 matplotlib
 seaborn

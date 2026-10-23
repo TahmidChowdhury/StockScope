@@ -8,7 +8,8 @@ StockScope is a personal stock-research workspace for a long-term investing core
 - **Comparison and screening:** compare companies and filter a **curated 110-symbol universe**, or supply a custom universe. This is not a complete/current S&P 500 constituent list. Coverage counts distinguish failures, missing data, matches, and displayed results.
 - **SEC reported facts:** an explicit refresh collects primary financial facts and recent filings. The fundamentals page exposes periods, units, filing versions, and original links alongside the existing yfinance metrics; SEC facts do not silently replace TTM calculations.
 - **Research:** news text-tone scores describe saved articles; SEC filing events and company press releases are unscored. Publication dates are distinct from summary-generation dates, and unknown dates stay unknown.
-- **Refresh:** collect new source snapshots explicitly, with completion, partial-result, and failure status. Merely opening saved research does not imply it was refreshed.
+- **Disclosures:** House and Senate transaction snapshots refresh automatically, with original filing links, publisher coverage, amendment versions, and StockScope observation times. Search disclosures, open company research, and test a defined following rule.
+- **Refresh:** company research refreshes explicitly, with completion, partial-result, and failure status. Disclosure collection runs on its own schedule. Merely opening saved research does not imply it was refreshed.
 - **Shared watchlist:** saved analyzed symbols are shared across authenticated roles. This is not a holdings ledger or a measure of actual portfolio returns. Dashboard evidence counts include news and filing records, not just distinct articles.
 - **Workspace navigation:** dashboard, company research, financials, comparison, screening, and paper experiments share a responsive shell and watchlist. Saved backtests and paper portfolios have direct URLs. Screener selections carry into Compare; missing data and coverage remain visible.
 - **Browser drafts:** screening inputs/results/selections, comparison inputs/results, trading forms, per-portfolio order drafts, company valuation assumptions, and tone annotations/completed reports restore after refresh or return visits. Drafts use local browser storage separated by API connection and access role, not individual accounts or cross-device sync. Credentials remain in session storage. Saved snapshots retain their collection dates and do not trigger fresh screening, model inference, or trading actions. Clear controls affect only their local workspace; blocked or full browser storage displays an unsaved warning.
@@ -27,6 +28,7 @@ FastAPI backend (Railway)
         |-- Fundamentals / prices: yfinance
         |-- News: RSS / Yahoo / configured company IR / GDELT
         |-- Reported financial facts + filing events: SEC EDGAR
+        |-- Congressional disclosures: attributed, versioned public dataset snapshots
         |-- DATABASE_URL set: Supabase Postgres
         |   (versioned research, shared watchlist, collection outcomes)
         `-- DATABASE_URL absent: local JSON snapshots + in-memory jobs
@@ -70,7 +72,9 @@ Additional configuration:
 - `ACCESS_TOKEN_EXPIRE_MINUTES`: session lifetime; default 480 minutes.
 - `FRONTEND_ORIGINS`: comma-separated browser origins, such as `http://localhost:3000`.
 - `DATABASE_URL`: optional private Postgres connection; schema migration is required before API startup.
-- `STOCKSCOPE_DATA_DIR`: file-mode directory; defaults to root `data/`. Existing files are imported explicitly, never automatically.
+- `STOCKSCOPE_DATA_DIR`: file-mode directory; defaults to root `data/`. Existing research files are imported into Postgres explicitly.
+- `DISCLOSURE_COLLECTION_ENABLED`: defaults to enabled when `DATABASE_URL` is set. Explicit `false` pauses disclosure collection; explicit `true` also permits local file mode.
+- `DISCLOSURE_COLLECTION_INTERVAL_HOURS`: whole hours from 1–24, default 6. Failed attempts retry sooner.
 - `SEC_USER_AGENT`: app name and actual contact email; SEC facts remain disabled until configured.
 - `SEC_FACT_CONCEPTS`: optional concept allowlist to control storage (see `.env.example`).
 - `STOCKSCOPE_IR_ENABLED` / `STOCKSCOPE_GDELT_ENABLED`: default `true`; set `false` to disable either provider.
@@ -232,16 +236,89 @@ metadata must identify USD stock/ETF instruments. Current-stock and famous-membe
 selection can introduce survivorship and selection bias. Passing tests validates
 accounting and timing rules, not profitability.
 
-### Congress imports
+### Automatic Congress disclosures
 
-No paid provider or live feed is connected. Download the CSV header template from
-the Congress tab and supply source-backed transaction rows. Required columns in order:
+The **Disclosures** workspace at `/disclosures` connects collected and imported evidence to
+company research and historical experiments. Search transactions or filter by
+member, ticker, and buy/sell activity; filters and pagination live in the URL.
+Member cards summarize covered transactions across all dates, not current
+holdings or investment returns. Feed totals describe all matching records before
+pagination. Company overviews show the five latest covered disclosures for that
+ticker. A member's **Test following this member** action opens a prefilled Congress
+experiment; review its dates, costs, and execution rules before running it.
+
+The automatic source is [Austin Starks' congressional-stock-trades dataset](https://huggingface.co/datasets/austin-starks/congressional-stock-trades),
+a third-party normalization of official House and Senate reports. It needs no API
+key or paid subscription. Each refresh pins a dataset revision, verifies manifest
+checksums, and reads the current/previous calendar-year shards plus years already
+collected, so older captured reports continue to be checked for changes. Coverage,
+excluded rows, publisher timestamps, and original report links remain visible;
+the feed is neither complete nor real time. StockScope does not scrape the
+disclosure portals during these refreshes.
+
+The publisher labels the data `us-congressional-disclosure-restrictions`,
+not CC0 or unrestricted open data. Its [data-use notice](https://huggingface.co/datasets/austin-starks/congressional-stock-trades/blob/main/LICENSE_DATA.md)
+describes restrictions on commercial use, credit-rating decisions, and
+solicitation. This integration does not establish permission to monetize or
+redistribute the reports for every purpose.
+
+With `DATABASE_URL` configured, API startup automatically schedules collection.
+An empty database hydrates on the first check; later attempts respect the saved
+due time, normally every six hours. The existing always-running Railway API owns
+this schedule, so no separate cron service or GitHub secret is required. The
+schedule checks compact status every minute, including earlier retries requested
+by a manual refresh, without reloading all transaction rows.
+
+Admins can use **Refresh disclosures** in the workspace or run the same collector
+from the repository root with the private backend `.env` configured:
+
+```bash
+# Run only if the saved schedule is due:
+venv/bin/python -m scripts.collect_disclosures
+# Hydrate or refresh the current/previous-year history immediately:
+venv/bin/python -m scripts.collect_disclosures --force
+```
+
+`--force` bypasses the due time, not an active lease or disabled configuration.
+Set `DISCLOSURE_COLLECTION_ENABLED=false` and restart/redeploy the backend to
+pause collection; saved data remains available. For local file mode, explicitly
+set it to `true`. A future dedicated cron can run the same one-shot command, but
+the current API service must stay an always-running web service.
+
+Automatic evidence lives in the separate `congress-feed` document in
+`trading_documents`; existing CSV imports remain in `congress`. Updates are
+atomic, with a persisted 15-minute lease preventing overlapping writers. Each
+transaction version keeps its first-observed timestamp. Later versions are
+retained, and a source-supplied supersession is recorded without rewriting the
+earlier economic fields. A changed existing version, invalid snapshot, or failed
+download leaves the previous evidence intact and surfaces a status message.
+Failures retry after 5 minutes, doubling to a maximum of one hour. Interrupted
+workers recover after their lease expires. History is not pruned automatically;
+the collector stops before exceeding 50,000 retained versions. Older captured
+years remain stored and are revalidated while available in the source. A missing
+previously collected version in a fetched year fails the refresh for review;
+it cannot silently remain current under a newer source revision.
+
+The publisher's availability dates estimate the end of the filing day in New
+York; they are not verified publication timestamps. Automatic backtests therefore
+use the date StockScope first observed the original event by default. Backfilling
+old reports does not create earlier signals. The explicit exploratory option
+`allow_estimated_disclosure_dates` permits historical filing-day estimates and
+labels the resulting look-ahead risk. Tests copy an eligible original version
+once; later corrections are not new trades. Saved experiments retain their
+selected disclosure versions and source snapshot metadata.
+
+### Manual Congress imports
+
+Download the CSV header template from the Disclosure imports tab and supply
+source-backed transaction rows. Required columns in order:
 
 ```csv
 disclosure_id,member,owner,symbol,side,transaction_date,available_date,asset_type,amount_range,source_url
 ```
 
-`disclosure_id` identifies one transaction row, not an entire multi-row report.
+`disclosure_id` identifies one transaction row, not an entire multi-row report;
+the `cst:` prefix is reserved for automatically collected records.
 Use ISO dates (`YYYY-MM-DD`); `side` is `buy` or `sell`; `asset_type` is `stock`,
 `etf`, `option`, or `other`. Every field is required. `source_url` must be HTTPS;
 URLs are retained as evidence links and are not fetched by the importer. Quote
@@ -254,9 +331,9 @@ the date the public could access it. Verify against the
 Imports validate the whole batch before saving. Identical IDs/content are skipped;
 conflicting IDs reject the batch and cannot rewrite prior history. Amendments are
 not supported: do not upload a correction as a new trade. Maximum import size is
-2 MB/5,000 rows, and the workspace holds up to 10,000 disclosures.
+2 MB/5,000 rows, and the manual-import store holds up to 10,000 disclosures.
 
-Congress tests start with cash and use only records with availability dates inside
+Congress tests start with cash and use only records with the selected signal dates inside
 the requested window. An optional extra calendar-day delay precedes the next-open
 rule. Each buy uses a fixed fraction of initial cash, capped by available cash and
 the configured symbol weight at execution. A sale exits the copied symbol. Owners
@@ -267,7 +344,9 @@ rule against a benchmark, not a reconstruction of a politician's actual return.
 
 Trading API routes live under `/api/trading`: `portfolios`, portfolio `orders`,
 `refresh`, and `export`; `backtests` and per-run `export`; `congress`,
-`congress/template`, and `congress/import`. All require bearer authentication.
+`congress/template`, and `congress/import`. Collection health is available at
+`GET /congress/collection`; admins can request `POST /congress/collection/refresh`.
+All require bearer authentication.
 
 ## API overview
 
@@ -310,6 +389,7 @@ Railway:
 - Set `DATABASE_URL` after the migration/import below, or mount persistent file-mode storage.
 - If `DATABASE_URL` uses the direct `db.<project-ref>.supabase.co` host, enable **Settings → Networking → Enable Outbound IPv6** on the Railway API service. Outbound IPv6 is opt-in. Alternatively use a verified Supabase Session pooler URI.
 - Run one API worker/replica and avoid overlapping deployments; persistent status is not a distributed queue.
+- Disclosure hydration and scheduled refreshes start automatically with `DATABASE_URL`; no additional cron service is required. Set `DISCLOSURE_COLLECTION_ENABLED=false` to pause them. Check the Disclosures status card after deployment for source freshness, retained version count, and the next attempt.
 
 For local container testing, configure `.env`, then use `docker compose up --build`. The Docker build context excludes secrets, environments, generated research, and dependency directories. The frontend API URL is supplied as a build argument.
 

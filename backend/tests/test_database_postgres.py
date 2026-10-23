@@ -5,16 +5,19 @@ No table/schema is dropped; fixture records are removed through the repository.
 """
 
 import os
+import re
+import threading
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.exc import DBAPIError
 
 from backend.db import ResearchRepository
 from backend.db.engine import create_database_engine
-from backend.db.models import Base, ImportBatch
+from backend.db.models import Base, ImportBatch, TradingDocument
 
 
 @pytest.fixture(scope="module")
@@ -86,6 +89,86 @@ def test_postgres_concurrent_job_creation_claims_only_once(repository, symbols):
         results = list(executor.map(lambda _: repository.create_run(symbols[0], ["news"]), range(8)))
     assert sum(result["created"] for result in results) == 1
     assert len({result["run_id"] for result in results}) == 1
+
+
+def test_postgres_disclosure_lease_prevents_overlapping_source_requests(repository, monkeypatch):
+    from backend import trading
+    from backend.services import research
+    from backend.trading import disclosure_collector as collector
+    key = f"run-{uuid4()}"
+    monkeypatch.setattr(collector, "DOCUMENT_ID", key)
+    monkeypatch.setattr(research, "repository", lambda: repository)
+    monkeypatch.setenv("DISCLOSURE_COLLECTION_ENABLED", "true")
+    started, release = threading.Event(), threading.Event()
+    requests = []
+    def fetch(**kwargs):
+        requests.append(1)
+        started.set()
+        assert release.wait(timeout=15)
+        return {"records": [{"disclosure_id": "fixture:v1", "event_id": "fixture", "version": 1,
+                             "symbol": "AAPL", "superseded_at": None}],
+                "metadata": {"revision": "fixture"}, "unchanged": False}
+    monkeypatch.setattr(trading, "disclosure_source", SimpleNamespace(fetch_snapshot=fetch), raising=False)
+    try:
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            first = executor.submit(collector.collect, force=True)
+            try:
+                assert started.wait(timeout=10)
+                others = list(executor.map(lambda _: collector.collect(force=True), range(4)))
+                assert all(result["state"] == "running" for result in others)
+                assert requests == [1]
+            finally:
+                release.set()
+            assert first.result(timeout=10)["state"] == "completed"
+    finally:
+        with repository.engine.begin() as connection:
+            connection.execute(TradingDocument.__table__.delete().where(TradingDocument.id == key))
+
+
+def test_postgres_collection_metadata_does_not_select_the_history_payload(repository, monkeypatch):
+    from backend import trading
+    from backend.services import research
+    from backend.trading import disclosure_collector as collector, storage
+    key = f"run-{uuid4()}"
+    monkeypatch.setattr(collector, "DOCUMENT_ID", key)
+    monkeypatch.setattr(research, "repository", lambda: repository)
+    monkeypatch.setenv("DISCLOSURE_COLLECTION_ENABLED", "true")
+    source = SimpleNamespace(fetch_snapshot=lambda **kwargs: {
+        "records": [{"disclosure_id": "fixture:v1", "event_id": "fixture", "version": 1,
+                     "symbol": "AAPL", "superseded_at": None}],
+        "metadata": {"revision": "fixture"}, "unchanged": False})
+    monkeypatch.setattr(trading, "disclosure_source", source, raising=False)
+    statements = []
+    def capture(connection, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+    try:
+        assert collector.collect(force=True)["state"] == "completed"
+        original = storage.read(key)
+        event.listen(repository.engine, "before_cursor_execute", capture)
+        try:
+            source.fetch_snapshot = lambda **kwargs: {"records": [], "metadata": kwargs["previous"], "unchanged": True}
+            unchanged = collector.collect(force=True)
+            assert unchanged["counts"]["unchanged"] is True
+            assert unchanged["data_revision"] == original["revision"]
+            def fail(**kwargs):
+                raise RuntimeError("private upstream diagnostic")
+            source.fetch_snapshot = fail
+            assert collector.collect(force=True)["state"] == "failed"
+            assert collector.status()["row_count"] == 1
+        finally:
+            event.remove(repository.engine, "before_cursor_execute", capture)
+        # Selecting payload->'collection' is small; selecting the payload column
+        # itself would download every historical row on each unchanged check.
+        assert statements
+        assert not any(re.search(r"(?:SELECT\s+|,\s*)trading_documents\.payload(?:\s*,|\s+FROM|\s+AS)",
+                                 statement, re.IGNORECASE) for statement in statements)
+        after = storage.read(key)
+        assert after["records"] == original["records"]
+        assert after["source"] == original["source"]
+        assert after["revision"] == original["revision"]
+    finally:
+        with repository.engine.begin() as connection:
+            connection.execute(TradingDocument.__table__.delete().where(TradingDocument.id == key))
 
 
 def test_postgres_concurrent_identical_import_is_applied_once(repository, symbols):

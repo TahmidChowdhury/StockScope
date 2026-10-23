@@ -17,6 +17,7 @@ import SecFactsPanel from './SecFactsPanel'
 import SentimentLabPanel from './SentimentLabPanel'
 import ValuationPanel from './ValuationPanel'
 import CompanyLogo from './CompanyLogo'
+import CompanyDisclosures from './CompanyDisclosures'
 import type { StockMetadata } from '@/types'
 import { researchReturn } from '@/lib/research-workflow'
 
@@ -160,6 +161,9 @@ export default function StockAnalysisHub({
             </div>
             <div className="mt-5">
               <ValuationPanel symbol={symbol} />
+            </div>
+            <div className="mt-5">
+              <CompanyDisclosures symbol={symbol} />
             </div>
             <div className="surface mt-5 flex items-start gap-3 px-5 py-4">
               <ChartNoAxesCombined className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />

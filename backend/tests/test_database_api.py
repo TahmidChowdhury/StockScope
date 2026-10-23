@@ -122,6 +122,24 @@ def test_restart_marks_unfinished_work_failed_and_explicit_delete_purges(context
         repo.read_snapshot_reference(reference)
 
 
+def test_lifespan_starts_and_stops_configured_disclosure_scheduler(context, monkeypatch):
+    api, _, _ = context
+    from backend.trading import disclosure_collector
+    monkeypatch.setenv("DISCLOSURE_COLLECTION_ENABLED", "true")
+    async def exercise():
+        started = asyncio.Event()
+        async def scheduler(stop):
+            started.set()
+            await stop.wait()
+        monkeypatch.setattr(disclosure_collector, "run_scheduler", scheduler)
+        async with api.lifespan(api.app):
+            await asyncio.wait_for(started.wait(), timeout=1)
+            task = api.app.state.disclosure_collection_task
+            assert not task.done()
+        assert task.done()
+    asyncio.run(exercise())
+
+
 def test_storage_failure_never_falls_back_to_local_files(context, monkeypatch):
     api, repo, directory = context
     files = directory / "files"

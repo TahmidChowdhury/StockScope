@@ -22,6 +22,8 @@ export default function AppShell({
     ? 'compare'
     : pathname.startsWith('/screener')
       ? 'screener'
+      : pathname.startsWith('/disclosures')
+        ? 'disclosures'
       : pathname.startsWith('/trading')
         ? 'trading'
         : 'dashboard'
@@ -29,6 +31,7 @@ export default function AppShell({
     dashboard: 'Overview',
     compare: 'Compare',
     screener: 'Screener',
+    disclosures: 'Disclosures',
     trading: 'Paper & tests',
   }[activePage]
   return (

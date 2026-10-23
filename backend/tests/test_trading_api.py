@@ -167,6 +167,86 @@ def test_congress_import_and_disclosure_aware_backtest_with_snapshot_export(cont
     assert len(delayed['result']['pending']) == 1
 
 
+def test_congress_browse_filters_and_summaries_cover_records_beyond_the_page(context):
+    client, headers, *_ = context
+    rows = [
+        disclosure(disclosure_id='row-1'),
+        disclosure(disclosure_id='row-2', owner='member', symbol='MSFT', side='sell',
+                   transaction_date='2025-01-03', available_date='2025-01-08'),
+        disclosure(disclosure_id='row-3', member='Other Member', owner='dependent', side='sell',
+                   transaction_date='2025-01-04', available_date='2025-01-10'),
+        disclosure(disclosure_id='row-4', member='Other Member', symbol='NVDA',
+                   transaction_date='2025-01-05', available_date='2025-01-12'),
+        disclosure(disclosure_id='row-5', member='Third Member', asset_type='option',
+                   transaction_date='2025-01-05', available_date='2025-01-15'),
+    ]
+    assert client.post('/api/trading/congress/import', headers=headers['admin'],
+                       json={'csv_text': csv_text(rows)}).status_code == 200
+
+    # Totals cover the full imported evidence, including asset types excluded from copying tests.
+    response = client.get('/api/trading/congress', headers=headers['guest'],
+                          params={'symbol': ' aapl ', 'limit': 1, 'offset': 1})
+    assert response.status_code == 200
+    data = response.json()
+    assert [row['disclosure_id'] for row in data['records']] == ['row-3']
+    assert (data['total'], data['offset']) == (3, 1)
+    assert data['summary'] == {'total': 5, 'buys': 3, 'sells': 2, 'symbol_count': 3, 'member_count': 3,
+                               'latest_available_date': '2025-01-15', 'average_lag_days': 6.4}
+    assert data['filtered_summary'] == {'total': 3, 'buys': 2, 'sells': 1, 'symbol_count': 1, 'member_count': 3,
+                                        'latest_available_date': '2025-01-15', 'average_lag_days': 6.67}
+    assert data['members'] == ['Example Member', 'Other Member', 'Third Member']
+    assert data['symbols'] == ['AAPL', 'MSFT', 'NVDA']
+    profiles = {profile['member']: profile for profile in data['member_profiles']}
+    assert profiles['Example Member']['total'] == 2
+    assert profiles['Example Member']['buys'] == profiles['Example Member']['sells'] == 1
+    assert profiles['Example Member']['average_lag_days'] == 4.5
+    assert profiles['Other Member']['latest_available_date'] == '2025-01-12'
+    assert profiles['Third Member']['total'] == 1
+    assert data['mode'] == 'csv_import' and data['live_feed_connected'] is False
+    assert data['provenance']['source'] == 'user_supplied_csv'
+    assert data['provenance']['dates_verified'] is False
+    assert data['provenance']['limitations']
+    assert data['last_import']['inserted'] == 5
+
+    cases = [
+        ({'symbol': 'AAPL', 'side': 'sell'}, ['row-3']),
+        ({'member': 'Example Member', 'side': 'sell', 'q': 'msft'}, ['row-2']),
+        ({'q': '  SpOuSe  '}, ['row-5', 'row-4', 'row-1']),
+        ({'q': 'row-4'}, ['row-4']),
+        ({'symbol': 'AAPL', 'q': 'MSFT'}, []),
+    ]
+    for params, expected in cases:
+        filtered = client.get('/api/trading/congress', headers=headers['demo'], params=params).json()
+        assert [row['disclosure_id'] for row in filtered['records']] == expected
+        assert filtered['total'] == filtered['filtered_summary']['total'] == len(expected)
+        assert filtered['summary'] == data['summary']
+        assert filtered['member_profiles'] == data['member_profiles']
+
+
+def test_congress_empty_browse_is_authenticated_and_has_no_invented_statistics(context):
+    client, headers, *_ = context
+    assert client.get('/api/trading/congress').status_code == 401
+    response = client.get('/api/trading/congress', headers=headers['guest'], params={'q': 'nothing'})
+    assert response.status_code == 200
+    data = response.json()
+    assert data['records'] == data['members'] == data['symbols'] == data['member_profiles'] == []
+    assert data['last_import'] is None
+    assert data['summary'] == data['filtered_summary'] == {
+        'total': 0, 'buys': 0, 'sells': 0, 'symbol_count': 0, 'member_count': 0,
+        'latest_available_date': None, 'average_lag_days': None,
+    }
+
+
+@pytest.mark.parametrize('params', [
+    {'symbol': 'AA/PL'}, {'symbol': 'X' * 11}, {'side': 'hold'}, {'side': 'Buy'},
+    {'q': 'x' * 121}, {'member': 'x' * 151}, {'offset': -1}, {'offset': 60001},
+    {'limit': 0}, {'limit': 201},
+])
+def test_congress_browse_rejects_invalid_or_unbounded_filters(context, params):
+    client, headers, *_ = context
+    assert client.get('/api/trading/congress', headers=headers['guest'], params=params).status_code == 422
+
+
 @pytest.mark.parametrize('name_input, expected', [
     ({'name': '  Walkthrough · AAPL + MSFT  '}, 'Walkthrough · AAPL + MSFT'),
     ({'name': '   '}, None),
@@ -285,13 +365,24 @@ def test_backtest_risk_missing_dependency_is_feature_scoped_and_missing_run_is_n
 @pytest.mark.parametrize('change', [
     {"available_date": "2024-01-01"}, {"available_date": "2099-01-01"}, {"available_date": ""},
     {"side": "purchase"}, {"asset_type": ""}, {"symbol": "../../file"}, {"source_url": "javascript:alert(1)"},
-    {"source_url": "https://user:secret@example.com/doc"},
+    {"source_url": "https://user:secret@example.com/doc"}, {"member": "x" * 151},
 ])
 def test_invalid_disclosure_batch_is_atomic(context, change):
     client, headers, *_ = context
     response = client.post('/api/trading/congress/import', headers=headers['admin'], json={"csv_text": csv_text([disclosure(), disclosure(disclosure_id='bad-row', **change)])})
     assert response.status_code == 422
+    assert storage.read('congress') is None
     assert client.get('/api/trading/congress', headers=headers['admin']).json()['total'] == 0
+
+
+def test_imported_member_at_length_limit_remains_filterable(context):
+    client, headers, *_ = context
+    member = 'x' * 150
+    response = client.post('/api/trading/congress/import', headers=headers['admin'],
+                           json={'csv_text': csv_text([disclosure(member=member)])})
+    assert response.status_code == 200
+    data = client.get('/api/trading/congress', headers=headers['guest'], params={'member': member}).json()
+    assert data['total'] == 1 and data['records'][0]['member'] == member
 
 
 def test_conflicting_import_never_rewrites_history(context):

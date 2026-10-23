@@ -17,11 +17,27 @@ export function researchReturn(value: string | null): { href: string; label: str
   }
 }
 
-export function companyResearchHref(symbol: string, returnTo: string): string {
+export function companyResearchHref(symbol: string, returnTo: string, tab?: 'news' | 'tone' | 'sources' | 'analysis'): string {
+  return companyWorkspaceHref('stock', symbol, returnTo, tab)
+}
+
+export function companyFundamentalsHref(symbol: string, returnTo: string): string {
+  return companyWorkspaceHref('fundamentals', symbol, returnTo)
+}
+
+function companyWorkspaceHref(workspace: 'stock' | 'fundamentals', symbol: string, returnTo: string, tab?: string): string {
   const destination = researchReturn(returnTo)
   const params = new URLSearchParams()
   if (destination) params.set('returnTo', destination.href)
-  return `/stock/${encodeURIComponent(symbol)}${params.size ? `?${params}` : ''}`
+  if (tab) params.set('tab', tab)
+  return `/${workspace}/${encodeURIComponent(symbol)}${params.size ? `?${params}` : ''}`
+}
+
+/** An explicit company action starts a comparison with this ticker selected. */
+export function companyComparisonHref(symbol: string): string {
+  const ticker = symbol.trim().toUpperCase().replace(/\./g, '-')
+  if (!/^[A-Z][A-Z0-9-]{0,9}$/.test(ticker)) return '/compare'
+  return `/compare?${new URLSearchParams({ tickers: ticker })}`
 }
 
 export function snapshotTime(timestamp: string): string {

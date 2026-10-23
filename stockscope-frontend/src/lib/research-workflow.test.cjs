@@ -30,3 +30,31 @@ test('company links preserve the entire return selection without turning it into
   assert.equal(disclosure.searchParams.get('returnTo'), '/disclosures?member=Example%20Member&symbol=MSFT')
   assert.equal(disclosure.searchParams.get('member'), null)
 })
+
+test('financial research preserves disclosure context through the company round trip', () => {
+  const returnTo = '/disclosures?member=Michael+Rulli&symbol=GOOG&offset=20'
+  const financials = new URL(api.companyFundamentalsHref('GOOG', returnTo), 'https://stockscope.local')
+  assert.equal(financials.pathname, '/fundamentals/GOOG')
+  assert.equal(financials.searchParams.get('returnTo'), returnTo)
+  const company = new URL(api.companyResearchHref('GOOG', financials.searchParams.get('returnTo')), 'https://stockscope.local')
+  assert.equal(api.researchReturn(company.searchParams.get('returnTo')).href, returnTo)
+  assert.equal(api.companyFundamentalsHref('GOOG', '//example.com/disclosures'), '/fundamentals/GOOG')
+})
+
+test('company comparison links explicitly select a normalized single ticker', () => {
+  assert.equal(api.companyComparisonHref('GOOG'), '/compare?tickers=GOOG')
+  assert.equal(api.companyComparisonHref(' brk.b '), '/compare?tickers=BRK-B')
+  for (const invalid of ['', 'GOOG,MSFT', 'GOOG&tickers=MSFT', '../../compare', 'A'.repeat(11)]) {
+    assert.equal(api.companyComparisonHref(invalid), '/compare')
+  }
+})
+
+test('empty news can open research summary without losing disclosure filters', () => {
+  const returnTo = '/disclosures?member=Michael+Rulli&symbol=GOOG'
+  const summary = new URL(api.companyResearchHref('GOOG', returnTo, 'analysis'), 'https://stockscope.local')
+  assert.equal(summary.pathname, '/stock/GOOG')
+  assert.equal(summary.searchParams.get('tab'), 'analysis')
+  assert.equal(summary.searchParams.get('returnTo'), returnTo)
+  assert.equal(summary.searchParams.get('member'), null)
+  assert.equal(api.companyResearchHref('GOOG', 'https://example.com', 'analysis'), '/stock/GOOG?tab=analysis')
+})

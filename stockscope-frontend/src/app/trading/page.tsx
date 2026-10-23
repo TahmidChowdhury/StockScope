@@ -19,7 +19,7 @@ import BacktestRiskPanel from '@/components/BacktestRiskPanel'
 import DisclosureCollectionStatus from '@/components/DisclosureCollectionStatus'
 import { getAuthSession } from '@/lib/api'
 import { useWorkspaceDraft } from '@/hooks/useWorkspaceDraft'
-import { BacktestDraft, CongressDraft, PaperOrderDraft, PaperSetupDraft, applyBacktestMember, applyBacktestSymbols, isBacktestDraft, isBacktestWorkspace, isCongressDraft, isPaperOrderDraft, isPaperSetupDraft, resolveMemberBacktestHandoff } from '@/lib/trading-draft'
+import { BacktestDraft, CongressDraft, PaperOrderDraft, PaperSetupDraft, applyBacktestMember, applyBacktestSymbols, buildBacktestRequest, isBacktestDraft, isBacktestWorkspace, isCongressDraft, isPaperOrderDraft, isPaperSetupDraft, resolveMemberBacktestHandoff } from '@/lib/trading-draft'
 import { loadSavedTradingRoute, savedTradingHref, tradingRoute } from '@/lib/trading-route'
 import { companyResearchHref } from '@/lib/research-workflow'
 import {
@@ -978,24 +978,7 @@ function TradingWorkspace() {
                 setStart(dates.start)
                 setEnd(dates.end)
                 void act(async () => {
-                  const r = await tradingRequest<Run>('/backtests', {
-                    name: backtestLabel.trim() || null,
-                    strategy,
-                    ...dates,
-                    initial_cash: capital,
-                    benchmark,
-                    costs,
-                    symbols: strategy === 'congress' ? [] : symbols
-                      .split(',')
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                    ...(strategy === 'sma' ? { fast_window: fast, slow_window: slow } : {}),
-                    member,
-                    trade_fraction: tradeFraction / 100,
-                    max_weight: maxWeight / 100,
-                    disclosure_delay_days: delay,
-                    allow_estimated_disclosure_dates: strategy === 'congress' && allowEstimatedDates,
-                  })
+                  const r = await tradingRequest<Run>('/backtests', buildBacktestRequest(backtestDraft.value, dates))
                   setRun(r)
                   router.push(savedTradingHref('backtest', r.id), { scroll: false })
                   await reloadLists()

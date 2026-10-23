@@ -2,12 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { skipToken, useQuery } from '@tanstack/react-query'
 import {
   ArrowLeft,
   ArrowUpRight,
   ChartNoAxesCombined,
   FileText,
   Newspaper,
+  Scale,
 } from 'lucide-react'
 import PriceChart from './PriceChart'
 import NewsComponent from './NewsComponent'
@@ -19,7 +21,7 @@ import ValuationPanel from './ValuationPanel'
 import CompanyLogo from './CompanyLogo'
 import CompanyDisclosures from './CompanyDisclosures'
 import type { StockMetadata } from '@/types'
-import { researchReturn } from '@/lib/research-workflow'
+import { companyComparisonHref, companyFundamentalsHref, researchReturn } from '@/lib/research-workflow'
 
 interface StockAnalysisHubProps {
   symbol: string
@@ -48,6 +50,16 @@ export default function StockAnalysisHub({
     ? search.get('tab')
     : 'overview'
   const company = stocks.find((stock) => stock.symbol === symbol)
+  // Observe the metrics panel's cached response without issuing another request.
+  const { data: companyInfo } = useQuery<{ displayName?: string }>({
+    queryKey: ['company-info', symbol],
+    queryFn: skipToken,
+  })
+  const companyName = company?.companyName && company.companyName !== symbol
+    ? company.companyName
+    : typeof companyInfo?.displayName === 'string' && companyInfo.displayName.trim()
+      ? companyInfo.displayName
+      : symbol
   const returnDestination = researchReturn(search.get('returnTo'))
   const selectTab = (tab: string) => {
     const params = new URLSearchParams(search.toString())
@@ -72,7 +84,7 @@ export default function StockAnalysisHub({
           <div className="min-w-0">
             <p className="eyebrow mb-1">Company research</p>
             <h1 className="page-title break-words">
-              {company?.companyName || symbol}
+              {companyName}
             </h1>
             <p className="mt-1 text-xs font-medium text-slate-400">
               {symbol}
@@ -81,13 +93,19 @@ export default function StockAnalysisHub({
             </p>
           </div>
         </div>
-        <Link
-          href={`/fundamentals/${encodeURIComponent(symbol)}${returnDestination ? `?${new URLSearchParams({ returnTo: returnDestination.href })}` : ''}`}
-          className="button-primary"
-        >
-          Explore financials
-          <ArrowUpRight className="h-4 w-4" />
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          <Link href={companyComparisonHref(symbol)} className="button-secondary">
+            <Scale className="h-4 w-4" />
+            Compare company
+          </Link>
+          <Link
+            href={companyFundamentalsHref(symbol, returnDestination?.href || '')}
+            className="button-primary"
+          >
+            Explore financials
+            <ArrowUpRight className="h-4 w-4" />
+          </Link>
+        </div>
       </div>
       {search.get('collection') === 'partial' && (
         <p

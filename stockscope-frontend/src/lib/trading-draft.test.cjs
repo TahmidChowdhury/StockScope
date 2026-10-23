@@ -52,6 +52,65 @@ test('refreshing a research handoff preserves later edits while a fresh Compare 
   assert.equal(api.applyBacktestSymbols(plainEdited, ['AAPL'], null), plainEdited)
 })
 
+test('a company comparison replaces a Congress strategy without discarding experiment settings', () => {
+  const original = {
+    strategy: 'congress', symbols: 'AAPL', member: 'Michael Rulli',
+    backtestLabel: 'Research baseline', start: '2025-01-01', end: '2026-10-21',
+    capital: 20000, benchmark: 'SPY', costs: { slippage_bps: 5, spread_bps: 2, commission: 1 },
+  }
+  const applied = api.applyBacktestSymbols(original, ['GOOG', 'MSFT'], 'company-handoff')
+  assert.equal(applied.strategy, 'buy_hold')
+  assert.equal(applied.symbols, 'GOOG, MSFT')
+  for (const key of ['member', 'backtestLabel', 'start', 'end', 'capital', 'benchmark', 'costs']) {
+    assert.equal(applied[key], original[key])
+  }
+  const edited = { ...applied, strategy: 'congress', symbols: 'NVDA', end: '2026-09-30' }
+  assert.equal(api.applyBacktestSymbols(edited, ['GOOG', 'MSFT'], 'company-handoff'), edited)
+  assert.equal(api.applyBacktestSymbols(original, ['GOOG'], 'one-company').strategy, 'buy_hold')
+  assert.equal(api.applyBacktestSymbols({ ...original, strategy: 'sma' }, ['GOOG'], 'one-sma').strategy, 'sma')
+  assert.equal(api.applyBacktestSymbols({ ...original, strategy: 'sma' }, ['GOOG', 'MSFT'], 'multiple-sma').strategy, 'buy_hold')
+})
+
+test('stock requests exclude incomplete hidden Congress inputs while preserving the draft', () => {
+  const draft = {
+    strategy: 'congress', symbols: 'AAPL', member: '', tradeFraction: 0, maxWeight: 0, delay: 1000,
+    allowEstimatedDates: true, backtestLabel: '  Research baseline  ', start: '2024-01-01', end: '2024-12-31',
+    capital: 20000, benchmark: 'SPY', costs: { slippage_bps: 5, spread_bps: 2, commission: 1 }, fast: 0, slow: 0,
+  }
+  const applied = api.applyBacktestSymbols(draft, ['GOOG', 'MSFT'], 'company-request')
+  const before = JSON.stringify(applied)
+  const request = api.buildBacktestRequest(applied, { start: '2025-01-01', end: '2026-10-21' })
+  const payload = JSON.parse(JSON.stringify(request))
+  assert.deepEqual(payload, {
+    name: 'Research baseline', strategy: 'buy_hold', start: '2025-01-01', end: '2026-10-21',
+    initial_cash: 20000, benchmark: 'SPY', costs: draft.costs, symbols: ['GOOG', 'MSFT'],
+  })
+  assert.equal(JSON.stringify(applied), before)
+  const sma = api.buildBacktestRequest({ ...applied, strategy: 'sma', symbols: 'GOOG', fast: 20, slow: 50 }, { start: '2025-01-01', end: '2026-10-21' })
+  assert.equal(sma.fast_window, 20)
+  assert.equal(sma.slow_window, 50)
+  for (const key of ['member', 'trade_fraction', 'max_weight', 'disclosure_delay_days', 'allow_estimated_disclosure_dates']) {
+    assert.equal(Object.hasOwn(sma, key), false)
+  }
+})
+
+test('Congress requests retain active disclosure controls and exclude stock-only controls', () => {
+  const draft = {
+    strategy: 'congress', symbols: 'invalid hidden ticker', member: 'Michael Rulli', tradeFraction: 10, maxWeight: 25,
+    delay: 3, allowEstimatedDates: true, backtestLabel: '', capital: 10000, benchmark: 'SPY',
+    costs: { slippage_bps: 5, spread_bps: 2, commission: 0 }, fast: 0, slow: 0,
+  }
+  const request = JSON.parse(JSON.stringify(api.buildBacktestRequest(draft, { start: '2025-01-01', end: '2026-10-21' })))
+  assert.equal(request.member, draft.member)
+  assert.equal(request.trade_fraction, 0.1)
+  assert.equal(request.max_weight, 0.25)
+  assert.equal(request.disclosure_delay_days, 3)
+  assert.equal(request.allow_estimated_disclosure_dates, true)
+  assert.deepEqual(request.symbols, [])
+  assert.equal(Object.hasOwn(request, 'fast_window'), false)
+  assert.equal(Object.hasOwn(request, 'slow_window'), false)
+})
+
 test('member backtest handoffs wait for known imported members and reject invalid or missing selections', () => {
   const member = "Zoë O'Neil"
   assert.equal(api.resolveMemberBacktestHandoff('/trading', 'backtest', member, 'handoff-1', [], false).status, 'pending')

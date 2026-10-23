@@ -70,6 +70,22 @@ def finite_number(value) -> Optional[float]:
     return number if math.isfinite(number) else None
 
 
+def latest_daily_close(history):
+    """Use the latest observed close when a provider appends an incomplete row.
+
+    A change requires the immediately preceding provider row. Do not bridge a
+    missing session and label its multi-session move as a daily change.
+    """
+    if history.empty or "Close" not in history.columns:
+        return None, None, None
+    for position in range(len(history) - 1, -1, -1):
+        current = finite_number(history["Close"].iloc[position])
+        if current is not None:
+            previous = finite_number(history["Close"].iloc[position - 1]) if position else None
+            return current, previous, parse_timestamp(history.index[position])
+    return None, None, None
+
+
 # Add utility functions directly to replace the removed ones
 def get_available_tickers():
     """Read the shared watchlist from the configured authoritative storage."""
@@ -182,18 +198,15 @@ def get_company_info(symbol: str) -> tuple[bool, dict]:
         # failure should not discard available company metrics.
         try:
             hist = ticker.history(period="5d", timeout=10)
-            if not hist.empty and "Close" in hist.columns:
-                current_price = finite_number(hist["Close"].iloc[-1])
+            current_price, previous_price, history_as_of = latest_daily_close(hist)
+            if current_price is not None:
                 company_data["lastTradePrice"] = current_price
-                history_as_of = parse_timestamp(hist.index[-1])
                 company_data["history_as_of"] = history_as_of.isoformat() if history_as_of else None
-                if len(hist) >= 2:
-                    previous_price = finite_number(hist["Close"].iloc[-2])
-                    if current_price is not None and previous_price is not None:
-                        change = finite_number(current_price - previous_price)
-                        company_data["lastTradeChange"] = change
-                        if change is not None and previous_price != 0:
-                            company_data["lastTradeChangePercent"] = finite_number(change / previous_price * 100)
+                if previous_price is not None:
+                    change = finite_number(current_price - previous_price)
+                    company_data["lastTradeChange"] = change
+                    if change is not None and previous_price != 0:
+                        company_data["lastTradeChangePercent"] = finite_number(change / previous_price * 100)
         except Exception:
             logger.warning("Historical company metrics unavailable for %s", symbol)
 
@@ -695,11 +708,10 @@ def get_available_stocks(current_user: str = Depends(verify_password_with_role))
                 try:
                     stock = yf.Ticker(ticker)
                     info = stock.info
-                    hist = stock.history(period="2d", timeout=10)
+                    hist = stock.history(period="5d", timeout=10)
                     
                     if not hist.empty and len(hist) >= 1:
-                        current_price = finite_number(hist['Close'].iloc[-1])
-                        prev_price = finite_number(hist['Close'].iloc[-2]) if len(hist) >= 2 else None
+                        current_price, prev_price, price_as_of = latest_daily_close(hist)
                         price_change = price_change_percent = None
                         if current_price is not None and prev_price not in (None, 0):
                             price_change = finite_number(current_price - prev_price)
@@ -710,7 +722,7 @@ def get_available_stocks(current_user: str = Depends(verify_password_with_role))
                             "priceChange": round(price_change, 2) if price_change is not None else None,
                             "priceChangePercent": round(price_change_percent, 2) if price_change_percent is not None else None,
                             "companyName": info.get('longName', info.get('shortName', ticker)),
-                            "price_as_of": hist.index[-1].isoformat() if current_price is not None else None,
+                            "price_as_of": price_as_of.isoformat() if price_as_of else None,
                             "price_basis": "latest_daily_close",
                         })
                     

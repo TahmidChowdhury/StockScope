@@ -25,7 +25,7 @@ export interface StockMetadata {
   currentPrice?: number | null
   priceChange?: number | null
   priceChangePercent?: number | null
-  total_posts: number
+  total_posts: number | null
   avg_sentiment: number | null
   last_updated: string | null
   freshness?: DataFreshness

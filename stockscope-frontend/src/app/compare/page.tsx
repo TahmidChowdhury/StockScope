@@ -1,354 +1,515 @@
 'use client'
 
-import { apiFetch } from '@/lib/api'
-
-import { useState, useCallback } from 'react'
-import { useCompare } from '@/hooks/useFundamentals'
-
-import { 
-  ComposedChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend, 
-  ResponsiveContainer 
-} from 'recharts'
-import { PlusIcon, XMarkIcon } from '@heroicons/react/24/outline'
-import SideNav from '@/components/SideNav'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { FundamentalsTTM } from '@/types'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { ArrowUpRight, FlaskConical, Scale, X } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
+import AppShell from '@/components/AppShell'
+import StockSearch from '@/components/StockSearch'
+import { useCompare } from '@/hooks/useFundamentals'
+import { useWatchlist } from '@/hooks/useWatchlist'
+import { useWorkspaceDraft } from '@/hooks/useWorkspaceDraft'
+import {
+  amount,
+  observed,
+  parseSymbols,
+  percent,
+  ratio,
+} from '@/lib/financial-format'
+import type { FundamentalsTTM } from '@/types'
+import { companyResearchHref, snapshotTime } from '@/lib/research-workflow'
+import { completeComparison, draftFinancialRows, initialCompareDraft, isCompareDraft, replaceResearchUrl } from '@/lib/research-drafts'
 
-interface ChartDataItem {
-  ticker: string
-  fcf_margin_ttm: number | null
-  operating_margin_ttm: number | null
-  revenue_ttm: number | null
-  fill: string
+const metrics: {
+  key: keyof FundamentalsTTM
+  label: string
+  format: (v?: number | null) => string
+}[] = [
+  { key: 'revenue_ttm', label: 'Revenue · TTM', format: amount },
+  { key: 'fcf_ttm', label: 'Free cash flow · TTM', format: amount },
+  { key: 'fcf_margin_ttm', label: 'Free cash flow margin', format: percent },
+  { key: 'operating_margin_ttm', label: 'Operating margin', format: percent },
+  { key: 'revenue_growth_yoy', label: 'Revenue growth · YoY', format: percent },
+  {
+    key: 'fcf_growth_yoy',
+    label: 'Free cash flow growth · YoY',
+    format: percent,
+  },
+  { key: 'ebitda_growth_yoy', label: 'EBITDA growth · YoY', format: percent },
+  { key: 'debt_to_cash', label: 'Debt / cash', format: ratio },
+]
+const chartStyle = {
+  background: '#171a22',
+  border: '1px solid #ffffff20',
+  borderRadius: 8,
+  color: '#e2e8f0',
 }
 
-const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316']
-
 export default function ComparePage() {
-  const [tickers, setTickers] = useState<string[]>([])
-  const [inputValue, setInputValue] = useState('')
-  const [validating, setValidating] = useState(false)
-  const [tickerError, setTickerError] = useState<string | null>(null)
-  const compare = useCompare()
+  return (
+    <Suspense fallback={<div className="min-h-dvh bg-[#101218]" />}>
+      <CompareWorkspace />
+    </Suspense>
+  )
+}
 
-  const addTicker = useCallback(async () => {
-    const symbol = inputValue.trim().toUpperCase()
+function CompareWorkspace() {
+  const search = useSearchParams()
+  const router = useRouter()
+  const queryClient = useQueryClient()
+  const draft = useWorkspaceDraft('compare', initialCompareDraft, isCompareDraft)
+  const { value, setValue, ready, generation, reset } = draft
+  const tickers = value.tickers
+  const selection = tickers.join(',')
+  const snapshot = value.snapshots.find((row) => row.tickers.join(',') === selection)
+  const url = search.toString()
+  const lastUrl = useRef<string | null>(null)
+  const internalUrls = useRef(new Set<string>())
+  const [appliedUrl, setAppliedUrl] = useState<string | null>(null)
+  const [submitted, setSubmitted] = useState('')
+  const [handoffId] = useState(() => crypto.randomUUID())
+  const [error, setError] = useState('')
+  const compare = useCompare()
+  const { data: stocks = [] } = useWatchlist()
+  useEffect(() => {
+    if (!ready || lastUrl.current === url) return
+    lastUrl.current = url
+    const params = new URLSearchParams(url)
+    if (!internalUrls.current.delete(url) && params.has('tickers')) {
+      const tickers = parseSymbols(params.get('tickers') || '').slice(0, 20)
+      setValue((current) => ({ ...current, tickers }))
+    }
+    setAppliedUrl(url)
+  }, [ready, url, setValue])
+  useEffect(() => {
+    const navigatingHistory = () => internalUrls.current.clear()
+    window.addEventListener('popstate', navigatingHistory)
+    return () => window.removeEventListener('popstate', navigatingHistory)
+  }, [])
+  const commit = (symbols: string[]) => {
+    const params = new URLSearchParams(search.toString())
+    params.set('tickers', symbols.join(','))
+    setValue((current) => ({ ...current, tickers: symbols }))
+    internalUrls.current = new Set([...internalUrls.current, params.toString()].slice(-50))
+    replaceResearchUrl(window.history, '/compare', params)
+    setError('')
+  }
+  const add = (symbol: string) => {
+    symbol = parseSymbols(symbol)[0] || ''
     if (!symbol) return
     if (tickers.includes(symbol)) {
-      setTickerError(`${symbol} is already added`)
+      setError(`${symbol} is already selected.`)
       return
     }
-    setValidating(true)
-    setTickerError(null)
-    try {
-      const res = await apiFetch(
-        `/api/stocks/validate/${symbol}`
+    if (tickers.length >= 20) {
+      setError('Compare up to 20 companies at a time.')
+      return
+    }
+    commit([...tickers, symbol])
+  }
+  const results = snapshot?.results
+  const returnTo = `/compare?${new URLSearchParams({ tickers: selection })}`
+  const missing = results
+    ? tickers.filter(
+        (ticker) => !results.some((company) => company.ticker === ticker),
       )
-      if (!res.ok) throw new Error('Validation request failed')
-      const data = await res.json()
-      if (!data.valid) {
-        setTickerError(`"${symbol}" not found — check the ticker symbol`)
-        return
-      }
-      setTickers(prev => [...prev, symbol])
-      setInputValue('')
-    } catch {
-      setTickerError('Could not validate ticker — check your connection')
-    } finally {
-      setValidating(false)
-    }
-  }, [inputValue, tickers])
-
-  const removeTicker = (tickerToRemove: string) => {
-    setTickers(tickers.filter(t => t !== tickerToRemove))
-  }
-
-  const handleCompare = () => {
-    const validTickers = tickers.filter(t => t.trim())
-    if (validTickers.length > 1) {
-      compare.mutate({ tickers: validTickers })
-    }
-  }
-
-  const formatPercent = (value: number | null | undefined) => {
-    if (value == null || isNaN(value)) return '—'
-    return new Intl.NumberFormat('en-US', { 
-      style: 'percent', 
-      maximumFractionDigits: 1 
-    }).format(value)
-  }
-
-  const formatCurrency = (value: number | null | undefined, compact = true) => {
-    if (value == null || !Number.isFinite(value)) return 'N/A'
-    if (compact && Math.abs(value) >= 1e9) {
-      return `$${(value / 1e9).toFixed(1)}B`
-    } else if (compact && Math.abs(value) >= 1e6) {
-      return `$${(value / 1e6).toFixed(1)}M`
-    }
-    return new Intl.NumberFormat('en-US', { 
-      style: 'currency', 
-      currency: 'USD',
-      maximumFractionDigits: 0
-    }).format(value)
-  }
-
-  const prepareChartData = (data: FundamentalsTTM[]): ChartDataItem[] => {
-    return data.map((item, index) => ({
-      ticker: item.ticker,
-      fcf_margin_ttm: item.fcf_margin_ttm == null ? null : item.fcf_margin_ttm * 100,
-      operating_margin_ttm: item.operating_margin_ttm == null ? null : item.operating_margin_ttm * 100,
-      revenue_ttm: item.revenue_ttm == null ? null : item.revenue_ttm / 1e9, // Convert to billions
-      fill: COLORS[index % COLORS.length]
-    }))
-  }
-
-  const validTickers = tickers.filter(t => t)
-  const canCompare = validTickers.length >= 2
-
+    : []
+  const chartData = results?.map((company) => ({
+    ticker: company.ticker,
+    revenue: observed(company.revenue_ttm) ? company.revenue_ttm / 1e9 : null,
+    fcf: observed(company.fcf_margin_ttm) ? company.fcf_margin_ttm * 100 : null,
+    operating: observed(company.operating_margin_ttm)
+      ? company.operating_margin_ttm * 100
+      : null,
+  }))
+  if (!ready || appliedUrl === null) return <AppShell><p role="status" className="text-sm text-slate-400">Restoring saved comparison…</p></AppShell>
   return (
-    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <SideNav activePage="compare" />
-      <main className="flex-1 overflow-y-auto">
-        <div className="lg:hidden h-4" />
-        <div className="max-w-5xl mx-auto px-4 py-4 lg:py-8 pb-24 lg:pb-10">
-
-          {/* Page header */}
-          <div className="mb-6 lg:mb-8">
-            <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Compare Companies</h1>
-            <p className="text-sm text-white/50 mt-0.5">Side-by-side financial metrics</p>
+    <AppShell>
+      <header className="mb-7">
+        <p className="eyebrow mb-2">Perspective through comparison</p>
+        <h1 className="page-title">Compare companies</h1>
+        <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">
+          Put the same financial measures side by side. See where businesses
+          differ, and where the evidence is incomplete.
+        </p>
+      </header>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+        <p role="status">{draft.status === 'saved' ? `Draft saved in this browser · ${snapshotTime(draft.savedAt!)}` : 'Comparison draft stays in this browser.'}{draft.message ? ` ${draft.message}` : ''}</p>
+        <button type="button" className="button-secondary !text-xs" onClick={() => {
+          reset()
+          internalUrls.current.clear()
+          compare.reset()
+          setError('')
+          queryClient.removeQueries({ queryKey: ['workspace', 'compare-snapshot'] })
+          internalUrls.current.add('')
+          replaceResearchUrl(window.history, '/compare', new URLSearchParams())
+        }}>Clear saved comparison</button>
+      </div>
+      <section
+        className="surface mb-6 p-5 sm:p-6"
+        aria-label="Company selection"
+      >
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold">Build your comparison</h2>
+          <span className="text-xs text-slate-500">
+            {tickers.length} / 20 companies
+          </span>
+        </div>
+        <StockSearch compact onAnalyze={add} isLoading={compare.isPending} />
+        {error && (
+          <p role="alert" className="mt-3 text-xs text-amber-200">
+            {error}
+          </p>
+        )}
+        {stocks.some((stock) => !tickers.includes(stock.symbol)) && (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="mr-1 text-[11px] text-slate-500">
+              From your watchlist
+            </span>
+            {stocks
+              .filter((stock) => !tickers.includes(stock.symbol))
+              .slice(0, 6)
+              .map((stock) => (
+                <button
+                  key={stock.symbol}
+                  disabled={compare.isPending}
+                  className="button-secondary !px-2.5 !py-1.5 !text-[11px]"
+                  onClick={() => add(stock.symbol)}
+                >
+                  + {stock.symbol}
+                </button>
+              ))}
           </div>
-
-          {/* Input card */}
-          <div className="rounded-2xl bg-white/[0.06] border border-white/10 p-4 lg:p-5 mb-5">
-
-            {/* Search row */}
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <input
-                  type="text"
-                  value={inputValue}
-                  onChange={(e) => { setInputValue(e.target.value.toUpperCase()); setTickerError(null) }}
-                  onKeyDown={(e) => e.key === 'Enter' && addTicker()}
-                  placeholder="Ticker symbol — AAPL, MSFT…"
-                  className="w-full px-4 py-2.5 rounded-xl text-sm transition-all focus:outline-none focus:ring-1
-                    bg-slate-800 text-slate-100 placeholder-slate-500
-                    border border-slate-600 focus:ring-purple-400/60 focus:border-purple-400/40
-                    [color-scheme:dark]"
-                />
-              </div>
-              <button
-                onClick={addTicker}
-                disabled={!inputValue.trim() || validating}
-                className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-30 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors flex items-center gap-1.5 flex-shrink-0"
+        )}
+        <div className="my-5 flex min-h-10 flex-wrap gap-2">
+          {tickers.length ? (
+            tickers.map((ticker) => (
+              <span
+                key={ticker}
+                className="inline-flex items-center gap-3 rounded-lg border border-violet-400/20 bg-violet-400/[0.08] py-2 pl-3 pr-2 text-xs font-medium text-violet-200"
               >
-                {validating
-                  ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  : <PlusIcon className="h-4 w-4" />}
-                {validating ? '' : 'Add'}
-              </button>
-            </div>
-
-            {/* Inline error */}
-            {tickerError && (
-              <p className="text-red-400 text-xs mt-2">{tickerError}</p>
-            )}
-
-            {/* Ticker chips */}
-            {validTickers.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {validTickers.map((ticker, index) => (
-                  <span
-                    key={ticker}
-                    className="inline-flex items-center gap-1.5 pl-3 pr-2 py-1 rounded-full text-sm font-medium text-white border"
-                    style={{
-                      backgroundColor: COLORS[index % COLORS.length] + '22',
-                      borderColor: COLORS[index % COLORS.length] + '55',
-                    }}
-                  >
-                    <span
-                      className="w-2 h-2 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                    />
-                    {ticker}
-                    <button
-                      onClick={() => removeTicker(ticker)}
-                      className="text-white/50 hover:text-white/90 transition-colors ml-0.5"
-                    >
-                      <XMarkIcon className="h-3.5 w-3.5" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Divider + CTA */}
-            <div className="mt-4 flex items-center gap-3">
-              <button
-                onClick={handleCompare}
-                disabled={!canCompare || compare.isPending}
-                className="flex-1 lg:flex-none lg:px-6 py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2
-                  disabled:bg-white/8 disabled:text-white/30 disabled:cursor-not-allowed
-                  enabled:bg-gradient-to-r enabled:from-purple-600 enabled:to-indigo-600 enabled:hover:from-purple-500 enabled:hover:to-indigo-500 enabled:text-white enabled:shadow-lg enabled:shadow-purple-900/40"
-              >
-                {compare.isPending ? (
-                  <>
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                    Comparing…
-                  </>
-                ) : (
-                  'Run Comparison'
-                )}
-              </button>
-              {!canCompare && (
-                <p className="text-white/35 text-xs">Add at least 2 tickers</p>
+                {ticker}
+                <button
+                  disabled={compare.isPending}
+                  aria-label={`Remove ${ticker}`}
+                  onClick={() => commit(tickers.filter((t) => t !== ticker))}
+                  className="rounded p-1 hover:bg-white/10"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))
+          ) : (
+            <p className="self-center text-xs text-slate-500">
+              Add at least two companies to get started.
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.07] pt-5">
+          <button
+            disabled={tickers.length < 2 || compare.isPending}
+            onClick={() => {
+              setSubmitted(selection)
+              const id = crypto.randomUUID()
+              setValue((current) => ({ ...current, requestId: id }))
+              void compare.mutateAsync({ tickers }).then((results) => {
+                setValue((current) => completeComparison(current, id, {
+                  tickers, results: draftFinancialRows(results), capturedAt: new Date().toISOString(),
+                }), generation)
+              }).catch(() => { /* The mutation exposes the error while keeping saved evidence. */ })
+            }}
+            className="button-primary disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Scale className="h-4 w-4" />
+            {compare.isPending ? 'Comparing…' : 'Run comparison'}
+          </button>
+          {tickers.length > 0 && (
+            <button
+              disabled={compare.isPending}
+              className="button-secondary"
+              onClick={() => commit([])}
+            >
+              Clear selection
+            </button>
+          )}
+          {tickers.length >= 2 && !compare.isPending && (
+            <Link
+              href={`/trading?${new URLSearchParams({ tab: 'backtest', symbols: selection, handoff: handoffId })}`}
+              onClick={(event) => {
+                if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+                  event.preventDefault()
+                  router.push(`/trading?${new URLSearchParams({ tab: 'backtest', symbols: selection, handoff: crypto.randomUUID() })}`)
+                }
+              }}
+              className="button-secondary"
+            >
+              <FlaskConical className="h-4 w-4" />
+              Backtest selected companies
+            </Link>
+          )}
+          <span className="text-[11px] text-slate-500">
+            Selections are saved in this page’s URL.
+          </span>
+        </div>
+      </section>
+      {compare.isPending && (
+        <div role="status" className="surface mb-5 p-5 text-sm text-violet-200">
+          Collecting financial statements for {submitted.split(',').join(', ')}…
+        </div>
+      )}
+      {compare.isError && submitted === selection && (
+        <div
+          role="alert"
+          className="surface mb-5 border-rose-400/20 p-5 text-sm text-rose-200"
+        >
+          {compare.error.message} Try running the comparison again.
+        </div>
+      )}
+      {results && (
+        <>
+          <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Financial comparison</h2>
+              <p className="mt-1 text-xs text-slate-400">
+                {results.length} of {tickers.length} requested companies
+                returned · — means unavailable
+              </p>
+              {snapshot && (
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Saved {snapshotTime(snapshot.capturedAt)} · Run comparison to refresh
+                </p>
               )}
             </div>
+            <span className="text-xs text-slate-500">
+              Trailing twelve months unless labeled
+            </span>
           </div>
-
-          {/* Error state */}
-          {compare.isError && (
-            <div className="rounded-2xl bg-red-500/10 border border-red-500/30 p-4 mb-5">
-              <p className="text-red-300 font-medium text-sm">Comparison failed</p>
-              <p className="text-red-400/70 text-xs mt-0.5">{compare.error?.message}</p>
-            </div>
+          {missing.length > 0 && (
+            <p
+              role="status"
+              className="surface mb-4 border-amber-400/20 p-4 text-xs leading-6 text-amber-200"
+            >
+              No response for {missing.join(', ')}. Those companies are excluded
+              from the table and charts. Retry to check coverage.
+            </p>
           )}
-
-          {/* Results */}
-          {compare.data && (
-            <div className="space-y-5 lg:space-y-6">
-
-              {/* Summary chips */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-2xl bg-white/[0.06] border border-white/10 p-3 lg:p-4">
-                  <p className="text-white/50 text-xs mb-1">Compared</p>
-                  <p className="text-xl lg:text-2xl font-bold text-white">{compare.data.length}</p>
-                </div>
-                <div className="rounded-2xl bg-white/[0.06] border border-white/10 p-3 lg:p-4">
-                  <p className="text-white/50 text-xs mb-1">Top Revenue</p>
-                  <p className="text-base lg:text-xl font-bold text-emerald-400">
-                    {compare.data.reduce((max, c) => (c.revenue_ttm || 0) > (max.revenue_ttm || 0) ? c : max).ticker}
-                  </p>
-                  <p className="text-white/40 text-xs truncate">
-                    {formatCurrency(Math.max(...compare.data.map(c => c.revenue_ttm || 0)))}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-white/[0.06] border border-white/10 p-3 lg:p-4">
-                  <p className="text-white/50 text-xs mb-1">Best FCF</p>
-                  <p className="text-base lg:text-xl font-bold text-blue-400">
-                    {compare.data.reduce((max, c) => (c.fcf_margin_ttm || 0) > (max.fcf_margin_ttm || 0) ? c : max).ticker}
-                  </p>
-                  <p className="text-white/40 text-xs truncate">
-                    {formatPercent(Math.max(...compare.data.map(c => c.fcf_margin_ttm || 0)))}
-                  </p>
-                </div>
-              </div>
-
-              {/* Metrics table */}
-              <div className="rounded-2xl bg-white/[0.06] border border-white/10 overflow-hidden">
-                <div className="px-4 lg:px-5 py-3 border-b border-white/10">
-                  <h3 className="text-sm font-semibold text-white/80 uppercase tracking-wider">TTM Metrics</h3>
-                </div>
+          {!results.length ? (
+            <div className="surface p-8 text-center text-sm text-slate-400">
+              No company data was returned. Try again or choose different
+              companies.
+            </div>
+          ) : (
+            <>
+              <p className="mb-4 text-[11px] leading-6 text-slate-500">
+                Amounts use provider reporting units. Reporting currency is not
+                verified here; check each company’s financials before comparing
+                monetary totals.
+              </p>
+              <div className="surface overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
+                  <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="border-b border-white/8">
-                        <th className="px-4 lg:px-5 py-3 text-left text-xs font-medium text-white/40 uppercase tracking-wider">Company</th>
-                        <th className="px-4 lg:px-5 py-3 text-right text-xs font-medium text-white/40 uppercase tracking-wider">Revenue</th>
-                        <th className="px-4 lg:px-5 py-3 text-right text-xs font-medium text-white/40 uppercase tracking-wider">FCF Margin</th>
-                        <th className="px-4 lg:px-5 py-3 text-right text-xs font-medium text-white/40 uppercase tracking-wider">Op. Margin</th>
-                        <th className="px-4 lg:px-5 py-3 text-right text-xs font-medium text-white/40 uppercase tracking-wider">Rev. Growth</th>
-                        <th className="px-4 lg:px-5 py-3 text-right text-xs font-medium text-white/40 uppercase tracking-wider">FCF Growth</th>
-                        <th className="px-4 lg:px-5 py-3 text-right text-xs font-medium text-white/40 uppercase tracking-wider">D/C</th>
-                        <th className="px-4 lg:px-5 py-3 text-right text-xs font-medium text-white/40 uppercase tracking-wider" />
+                      <tr className="border-b border-white/10">
+                        <th className="min-w-40 p-4 font-medium text-slate-500">
+                          Metric
+                        </th>
+                        {results.map((company) => (
+                          <th
+                            key={company.ticker}
+                            className="min-w-36 p-4 text-right"
+                          >
+                            <Link
+                              href={companyResearchHref(company.ticker, returnTo)}
+                              className="inline-flex items-center gap-2 text-violet-200"
+                            >
+                              {company.ticker}
+                              <ArrowUpRight className="h-3 w-3" />
+                            </Link>
+                            {company.insufficient_data && (
+                              <span className="mt-1 block font-normal text-amber-200">
+                                Limited financial data
+                              </span>
+                            )}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {compare.data.map((company, index) => (
-                        <tr key={company.ticker} className="border-b border-white/[0.06] hover:bg-white/[0.04] transition-colors">
-                          <td className="px-4 lg:px-5 py-3">
-                            <div className="flex items-center gap-2.5">
-                              <span
-                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                              />
-                              <span className="font-semibold text-white">{company.ticker}</span>
-                              {company.insufficient_data && (
-                                <span className="text-[10px] text-yellow-400/80 bg-yellow-400/10 px-1.5 py-0.5 rounded-full">Limited</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 lg:px-5 py-3 text-right text-white font-medium">{formatCurrency(company.revenue_ttm)}</td>
-                          <td className="px-4 lg:px-5 py-3 text-right text-white/80">{formatPercent(company.fcf_margin_ttm)}</td>
-                          <td className="px-4 lg:px-5 py-3 text-right text-white/80">{formatPercent(company.operating_margin_ttm)}</td>
-                          <td className={`px-4 lg:px-5 py-3 text-right font-medium ${company.revenue_growth_yoy && company.revenue_growth_yoy > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {company.revenue_growth_yoy && company.revenue_growth_yoy > 0 ? '+' : ''}{formatPercent(company.revenue_growth_yoy)}
-                          </td>
-                          <td className={`px-4 lg:px-5 py-3 text-right font-medium ${company.fcf_growth_yoy && company.fcf_growth_yoy > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {company.fcf_growth_yoy && company.fcf_growth_yoy > 0 ? '+' : ''}{formatPercent(company.fcf_growth_yoy)}
-                          </td>
-                          <td className="px-4 lg:px-5 py-3 text-right text-white/60">{company.debt_to_cash ? company.debt_to_cash.toFixed(2) : '—'}</td>
-                          <td className="px-4 lg:px-5 py-3 text-right">
-                            <Link href={`/fundamentals/${company.ticker}`} className="text-purple-400 hover:text-purple-300 font-medium transition-colors text-xs">
-                              Details →
-                            </Link>
-                          </td>
+                      {metrics.map(({ key, label, format }) => (
+                        <tr
+                          key={key}
+                          className="border-b border-white/[0.05] last:border-0"
+                        >
+                          <th className="p-4 font-normal text-slate-400">
+                            {label}
+                          </th>
+                          {results.map((company) => {
+                            const value = company[key]
+                            const basis = company.growth_metadata?.[key]
+                            const period = company.period_metadata?.[key]
+                            return (
+                              <td
+                                key={company.ticker}
+                                className="p-4 text-right font-medium text-slate-100"
+                              >
+                                {format(
+                                  typeof value === 'number' ? value : null,
+                                )}
+                                {basis && (
+                                  <span className="mt-1 block text-[10px] font-normal text-slate-500">
+                                    {basis.status === 'available'
+                                      ? basis.basis === 'fiscal_year'
+                                        ? 'Fiscal-year comparison'
+                                        : 'TTM comparison'
+                                      : 'Growth unavailable'}
+                                  </span>
+                                )}
+                                {basis?.status === 'available' &&
+                                  basis.current_period_end &&
+                                  basis.prior_period_end && (
+                                    <span className="mt-1 block text-[10px] font-normal leading-4 text-slate-500">
+                                      Through {basis.current_period_end}
+                                      <br />
+                                      vs. {basis.prior_period_end}
+                                    </span>
+                                  )}
+                                {period?.period_end && (
+                                  <span className="mt-1 block text-[10px] font-normal text-slate-500">
+                                    Through {period.period_end}
+                                  </span>
+                                )}
+                              </td>
+                            )
+                          })}
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               </div>
-
-              {/* Charts */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5">
-                <div className="rounded-2xl bg-white/[0.06] border border-white/10 p-4 lg:p-5">
-                  <h3 className="text-sm font-semibold text-white/80 mb-4">Margins (TTM)</h3>
-                  <div className="h-64 lg:h-72">
+              <div className="mt-5 grid gap-5 xl:grid-cols-2">
+                <section className="surface min-w-0 p-5">
+                  <h3 className="mb-1 text-sm font-semibold">Revenue scale</h3>
+                  <p className="mb-5 text-xs text-slate-500">
+                    Trailing twelve months · Billions in provider reporting
+                    units
+                  </p>
+                  <div
+                    className="h-64"
+                    role="img"
+                    aria-label="Revenue comparison chart"
+                  >
                     <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={prepareChartData(compare.data)}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                        <XAxis dataKey="ticker" stroke="rgba(255,255,255,0.4)" tick={{ fontSize: 12 }} />
-                        <YAxis stroke="rgba(255,255,255,0.4)" tick={{ fontSize: 11 }} />
-                        <Tooltip
-                          contentStyle={{ backgroundColor: 'rgba(15,15,25,0.95)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: 'white', fontSize: 13 }}
-                          formatter={(value, name) => [typeof value === 'number' ? `${value.toFixed(1)}%` : 'N/A', String(name ?? '')]}
+                      <BarChart data={chartData}>
+                        <CartesianGrid vertical={false} stroke="#ffffff0c" />
+                        <XAxis
+                          dataKey="ticker"
+                          tick={{ fill: '#94a3b8', fontSize: 11 }}
+                          axisLine={false}
+                          tickLine={false}
                         />
-                        <Legend wrapperStyle={{ fontSize: 12 }} />
-                        <Bar dataKey="fcf_margin_ttm" fill="#6366f1" name="FCF Margin %" radius={[3, 3, 0, 0]} />
-                        <Bar dataKey="operating_margin_ttm" fill="#10B981" name="Op. Margin %" radius={[3, 3, 0, 0]} />
-                      </ComposedChart>
+                        <YAxis
+                          tick={{ fill: '#64748b', fontSize: 10 }}
+                          width={48}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <Tooltip
+                          contentStyle={chartStyle}
+                          formatter={(v) => [
+                            `${Number(v).toFixed(2)}B`,
+                            'Revenue',
+                          ]}
+                        />
+                        <Bar
+                          dataKey="revenue"
+                          fill="#a78bfa"
+                          radius={[4, 4, 0, 0]}
+                          maxBarSize={52}
+                        />
+                      </BarChart>
                     </ResponsiveContainer>
                   </div>
-                </div>
-                <div className="rounded-2xl bg-white/[0.06] border border-white/10 p-4 lg:p-5">
-                  <h3 className="text-sm font-semibold text-white/80 mb-4">Revenue TTM ($B)</h3>
-                  <div className="h-64 lg:h-72">
+                </section>
+                <section className="surface min-w-0 p-5">
+                  <h3 className="mb-1 text-sm font-semibold">
+                    Margins in context
+                  </h3>
+                  <p className="mb-5 text-xs text-slate-500">
+                    <span className="text-violet-300">Free cash flow</span> /{' '}
+                    <span className="text-sky-300">Operating margin</span> ·
+                    Percent
+                  </p>
+                  <div
+                    className="h-64"
+                    role="img"
+                    aria-label="Margin comparison chart"
+                  >
                     <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={prepareChartData(compare.data)}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                        <XAxis dataKey="ticker" stroke="rgba(255,255,255,0.4)" tick={{ fontSize: 12 }} />
-                        <YAxis stroke="rgba(255,255,255,0.4)" tick={{ fontSize: 11 }} />
-                        <Tooltip
-                          contentStyle={{ backgroundColor: 'rgba(15,15,25,0.95)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: 'white', fontSize: 13 }}
-                          formatter={(value) => [typeof value === 'number' ? `$${value.toFixed(1)}B` : 'N/A', 'Revenue TTM']}
+                      <BarChart data={chartData}>
+                        <CartesianGrid vertical={false} stroke="#ffffff0c" />
+                        <XAxis
+                          dataKey="ticker"
+                          tick={{ fill: '#94a3b8', fontSize: 11 }}
+                          axisLine={false}
+                          tickLine={false}
                         />
-                        <Bar dataKey="revenue_ttm" fill="#a855f7" name="Revenue ($B)" radius={[4, 4, 0, 0]} />
-                      </ComposedChart>
+                        <YAxis
+                          tick={{ fill: '#64748b', fontSize: 10 }}
+                          width={48}
+                          tickFormatter={(v) => `${v}%`}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip
+                          contentStyle={chartStyle}
+                          formatter={(v) => `${Number(v).toFixed(1)}%`}
+                        />
+                        <Bar
+                          dataKey="fcf"
+                          name="Free cash flow margin"
+                          fill="#a78bfa"
+                          radius={[4, 4, 0, 0]}
+                          maxBarSize={36}
+                        />
+                        <Bar
+                          dataKey="operating"
+                          name="Operating margin"
+                          fill="#7dd3fc"
+                          radius={[4, 4, 0, 0]}
+                          maxBarSize={36}
+                        />
+                      </BarChart>
                     </ResponsiveContainer>
                   </div>
-                </div>
+                </section>
               </div>
-
-            </div>
+            </>
           )}
+        </>
+      )}
+      {!results && !compare.isPending && (
+        <div className="surface p-8 text-center sm:p-12">
+          <Scale className="mx-auto mb-4 h-7 w-7 text-violet-300" />
+          <h2 className="text-base font-medium">
+            A useful comparison starts with context
+          </h2>
+          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-400">
+            Choose companies with comparable business models, then look at
+            revenue, cash generation, margins, and debt together.
+          </p>
         </div>
-      </main>
-    </div>
+      )}
+    </AppShell>
   )
 }

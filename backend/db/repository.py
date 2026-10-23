@@ -100,7 +100,7 @@ class ResearchRepository:
             if not set(Base.metadata.tables).issubset(tables) or "alembic_version" not in tables:
                 raise RuntimeError("Database schema is not initialized; run Alembic migrations")
             versions = set(connection.execute(text("SELECT version_num FROM alembic_version")).scalars())
-            if versions != {"20261014_01"}:
+            if versions != {"20261015_02"}:
                 raise RuntimeError("Database schema version does not match this application")
         return True
 

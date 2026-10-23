@@ -14,7 +14,7 @@ interface PriceData {
   high: number
   low: number
   close: number
-  volume: number
+  volume: number | null
 }
 
 interface PriceHistoryResponse {
@@ -51,6 +51,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedPeriod, setSelectedPeriod] = useState('1y')
+  const [retryVersion, setRetryVersion] = useState(0)
   const windowWidth = useWindowWidth()
 
   const fetchPriceData = useCallback(async (period: string, signal: AbortSignal) => {
@@ -82,7 +83,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
       fetchPriceData(selectedPeriod, controller.signal)
     }
     return () => controller.abort()
-  }, [symbol, selectedPeriod, fetchPriceData])
+  }, [symbol, selectedPeriod, fetchPriceData, retryVersion])
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -111,7 +112,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
         <div className="bg-slate-900/95 backdrop-blur-sm p-3 rounded-lg shadow-lg border border-white/20">
           <p className="font-semibold text-white">{formatDate(data.date)}</p>
           <p className="text-green-400">Close: {formatPrice(data.close)}</p>
-          <p className="text-gray-300">Volume: {data.volume.toLocaleString()}</p>
+          <p className="text-gray-300">Volume: {data.volume?.toLocaleString() ?? 'Unavailable'}</p>
         </div>
       )
     }
@@ -133,7 +134,8 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
     return (
       <div className={`bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-4 sm:p-6 ${className}`}>
         <div className="text-center text-red-400">
-          <p>Error loading price chart: {error}</p>
+          <p role="alert">Error loading price chart: {error}</p>
+          <button onClick={() => setRetryVersion(version => version + 1)} className="button-secondary mt-4">Retry price history</button>
         </div>
       </div>
     )
@@ -148,6 +150,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
   const chartColor = change == null || change === 0 ? '#94A3B8' : change > 0 ? '#10B981' : '#EF4444'
   const quoteDate = priceData.quote_as_of ? new Date(priceData.quote_as_of) : null
   const quoteDateLabel = quoteDate && !Number.isNaN(quoteDate.getTime()) ? quoteDate.toLocaleString() : 'Unknown'
+  const volumes = priceData.data.map(d => d.volume).filter((volume): volume is number => volume != null)
 
   return (
     <div className={`bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-3 sm:p-6 ${className}`}>
@@ -183,6 +186,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
               <button
                 key={option.value}
                 onClick={() => setSelectedPeriod(option.value)}
+                aria-pressed={selectedPeriod === option.value}
                 className={`px-2 sm:px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap min-w-[32px] ${
                   selectedPeriod === option.value
                     ? 'bg-purple-600 text-white shadow-sm'
@@ -246,7 +250,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
         <div className="text-center bg-white/5 rounded-lg p-2 sm:p-3">
           <p className="text-xs text-white/60 mb-1">Avg Volume</p>
           <p className="text-sm sm:text-base font-semibold text-white">
-            {(priceData.data.reduce((sum, d) => sum + d.volume, 0) / priceData.data.length).toLocaleString(undefined, {maximumFractionDigits: 0})}
+            {volumes.length ? (volumes.reduce((sum, volume) => sum + volume, 0) / volumes.length).toLocaleString(undefined, {maximumFractionDigits: 0}) : 'Unavailable'}
           </p>
         </div>
         <div className="text-center bg-white/5 rounded-lg p-2 sm:p-3">

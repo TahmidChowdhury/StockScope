@@ -14,6 +14,7 @@ from backend.services.research import load_evidence, sentiment_metrics, source_a
 
 @pytest.fixture
 def api(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATABASE_URL", "")
     monkeypatch.setenv("ADMIN_PASSWORD", "fixture-admin")
     monkeypatch.setenv("DEMO_PASSWORD", "fixture-demo")
     monkeypatch.setenv("GUEST_PASSWORD", "fixture-guest")
@@ -341,11 +342,48 @@ def test_yahoo_and_rss_publication_times_keep_explicit_utc_offset(api, monkeypat
     assert all(datetime.fromisoformat(article["publishedAt"]).utcoffset() == timedelta(0) for article in yahoo + rss)
 
 
-def _stub_prices(monkeypatch, closes, quote):
+def test_global_rss_matches_company_aliases_without_substring_matches(api, monkeypatch):
+    from scraping import enhanced_news_scraper
+    scraper = enhanced_news_scraper.EnhancedNewsScraper()
+    monkeypatch.setattr(enhanced_news_scraper, 'RSS_FEEDS', {'NPR Business': 'https://feeds.npr.org/1006/rss.xml'})
+    class Response:
+        content = b'<rss><channel><item><title>Microsoft announces earnings</title><link>https://example.org/microsoft</link></item><item><title>MSFTish unrelated story</title><link>https://example.org/other</link></item></channel></rss>'
+        def raise_for_status(self):
+            pass
+    monkeypatch.setattr(scraper.session, 'get', lambda *args, **kwargs: Response())
+    articles = [row for row in scraper.fetch_rss_feeds('MSFT') if row['source'] == 'NPR Business']
+    assert [row['title'] for row in articles] == ['Microsoft announces earnings']
+    assert articles[0]['publishedAt'] is None
+
+
+def test_google_news_summary_is_plain_text(api, monkeypatch):
+    from scraping.enhanced_news_scraper import EnhancedNewsScraper
+    scraper = EnhancedNewsScraper()
+    class Response:
+        content = b'<rss><channel><item><title>Apple earnings</title><link>https://example.org/article</link><description>&lt;a href="https://example.org/article"&gt;Apple earnings&lt;/a&gt;&amp;nbsp;&lt;font&gt;Publisher&lt;/font&gt;</description></item></channel></rss>'
+        def raise_for_status(self):
+            pass
+    monkeypatch.setattr(scraper.session, 'get', lambda *args, **kwargs: Response())
+    article = scraper.fetch_gnews('AAPL')[0]
+    assert '<' not in article['description']
+    assert 'Apple earnings' in article['description']
+    assert article['url'] == 'https://example.org/article'
+
+
+def test_article_candidates_reject_listing_and_quote_pages():
+    from scraping.enhanced_news_scraper import is_article_candidate
+    assert not is_article_candidate('Apple earnings report', 'https://seekingalpha.com/symbol/AAPL/news?source=feed')
+    assert not is_article_candidate('Apple Stock Price, News, Quote & History - Yahoo', 'https://news.google.com/rss/articles/example')
+    assert is_article_candidate('Apple earnings report', 'https://seekingalpha.com/article/123-apple-earnings')
+    assert is_article_candidate('Apple earnings report', 'https://news.google.com/rss/articles/example')
+    assert not is_article_candidate('Broken article', None)
+
+
+def _stub_prices(monkeypatch, closes, quote, volumes=None):
     import pandas as pd
     import yfinance
     history = pd.DataFrame(
-        {"Open": closes, "High": closes, "Low": closes, "Close": closes, "Volume": [100] * len(closes)},
+        {"Open": closes, "High": closes, "Low": closes, "Close": closes, "Volume": volumes if volumes is not None else [100] * len(closes)},
         index=pd.date_range("2024-01-02", periods=len(closes), tz="America/New_York"),
     )
     class Ticker:
@@ -378,6 +416,31 @@ def test_price_history_distinguishes_missing_quote_from_zero_and_historical_clos
         assert result["quote_as_of"] == "2024-01-03T00:00:00+00:00"
     else:
         assert result["quote_as_of"] is None
+    json.dumps(result, allow_nan=False)
+
+
+def test_price_history_filters_nonfinite_bars_before_json_serialization(api, monkeypatch):
+    _stub_prices(monkeypatch, [10, float('nan'), 12, float('inf')], {})
+    result = api.get_price_history('META', current_user='demo')
+    assert [row['close'] for row in result['data']] == [10, 12]
+    assert result['lastHistoricalClose'] == 12
+    assert result['lastHistoricalCloseDate'] == '2024-01-04'
+    from starlette.responses import JSONResponse
+    JSONResponse(result)  # Serialization happens after the endpoint returns.
+
+
+def test_price_history_without_valid_bars_returns_404(api, monkeypatch):
+    _stub_prices(monkeypatch, [float('nan'), float('inf')], {})
+    with pytest.raises(HTTPException) as error:
+        api.get_price_history('META', current_user='demo')
+    assert error.value.status_code == 404
+
+
+def test_price_history_missing_volume_keeps_prices_and_observed_zero(api, monkeypatch):
+    _stub_prices(monkeypatch, [10, 11, 12, 13], {}, volumes=[float('nan'), float('inf'), -1, 0])
+    result = api.get_price_history('META', current_user='demo')
+    assert [row['volume'] for row in result['data']] == [None, None, None, 0]
+    assert len(result['data']) == 4
     json.dumps(result, allow_nan=False)
 
 

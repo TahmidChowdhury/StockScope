@@ -367,14 +367,24 @@ def compute_ttm_metrics(ticker: str, quarterlies=None, annuals=None) -> Fundamen
     total_debt, cash_eq = _latest(debt), _latest(cash)
     if total_debt is not None:
         result["total_debt"] = total_debt
+        result["period_metadata"]["total_debt"] = {
+            "basis": "balance_sheet", "period_end": debt.index[-1].date().isoformat(),
+        }
     if cash_eq is not None:
         result["cash_and_equivalents"] = cash_eq
+        result["period_metadata"]["cash_and_equivalents"] = {
+            "basis": "balance_sheet", "period_end": cash.index[-1].date().isoformat(),
+        }
     # Balance-sheet ratios require the same reporting date and nonmissing latest values.
     if (_exists(debt) and _exists(cash) and debt.index[-1] == cash.index[-1]
             and pd.notna(debt.iloc[-1]) and pd.notna(cash.iloc[-1])):
         result["net_debt"] = float(debt.iloc[-1] - cash.iloc[-1])
+        result["period_metadata"]["net_debt"] = {
+            "basis": "balance_sheet", "period_end": debt.index[-1].date().isoformat(),
+        }
         if cash.iloc[-1] != 0:
             result["debt_to_cash"] = float(debt.iloc[-1] / cash.iloc[-1])
+            result["period_metadata"]["debt_to_cash"] = dict(result["period_metadata"]["net_debt"])
     return FundamentalsTTM(**result)
 
 

@@ -36,7 +36,7 @@ def test_missing_and_nonfinite_metrics_are_unavailable_but_observed_zero_survive
     fake_ticker(monkeypatch, {
         "volume": None, "marketCap": float("nan"), "dayHigh": float("inf"),
         "dayLow": False, "averageVolume": 0, "trailingPE": 0,
-        "dividendYield": 0, "beta": 0, "trailingEps": -1.25,
+        "trailingAnnualDividendYield": 0, "beta": 0, "trailingEps": -1.25,
     })
     success, data = api.get_company_info("aapl")
     assert success
@@ -109,3 +109,56 @@ def test_history_failure_does_not_discard_observed_metrics(api, monkeypatch):
     assert data["volume"] == 0
     assert data["currentPrice"] == 42
     assert data["lastTradePrice"] is None
+
+
+def test_trailing_yield_uses_annual_dividends_and_the_displayed_quote(api, monkeypatch):
+    fake_ticker(monkeypatch, {
+        "currentPrice": 340, "regularMarketPrice": 300, "dividendYield": .31,
+        "trailingAnnualDividendRate": 1.04, "trailingAnnualDividendYield": .0035,
+    })
+    success, data = api.get_company_info("AAPL")
+    assert success
+    assert data["dividendYield"] == pytest.approx(1.04 / 340)
+    assert data["dividendYieldBasis"] == "trailing_annual_rate_over_quote"
+    assert data["dividendYield"] * 100 == pytest.approx(.30588235)
+
+
+def test_trailing_yield_uses_the_quote_fallback_and_preserves_observed_zero(api, monkeypatch):
+    fake_ticker(monkeypatch, {
+        "currentPrice": None, "regularMarketPrice": 42,
+        "trailingAnnualDividendRate": 0, "dividendYield": 1.5,
+    })
+    success, data = api.get_company_info("AAPL")
+    assert success
+    assert data["currentPrice"] == 42
+    assert data["dividendYield"] == 0
+    assert data["dividendYieldBasis"] == "trailing_annual_rate_over_quote"
+
+
+@pytest.mark.parametrize("value", [0, .0031, 1.5])
+def test_explicit_trailing_yield_remains_decimal_without_magnitude_guessing(api, monkeypatch, value):
+    fake_ticker(monkeypatch, {"trailingAnnualDividendYield": value, "dividendYield": .31})
+    success, data = api.get_company_info("AAPL")
+    assert success
+    assert data["dividendYield"] == value
+    assert data["dividendYieldBasis"] == "provider_trailing_annual"
+
+
+@pytest.mark.parametrize("info", [
+    {"dividendYield": .31},
+    {"dividendYield": 0},
+    {"trailingAnnualDividendRate": 1, "currentPrice": 0},
+    {"trailingAnnualDividendRate": 1, "currentPrice": -10},
+    {"trailingAnnualDividendRate": -1, "currentPrice": 42},
+    {"trailingAnnualDividendYield": float("nan")},
+    {"trailingAnnualDividendYield": float("inf")},
+    {"trailingAnnualDividendYield": -1},
+    {"trailingAnnualDividendYield": False},
+])
+def test_unavailable_or_invalid_dividend_inputs_stay_unavailable(api, monkeypatch, info):
+    fake_ticker(monkeypatch, info)
+    success, data = api.get_company_info("AAPL")
+    assert success
+    assert data["dividendYield"] is None
+    assert data["dividendYieldBasis"] is None
+    json.dumps(data, allow_nan=False)

@@ -336,7 +336,7 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
           </button>
         </div>
 
-        <p className="text-xs text-white/50 mb-4">Saved articles may be out of date. Use Refresh sources in the analysis view to collect new research. Company releases are company statements and are not scored. News sentiment describes wording, not expected returns.</p>
+        <p className="text-xs text-white/50 mb-4">Saved articles may be out of date. Use Refresh sources in Research summary to collect new research. Company releases are company statements and are not scored. News sentiment describes wording, not expected returns.</p>
 
         {/* Pull-to-refresh indicator for mobile */}
         <div className="lg:hidden text-center text-white/40 text-xs mb-4">

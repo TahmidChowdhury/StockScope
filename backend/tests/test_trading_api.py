@@ -167,6 +167,85 @@ def test_congress_import_and_disclosure_aware_backtest_with_snapshot_export(cont
     assert len(delayed['result']['pending']) == 1
 
 
+@pytest.mark.parametrize('delay_days', [1, 7])
+def test_congress_full_year_keeps_more_than_twenty_symbols_and_sales(context, delay_days):
+    client, headers, *_ = context
+    symbols = [f'STK{chr(65 + i)}' for i in range(25)]
+    rows = [disclosure(disclosure_id=f'buy-{symbol}', symbol=symbol) for symbol in symbols]
+    rows += [disclosure(disclosure_id=f'sell-{symbol}', symbol=symbol, side='sell',
+                        transaction_date='2025-11-03', available_date='2025-11-05')
+             for symbol in symbols]
+    assert client.post('/api/trading/congress/import', headers=headers['admin'],
+                       json={'csv_text': csv_text(rows)}).status_code == 200
+    response = client.post('/api/trading/backtests', headers=headers['admin'], json={
+        'strategy': 'congress', 'member': 'Example Member', 'symbols': [],
+        'start': '2025-01-01', 'end': '2025-12-31', 'disclosure_delay_days': delay_days,
+        'trade_fraction': .02, 'costs': {'slippage_bps': 5, 'spread_bps': 2, 'commission': 0},
+    })
+    assert response.status_code == 201, response.text
+    run = response.json()
+    result = run['result']
+    assert run['resolved_symbols'] == symbols
+    assert {row['disclosure_id'] for row in run['disclosures']} == {row['disclosure_id'] for row in rows}
+    assert result['metrics']['fill_count'] == 50
+    assert {fill['symbol'] for fill in result['fills'] if fill['side'] == 'buy'} == set(symbols)
+    assert {fill['symbol'] for fill in result['fills'] if fill['side'] == 'sell'} == set(symbols)
+    assert all(fill['execution_date'] > fill['signal_date'] for fill in result['fills'])
+    assert result['positions'] == result['pending'] == result['rejected'] == result['exclusions'] == []
+    assert result['metrics']['total_costs'] > 0
+    assert result['metrics']['benchmark_costs'] > 0
+    exported = client.get(f"/api/trading/backtests/{run['id']}/export", headers=headers['guest']).json()
+    assert set(exported['data']) == {*symbols, 'SPY'}
+    assert exported['resolved_symbols'] == symbols
+
+
+@pytest.mark.parametrize('failure', ['unavailable', 'incomplete'])
+def test_large_congress_test_cannot_drop_a_symbol_with_unusable_data(context, monkeypatch, failure):
+    client, headers, prices, *_ = context
+    symbols = [f'STK{chr(65 + i)}' for i in range(25)]
+    # Even a sale with no pre-window holding remains part of the evidence and data checks.
+    rows = [disclosure(disclosure_id=f'row-{symbol}', symbol=symbol,
+                       side='sell' if symbol == symbols[-1] else 'buy') for symbol in symbols]
+    assert client.post('/api/trading/congress/import', headers=headers['admin'],
+                       json={'csv_text': csv_text(rows)}).status_code == 200
+
+    def unusable_data(requested, start, end):
+        assert set(requested) == {*symbols, 'SPY'}
+        if failure == 'unavailable':
+            raise ValueError(f'Usable USD price history unavailable for {symbols[-1]}; no test was saved')
+        data = prices(requested, start, end)
+        data[symbols[-1]].pop(0)
+        return data
+
+    monkeypatch.setattr(market, 'fetch_bars', unusable_data)
+    response = client.post('/api/trading/backtests', headers=headers['admin'], json={
+        'strategy': 'congress', 'member': 'Example Member', 'symbols': [],
+        'start': '2025-01-01', 'end': '2025-12-31',
+    })
+    assert response.status_code == 422
+    assert symbols[-1] in response.json()['detail']
+    assert client.get('/api/trading/backtests', headers=headers['guest']).json() == []
+
+
+def test_congress_disclosure_work_limit_precedes_price_fetch(context, monkeypatch):
+    client, headers, *_ = context
+    rows = [disclosure(disclosure_id=f'row-{i}') for i in range(1001)]
+    assert client.post('/api/trading/congress/import', headers=headers['admin'],
+                       json={'csv_text': csv_text(rows)}).status_code == 200
+
+    def no_fetch(*_):
+        raise AssertionError('Reject oversized requests before provider access')
+
+    monkeypatch.setattr(market, 'fetch_bars', no_fetch)
+    response = client.post('/api/trading/backtests', headers=headers['admin'], json={
+        'strategy': 'congress', 'member': 'Example Member',
+        'start': '2025-01-01', 'end': '2025-12-31',
+    })
+    assert response.status_code == 422
+    assert response.json()['detail'] == 'Limit a Congress test to 1,000 eligible disclosures'
+    assert client.get('/api/trading/backtests', headers=headers['guest']).json() == []
+
+
 def test_congress_browse_filters_and_summaries_cover_records_beyond_the_page(context):
     client, headers, *_ = context
     rows = [

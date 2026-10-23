@@ -1,0 +1,45 @@
+name: Backend image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.py'
+      - 'requirements*.txt'
+      - 'Dockerfile.backend'
+      - '.dockerignore'
+      - 'alembic.ini'
+      - 'railway.json'
+      - '.github/workflows/backend-image.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/*.py'
+      - 'requirements*.txt'
+      - 'Dockerfile.backend'
+      - '.dockerignore'
+      - 'alembic.ini'
+      - 'railway.json'
+      - '.github/workflows/backend-image.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-image-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  production-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build production image with pinned tone models
+        # The Dockerfile downloads both public pinned checkpoints, verifies
+        # their files, and runs real CPU inference with Hugging Face offline.
+        # This uses the production default; no credentials or image push.
+        run: docker build --platform linux/amd64 --file Dockerfile.backend --tag stockscope-backend:ci --progress=plain .

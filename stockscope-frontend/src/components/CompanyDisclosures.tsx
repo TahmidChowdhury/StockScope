@@ -1,0 +1,159 @@
+'use client'
+
+import { useId } from 'react'
+import Link from 'next/link'
+import { useQuery } from '@tanstack/react-query'
+import { ArrowUpRight, ExternalLink, Landmark, RefreshCw } from 'lucide-react'
+import { disclosureChamberLabel, disclosureOwnerLabel, tradingDate, tradingRequest, type DisclosureResearch } from '@/lib/trading'
+
+const API_UPDATE_MESSAGE = 'Company disclosures are waiting for a compatible server update. Try again shortly.'
+
+function disclosureDate(value: string) {
+  const date = new Date(`${value}T00:00:00Z`)
+  return Number.isNaN(date.getTime())
+    ? 'Unknown'
+    : date.toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+      })
+}
+
+function sourceHref(value: string) {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' ? url.href : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export default function CompanyDisclosures({ symbol }: { symbol: string }) {
+  const headingId = useId()
+  const query = useQuery({
+    queryKey: ['congress', 'company', symbol],
+    queryFn: async () => {
+      const data = await tradingRequest<DisclosureResearch>(
+        `/congress?${new URLSearchParams({ symbol, limit: '5' })}`,
+      )
+      // Older servers ignore the symbol filter. Never label their full feed as company activity.
+      if (
+        !data || !Array.isArray(data.records) || !Array.isArray(data.symbols)
+        || !data.summary || !data.filtered_summary
+        || !['csv_import', 'automatic_and_csv'].includes(data.mode)
+        || !['user_supplied_csv', 'mixed_disclosures'].includes(data.provenance?.source)
+        || data.provenance?.dates_verified !== false
+        || !data.records.every((record) => record?.symbol === symbol)
+      ) throw new Error(API_UPDATE_MESSAGE)
+      return data
+    },
+    staleTime: 60_000,
+  })
+  const records = query.data?.records ?? []
+  const disclosureHref = `/disclosures?${new URLSearchParams({ symbol })}`
+
+  return (
+    <section aria-labelledby={headingId} className="surface overflow-hidden">
+      <div className="flex flex-wrap items-start justify-between gap-4 p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <div className="rounded-xl border border-violet-400/15 bg-violet-400/10 p-2.5">
+            <Landmark className="h-4 w-4 text-violet-300" aria-hidden="true" />
+          </div>
+          <div>
+            <h2 id={headingId} className="text-sm font-semibold text-slate-100">
+              Disclosed activity
+            </h2>
+            <p className="mt-1 text-xs leading-5 text-slate-400">
+              Congressional transactions involving {symbol}.
+            </p>
+            <span className="mt-2 inline-flex rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-medium text-slate-400">
+              {query.data?.mode === 'automatic_and_csv' ? 'Collected & imported records' : 'Imported records'}
+            </span>
+          </div>
+        </div>
+        <Link
+          href={disclosureHref}
+          className="inline-flex items-center gap-1.5 rounded-lg py-1 text-xs font-medium text-violet-300 hover:text-violet-200"
+        >
+          Explore disclosures <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+        </Link>
+      </div>
+
+      {query.isError && (
+        <div role="alert" className="mx-5 mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3 text-xs text-amber-200 sm:mx-6">
+          <p>
+            {query.error?.message === API_UPDATE_MESSAGE ? API_UPDATE_MESSAGE : 'Disclosures could not be reloaded.'}
+            {query.data ? ' Previously loaded records are shown below.' : ' Try loading them again.'}
+          </p>
+          <button
+            onClick={() => void query.refetch()}
+            disabled={query.isFetching}
+            className="inline-flex items-center gap-1.5 rounded px-2 py-1 font-medium hover:bg-white/5 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${query.isFetching ? 'animate-spin' : ''}`} aria-hidden="true" />
+            Retry
+          </button>
+        </div>
+      )}
+
+      {query.isPending ? (
+        <div role="status" className="space-y-3 px-5 pb-5 sm:px-6">
+          <span className="sr-only">Loading {symbol} disclosures…</span>
+          {[0, 1].map((index) => (
+            <div key={index} className="h-16 animate-pulse rounded-lg bg-white/5" />
+          ))}
+        </div>
+      ) : query.data && records.length === 0 ? (
+        <div className="mx-5 mb-5 rounded-xl border border-dashed border-white/10 px-4 py-5 sm:mx-6 sm:mb-6">
+          <p className="text-sm text-slate-300">No recorded disclosures for {symbol} yet.</p>
+          <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
+            Browse collection coverage and source-linked records in the disclosure workspace.
+            An empty result does not establish whether members traded this company.
+          </p>
+        </div>
+      ) : records.length > 0 ? (
+        <>
+          <ul className="divide-y divide-white/[0.06] border-y border-white/[0.07]">
+            {records.map((record) => {
+              const href = sourceHref(record.source_url)
+              const purchase = record.side === 'buy'
+              return (
+                <li key={record.disclosure_id} className="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_auto] sm:items-center sm:px-6">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium text-slate-200">{record.member}</p>
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${purchase ? 'bg-emerald-400/10 text-emerald-300' : 'bg-rose-400/10 text-rose-300'}`}>
+                        {purchase ? 'Purchase' : record.partial_sale ? 'Partial sale' : 'Sale'}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Owner: {disclosureOwnerLabel(record.owner)} <span aria-hidden="true">·</span> {record.asset_type}
+                      {record.chamber && <> <span aria-hidden="true">·</span> {disclosureChamberLabel(record.chamber)}</>}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-300">{record.amount_range}</p>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs leading-5 sm:grid-cols-1">
+                    <div><dt className="inline text-slate-500">Traded </dt><dd className="inline text-slate-300">{disclosureDate(record.transaction_date)}</dd></div>
+                    <div><dt className="inline text-slate-500">{record.availability_basis === 'filing_day_estimate' ? 'Filed (estimate) ' : 'Public (imported) '}</dt><dd className="inline text-slate-300">{disclosureDate(record.filed_date || record.available_date)}</dd></div>
+                    {record.first_seen_at && <div><dt className="inline text-slate-500">First observed </dt><dd className="inline text-slate-300">{tradingDate(record.first_seen_at)}</dd></div>}
+                    <div className="col-span-2 text-[10px] text-slate-500 sm:col-span-1">
+                      <dt className="sr-only">Disclosure delay</dt>
+                      <dd>{record.lag_days} day{record.lag_days === 1 ? '' : 's'} after trade</dd>
+                    </div>
+                  </dl>
+                  {href ? (
+                    <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg py-1 text-xs text-violet-300 hover:text-violet-200" aria-label={`Read source for ${record.member}'s ${symbol} transaction on ${record.transaction_date}`}>
+                      Source <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                    </a>
+                  ) : <span className="text-xs text-slate-500">Source unavailable</span>}
+                </li>
+              )
+            })}
+          </ul>
+          <div className="flex flex-wrap justify-between gap-2 px-5 py-3 text-[10px] leading-5 text-slate-500 sm:px-6">
+            <p>Filing dates estimate availability; CSV dates are importer supplied. Review the original source.</p>
+            <p>{records.length} of {query.data?.total.toLocaleString()} records</p>
+          </div>
+        </>
+      ) : null}
+    </section>
+  )
+}

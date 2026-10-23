@@ -77,7 +77,7 @@ class BacktestInput(Input):
     end: date
     initial_cash: float = Field(default=10000, ge=100, le=100000000)
     benchmark: str = "SPY"
-    symbols: list[str] = Field(default_factory=lambda: ["AAPL"], min_length=1, max_length=20)
+    symbols: list[str] = Field(default_factory=lambda: ["AAPL"], max_length=20)
     costs: Costs = Field(default_factory=Costs)
     fast_window: int = Field(default=20, ge=2, le=100)
     slow_window: int = Field(default=50, ge=3, le=250)
@@ -85,6 +85,7 @@ class BacktestInput(Input):
     trade_fraction: float = Field(default=0.1, gt=0, le=1)
     max_weight: float = Field(default=0.25, gt=0, le=1)
     disclosure_delay_days: int = Field(default=0, ge=0, le=90)
+    allow_estimated_disclosure_dates: bool = False
 
     @field_validator("name", mode="before")
     @classmethod
@@ -110,7 +111,9 @@ class BacktestInput(Input):
             raise ValueError("End must precede today in New York; only completed daily sessions are supported")
         if self.end <= self.start or (self.end - self.start).days > 3660:
             raise ValueError("Choose an ordered date range of at most ten years")
-        if self.fast_window >= self.slow_window:
+        if self.strategy != "congress" and not self.symbols:
+            raise ValueError("Choose at least one stock symbol")
+        if self.strategy == "sma" and self.fast_window >= self.slow_window:
             raise ValueError("Fast window must be shorter than slow window")
         if self.strategy == "sma" and len(self.symbols) != 1:
             raise ValueError("SMA supports one stock per test")

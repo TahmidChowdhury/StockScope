@@ -8,6 +8,7 @@ import {
   ChartNoAxesCombined,
   FlaskConical,
   LayoutDashboard,
+  Landmark,
   LogOut,
   Menu,
   ScanLine,
@@ -23,7 +24,7 @@ interface SideNavProps {
   onLogout?: () => void
   onStockSelect?: (symbol: string) => void
   currentStock?: string
-  activePage?: 'dashboard' | 'compare' | 'screener' | 'trading'
+  activePage?: 'dashboard' | 'compare' | 'screener' | 'trading' | 'disclosures'
   watchlistLoading?: boolean
   watchlistError?: boolean
   onWatchlistRetry?: () => void
@@ -33,6 +34,7 @@ const items = [
   { id: 'dashboard', href: '/', label: 'Overview', Icon: LayoutDashboard },
   { id: 'screener', href: '/screener', label: 'Screener', Icon: ScanLine },
   { id: 'compare', href: '/compare', label: 'Compare', Icon: Scale },
+  { id: 'disclosures', href: '/disclosures', label: 'Disclosures', Icon: Landmark },
   {
     id: 'trading',
     href: '/trading',

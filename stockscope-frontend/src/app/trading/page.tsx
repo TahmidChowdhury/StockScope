@@ -3,6 +3,7 @@
 import { FormEvent, ReactNode, Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   CartesianGrid,
   Legend,
@@ -15,10 +16,12 @@ import {
 } from 'recharts'
 import AppShell from '@/components/AppShell'
 import BacktestRiskPanel from '@/components/BacktestRiskPanel'
+import DisclosureCollectionStatus from '@/components/DisclosureCollectionStatus'
 import { getAuthSession } from '@/lib/api'
 import { useWorkspaceDraft } from '@/hooks/useWorkspaceDraft'
-import { BacktestDraft, CongressDraft, PaperOrderDraft, PaperSetupDraft, applyBacktestSymbols, isBacktestDraft, isCongressDraft, isPaperOrderDraft, isPaperSetupDraft } from '@/lib/trading-draft'
+import { BacktestDraft, CongressDraft, PaperOrderDraft, PaperSetupDraft, applyBacktestMember, applyBacktestSymbols, isBacktestDraft, isBacktestWorkspace, isCongressDraft, isPaperOrderDraft, isPaperSetupDraft, resolveMemberBacktestHandoff } from '@/lib/trading-draft'
 import { loadSavedTradingRoute, savedTradingHref, tradingRoute } from '@/lib/trading-route'
+import { companyResearchHref } from '@/lib/research-workflow'
 import {
   CongressData,
   Costs,
@@ -29,6 +32,7 @@ import {
   downloadTradingFile,
   tradingRequest,
   tradingDate,
+  disclosureOwnerLabel,
   canCancelPaperOrder,
   backtestDates,
   backtestName,
@@ -369,12 +373,14 @@ function TradingWorkspace() {
   const search = useSearchParams()
   const pathname = usePathname()
   const symbolsQuery = search.get('symbols')
+  const memberQuery = search.get('member')
   const handoffQuery = search.get('handoff')
   const router = useRouter()
+  const queryClient = useQueryClient()
   const route = tradingRoute(pathname, search.get('tab'))
   const tab = route.tab
   const setTab = (value: string) => {
-    const params = new URLSearchParams(search.toString())
+    const params = new URLSearchParams(pathname === '/trading' ? search.toString() : '')
     params.set('tab', value)
     router.push(`/trading?${params}`, { scroll: false })
   }
@@ -411,6 +417,7 @@ function TradingWorkspace() {
   const [renameLabel, setRenameLabel] = useState('')
   useEffect(() => setRenaming(false), [run?.id])
   const [congress, setCongress] = useState<CongressData>(emptyCongress)
+  const [congressReady, setCongressReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -440,7 +447,7 @@ function TradingWorkspace() {
   const backtestDraft = useWorkspaceDraft<BacktestDraft>('trading:backtest', {
     capital: 10000, benchmark: 'SPY', costs: { slippage_bps: 5, spread_bps: 2, commission: 0 },
     strategy: 'buy_hold', backtestLabel: '', symbols: 'AAPL, MSFT', symbolsContext: '', start: dateRange.start, end: dateRange.end,
-    fast: 20, slow: 50, member: '', tradeFraction: 10, maxWeight: 25, delay: 0,
+    fast: 20, slow: 50, member: '', tradeFraction: 10, maxWeight: 25, delay: 0, allowEstimatedDates: false,
   }, isBacktestDraft)
   const [initialOrder] = useState<PaperOrderDraft>(() => ({ orderSymbol: 'AAPL', orderSide: 'buy', budget: 1000, thesis: '', clientOrderId: crypto.randomUUID() }))
   const orderDraft = useWorkspaceDraft<PaperOrderDraft>(`trading:order:${selectedKind === 'portfolio' ? selectedId : 'unselected'}`, initialOrder, isPaperOrderDraft)
@@ -448,7 +455,7 @@ function TradingWorkspace() {
   const { name } = paperDraft.value
   const fundingDraft = tab === 'paper' ? paperDraft : backtestDraft
   const { capital, benchmark, costs } = fundingDraft.value
-  const { strategy, backtestLabel, symbols, start, end, fast, slow, member, tradeFraction, maxWeight, delay } = backtestDraft.value
+  const { strategy, backtestLabel, symbols, start, end, fast, slow, member, tradeFraction, maxWeight, delay, allowEstimatedDates = false } = backtestDraft.value
   const { orderSymbol, orderSide, budget, thesis, clientOrderId } = orderDraft.value
   const { csv } = congressDraft.value
   function setBacktestField<K extends keyof BacktestDraft>(key: K, value: BacktestDraft[K]) {
@@ -484,11 +491,19 @@ function TradingWorkspace() {
   const backtestReady = backtestDraft.ready
   const updateBacktestDraft = backtestDraft.setValue
   useEffect(() => {
-    if (!backtestReady) return
+    if (!backtestReady || !isBacktestWorkspace(pathname, tab) || memberQuery !== null) return
     const passedSymbols = backtestSymbols(symbolsQuery)
     if (!passedSymbols) return
     updateBacktestDraft((current) => applyBacktestSymbols(current, passedSymbols, handoffQuery))
-  }, [symbolsQuery, handoffQuery, backtestReady, updateBacktestDraft])
+  }, [pathname, tab, symbolsQuery, memberQuery, handoffQuery, backtestReady, updateBacktestDraft])
+  const memberHandoff = resolveMemberBacktestHandoff(pathname, tab, memberQuery, handoffQuery, congress.members, congressReady)
+  const handoffMember = memberHandoff.status === 'ready' ? memberHandoff.member : null
+  const memberHandoffId = memberHandoff.status === 'ready' ? memberHandoff.handoff : null
+  useEffect(() => {
+    if (!backtestReady || handoffMember === null || memberHandoffId === null) return
+    updateBacktestDraft((current) => applyBacktestMember(current, handoffMember, memberHandoffId))
+  }, [backtestReady, handoffMember, memberHandoffId, updateBacktestDraft])
+  const unavailableDraftMember = strategy === 'congress' && congressReady && !!member && !congress.members.includes(member)
 
   async function reloadLists() {
     const [p, r, c] = await Promise.all([
@@ -499,6 +514,7 @@ function TradingWorkspace() {
     setPortfolios(p)
     setRuns(r)
     setCongress(c)
+    setCongressReady(true)
     setMemberFilter('')
   }
   useEffect(() => {
@@ -552,7 +568,7 @@ function TradingWorkspace() {
             [
               ['paper', 'Paper portfolio'],
               ['backtest', 'Backtesting'],
-              ['congress', 'Congress disclosures'],
+              ['congress', 'Disclosure imports'],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -944,6 +960,10 @@ function TradingWorkspace() {
               className={panelStyle}
               onSubmit={(e) => {
                 e.preventDefault()
+                if (strategy === 'congress' && (!congressReady || !congress.members.includes(member))) {
+                  setError('Choose a member with available disclosures before running this experiment.')
+                  return
+                }
                 let dates: { start: string; end: string }
                 try {
                   dates = backtestDates(new FormData(e.currentTarget))
@@ -965,16 +985,16 @@ function TradingWorkspace() {
                     initial_cash: capital,
                     benchmark,
                     costs,
-                    symbols: symbols
+                    symbols: strategy === 'congress' ? [] : symbols
                       .split(',')
                       .map((s) => s.trim())
                       .filter(Boolean),
-                    fast_window: fast,
-                    slow_window: slow,
+                    ...(strategy === 'sma' ? { fast_window: fast, slow_window: slow } : {}),
                     member,
                     trade_fraction: tradeFraction / 100,
                     max_weight: maxWeight / 100,
                     disclosure_delay_days: delay,
+                    allow_estimated_disclosure_dates: strategy === 'congress' && allowEstimatedDates,
                   })
                   setRun(r)
                   router.push(savedTradingHref('backtest', r.id), { scroll: false })
@@ -994,7 +1014,20 @@ function TradingWorkspace() {
                 forecast.
               </p>
               <DraftControls draft={backtestDraft} label="Experiment draft" disabled={busy} />
-              {symbolsQuery !== null && !backtestSymbols(symbolsQuery) && (
+              {memberHandoff.status === 'invalid' && (
+                <p role="alert" className="mb-4 text-sm text-amber-200">{memberHandoff.message}</p>
+              )}
+              {memberHandoff.status === 'pending' && (
+                <p role={loading ? 'status' : 'alert'} className="mb-4 text-sm text-amber-200">
+                  {loading ? 'Checking the linked member against available disclosures…' : 'The linked member could not be checked. Reload the saved workspace to try again.'}
+                </p>
+              )}
+              {unavailableDraftMember && (
+                <p role="alert" className="mb-4 text-sm text-amber-200">
+                  The draft member “{member}” has no available disclosures. Choose an available member below or import this member’s records.
+                </p>
+              )}
+              {isBacktestWorkspace(pathname, tab) && memberQuery === null && symbolsQuery !== null && !backtestSymbols(symbolsQuery) && (
                 <p role="alert" className="mb-4 text-sm text-amber-200">
                   The linked symbols could not be used. Enter 1–20 valid stock
                   symbols below.
@@ -1060,7 +1093,7 @@ function TradingWorkspace() {
                 </div>
                 {strategy === 'congress' ? (
                   <>
-                    <Field label="Member with imported disclosures">
+                    <Field label="Member with available disclosures">
                       <select
                         className={inputStyle}
                         required
@@ -1068,6 +1101,7 @@ function TradingWorkspace() {
                         onChange={(e) => setMember(e.target.value)}
                       >
                         <option value="">Select a member</option>
+                        {unavailableDraftMember && <option value={member} disabled>{member} · no available disclosures</option>}
                         {congress.members.map((m) => (
                           <option key={m}>{m}</option>
                         ))}
@@ -1110,8 +1144,15 @@ function TradingWorkspace() {
                         />
                       </Field>
                     </div>
+                    <label className="flex items-start gap-3 rounded-xl border border-amber-300/15 bg-amber-300/5 p-4 text-sm text-amber-100/80">
+                      <input type="checkbox" className="mt-1 accent-violet-400" checked={allowEstimatedDates} onChange={(e) => setBacktestField('allowEstimatedDates', e.target.checked)} />
+                      <span>Use estimated filing dates for historical research
+                        <span className="mt-1 block text-xs leading-5 text-amber-100/60">Optional. These dates are publisher estimates, not verified publication times. Results may contain look-ahead bias and do not prove the strategy was followable.</span>
+                      </span>
+                    </label>
                     <p className="text-xs leading-5 text-amber-100/70">
-                      Uses disclosures first public inside the selected window.
+                      By default, automatic records become signals on the date StockScope first observed them. CSV records use your supplied dates.
+                      Only original versions of stock and ETF disclosures are eligible.
                       Buys use your fixed budget; sales close the copied symbol.
                       Owners are pooled. Options are excluded. This tests a
                       disclosure-following rule, not the member’s actual
@@ -1277,6 +1318,7 @@ function TradingWorkspace() {
                     Export complete experiment
                   </button>
                 </div>
+                {run.strategy === 'congress' && run.allow_estimated_disclosure_dates && <p role="note" className="rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-sm leading-6 text-amber-100/80">Historical research using estimated filing dates. Availability was not verified at the time; this result may contain look-ahead bias.</p>}
                 {renaming && (
                   <form
                     className={panelStyle}
@@ -1341,19 +1383,21 @@ function TradingWorkspace() {
 
         {tab === 'congress' && (
           <>
+            <DisclosureCollectionStatus onCollected={() => { void reloadLists().catch((e) => setError(e.message)) }} />
             <section className={panelStyle}>
               <h2 className="text-lg font-semibold">
-                Congress disclosure evidence
+                Disclosure imports
               </h2>
               <p className="mt-3 text-sm leading-6 text-white/60">
                 Import normalized transaction rows from public disclosures or a
-                data provider. No live Congress feed is connected. Dates and
+                data provider to supplement automatic collection. CSV dates and
                 classifications are supplied by the importer; verify public
                 availability against the original evidence. Each disclosure ID
-                must identify one transaction row. This version does not support
+                must identify one transaction row. Manual imports do not support
                 amendments.
               </p>
               <div className="mt-4 flex flex-wrap gap-4 text-sm">
+                <Link href="/disclosures" className="text-purple-300 underline">Explore disclosures</Link>
                 <button
                   className="text-purple-300 underline"
                   onClick={() =>
@@ -1407,6 +1451,7 @@ function TradingWorkspace() {
                       inserted: number
                       duplicates: number
                     }>('/congress/import', { csv_text: csv })
+                    await queryClient.invalidateQueries({ queryKey: ['congress'] })
                     await reloadLists()
                     congressDraft.setValue({ csv: '' }, congressDraft.generation)
                     setNotice(
@@ -1455,7 +1500,7 @@ function TradingWorkspace() {
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="font-semibold">
-                    Imported transactions · {congress.total}
+                    Available transactions · {congress.total}
                   </h3>
                   {congress.last_import && (
                     <p className="mt-1 text-xs text-white/50">
@@ -1490,7 +1535,7 @@ function TradingWorkspace() {
               </div>
               {congress.records.length === 0 ? (
                 <p className="text-sm text-white/50">
-                  No disclosures imported. Import source-backed records to test
+                  No disclosures available. Wait for collection or import source-backed records to test
                   a copying strategy.
                 </p>
               ) : (
@@ -1503,7 +1548,7 @@ function TradingWorkspace() {
                           'Symbol',
                           'Action',
                           'Traded',
-                          'Publicly available',
+                          'Availability basis',
                           'Lag',
                           'Reported amount',
                           'Evidence',
@@ -1523,18 +1568,18 @@ function TradingWorkspace() {
                           <td className="p-2">
                             {r.member}
                             <span className="block text-white/40">
-                              {r.owner}
+                              {disclosureOwnerLabel(r.owner)}
                             </span>
                           </td>
                           <td className="p-2 font-mono">
-                            {r.symbol}
+                            <Link className="text-purple-300 underline" href={companyResearchHref(r.symbol, '/disclosures')}>{r.symbol}</Link>
                             <span className="block text-white/40">
                               {r.asset_type}
                             </span>
                           </td>
                           <td className="p-2">{r.side}</td>
                           <td className="p-2">{r.transaction_date}</td>
-                          <td className="p-2">{r.available_date}</td>
+                          <td className="p-2">{r.available_date}<span className="block text-white/40">{r.availability_basis === 'filing_day_estimate' ? 'Estimated filing date' : 'User-supplied date'}</span>{r.first_seen_at && <span className="block text-white/40">First observed {tradingDate(r.first_seen_at)}</span>}</td>
                           <td className="p-2">{r.lag_days} days</td>
                           <td className="p-2">{r.amount_range}</td>
                           <td className="p-2">

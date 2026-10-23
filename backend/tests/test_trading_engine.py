@@ -135,7 +135,7 @@ def test_sma_requires_real_warmup():
         run(strategy="sma")
 
 
-@pytest.mark.parametrize("change", [{"name": "x" * 81}, {"initial_cash": float('nan')}, {"symbols": []}, {"end": "2025-01-01"}, {"fast_window": 50}, {"strategy": "congress", "member": " "}, {"strategy": "sma", "symbols": ["AAPL", "MSFT"]}, {"benchmark": "../../bad"}, {"costs": {"commission": float('inf')}}])
+@pytest.mark.parametrize("change", [{"name": "x" * 81}, {"initial_cash": float('nan')}, {"symbols": []}, {"end": "2025-01-01"}, {"strategy": "sma", "fast_window": 50}, {"strategy": "congress", "member": " "}, {"strategy": "sma", "symbols": ["AAPL", "MSFT"]}, {"benchmark": "../../bad"}, {"costs": {"commission": float('inf')}}])
 def test_backtest_input_rejects_invalid_financial_assumptions(change):
     with pytest.raises(ValueError):
         BacktestInput.model_validate({"start": "2025-01-01", "end": "2025-12-31", **change})

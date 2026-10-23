@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from backend.trading import market, storage
+from backend.trading import congress, market, storage
 from backend.trading.engine import ASSUMPTIONS, simulate
 from backend.trading.models import BacktestInput
 
@@ -118,13 +118,27 @@ def rename_backtest(key, request):
 
 def run_backtest(request: BacktestInput):
     disclosures, signals, exclusions = [], [], []
+    disclosure_snapshot = None
     symbols = request.symbols
     if request.strategy == "congress":
-        document = storage.read("congress") or {"records": []}
+        document = congress.research_document(original_versions=True)
+        disclosure_snapshot = document.get("feed_snapshot")
         for row in document["records"]:
             if row["member"] != request.member:
                 continue
-            available = datetime.fromisoformat(row["available_date"]).date()
+            estimated = row.get("availability_basis") == "filing_day_estimate"
+            if estimated and not request.allow_estimated_disclosure_dates:
+                observed = row.get("first_seen_at")
+                if not observed:
+                    exclusions.append({"disclosure_id": row["disclosure_id"], "reason": "No StockScope observation time is available"})
+                    continue
+                superseded = row.get("superseded_at")
+                if superseded and datetime.fromisoformat(superseded.replace("Z", "+00:00")) <= datetime.fromisoformat(observed.replace("Z", "+00:00")):
+                    exclusions.append({"disclosure_id": row["disclosure_id"], "reason": "Original version was already superseded when first observed"})
+                    continue
+                available = datetime.fromisoformat(observed.replace("Z", "+00:00")).astimezone(market.NY).date()
+            else:
+                available = datetime.fromisoformat(row["available_date"]).date()
             signal_date = available + timedelta(days=request.disclosure_delay_days)
             # Do not invent existing holdings from disclosures before the selected window.
             if available < request.start or available > request.end:
@@ -132,13 +146,15 @@ def run_backtest(request: BacktestInput):
             if row["asset_type"] not in {"stock", "etf"}:
                 exclusions.append({"disclosure_id": row["disclosure_id"], "reason": "Only stocks and ETFs can be copied"})
                 continue
-            disclosures.append(row)
+            basis = ("filing_day_estimate" if request.allow_estimated_disclosure_dates else "stockscope_first_observed") if estimated else "user_supplied_csv"
+            disclosures.append({**row, "signal_available_date": available.isoformat(), "signal_availability_basis": basis})
             signals.append({"id": row["disclosure_id"], "symbol": row["symbol"], "side": row["side"],
                             "signal_date": signal_date.isoformat(), "budget": request.initial_cash * request.trade_fraction,
                             "max_weight": request.max_weight, "source_url": row["source_url"], "owner": row["owner"],
-                            "transaction_date": row["transaction_date"], "available_date": row["available_date"]})
+                            "transaction_date": row["transaction_date"], "available_date": available.isoformat(),
+                            "availability_basis": basis})
         if not signals:
-            raise ValueError("No eligible stock/ETF disclosures for this member within the selected date range")
+            raise ValueError("No eligible stock/ETF disclosures for this member within the selected date range. Automatic records use StockScope's first-observed date by default; historical filing-day estimates require the explicit exploratory-test option.")
         if len(signals) > 1000:
             raise ValueError("Limit a Congress test to 1,000 eligible disclosures")
         symbols = sorted({s["symbol"] for s in signals})
@@ -153,12 +169,15 @@ def run_backtest(request: BacktestInput):
     if request.strategy == "congress":
         result["assumptions"] = [*ASSUMPTIONS,
             "Imported disclosure dates are user-supplied, not independently verified; filing date may differ from public availability.",
-            "Start with cash and use only disclosures first public inside the window. Buy a fixed fraction of starting cash, capped by cash and the configured symbol weight; sell the entire copied symbol on a sale disclosure.",
+            ("Exploratory historical test: automatic disclosure signals use publisher filing-day estimates, not verified public timestamps. This can introduce look-ahead bias; results do not prove these trades could have been followed at that time." if request.allow_estimated_disclosure_dates else "Automatic disclosure signals use the date StockScope first observed the original event version. Historical backfills do not create earlier signals."),
+            "Only original eligible automatic event versions are copied, once. Original events identified as amendments, or already superseded when first observed, are excluded from observed-time tests. Later corrections do not cancel pending signals, change past fills, or create new trades.",
+            "Start with cash and use only disclosures with the chosen availability basis inside the window. Buy a fixed fraction of starting cash, capped by cash and the configured symbol weight; sell the entire copied symbol on a sale disclosure.",
             "Amount ranges, partial-sale amounts, options, pre-window holdings, and amendments are not replicated. Household owners are pooled for the selected member.",
             "Selecting a famous or historically successful member introduces selection bias. Test a separate unseen period and additional disclosure delays before drawing conclusions."]
     document = {"id": f"run-{uuid4()}", "kind": "run", "created_at": timestamp(),
                 **request.model_dump(mode="json"), "result": result, "data": data,
-                "disclosures": disclosures, "resolved_symbols": symbols, "engine_version": "daily-v1",
+                "disclosures": disclosures, "disclosure_snapshot": disclosure_snapshot,
+                "resolved_symbols": symbols, "engine_version": "daily-v1",
                 "source": "Yahoo Finance via yfinance",
                 "data_sha256": hashlib.sha256(json.dumps(data, sort_keys=True, allow_nan=False).encode()).hexdigest()}
     return storage.mutate(document["id"], lambda _: document)

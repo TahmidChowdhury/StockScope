@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import csv
 import io
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import Response
 
 from backend.core.auth import verify_password_with_role
@@ -131,14 +132,29 @@ def rename_backtest(run_id: str, request: BacktestNameInput, role=Depends(admin)
 
 
 @router.get("/congress")
-def disclosures(member: str = Query(default="", max_length=150), offset: int = Query(default=0, ge=0),
-                limit: int = Query(default=100, ge=1, le=200), role=Depends(verify_password_with_role)):
-    document = call(storage.read, "congress") or {"records": []}
-    records = document["records"]
-    filtered = [r for r in reversed(records) if not member or r["member"] == member]
-    return {"records": filtered[offset:offset + limit], "total": len(filtered), "offset": offset,
-            "members": sorted({r["member"] for r in records}), "last_import": document.get("last_import"),
-            "mode": "csv_import", "live_feed_connected": False}
+def disclosures(member: str = Query(default="", max_length=150), offset: int = Query(default=0, ge=0, le=60000),
+                limit: int = Query(default=100, ge=1, le=200), symbol: str = Query(default="", max_length=10),
+                side: Literal["", "buy", "sell"] = "", q: str = Query(default="", max_length=120),
+                role=Depends(verify_password_with_role)):
+    document = call(congress.research_document)
+    return call(congress.browse, document, member, symbol, side, q, offset, limit)
+
+
+@router.get("/congress/collection")
+def collection_status(role=Depends(verify_password_with_role)):
+    from backend.trading import disclosure_collector
+    return call(disclosure_collector.status)
+
+
+@router.post("/congress/collection/refresh", status_code=202)
+def refresh_collection(background: BackgroundTasks, role=Depends(admin)):
+    from backend.trading import disclosure_collector
+    current = call(disclosure_collector.status)
+    if not current["enabled"]:
+        raise HTTPException(409, "Automatic disclosure collection is disabled in this environment")
+    if current["state"] != "running":
+        background.add_task(disclosure_collector.collect, force=True)
+    return {**current, "state": "running"}
 
 
 @router.get("/congress/template")

@@ -4,7 +4,9 @@ export interface PaperSetupDraft { name: string; capital: number; benchmark: str
 export interface BacktestDraft {
   capital: number; benchmark: string; costs: Costs; strategy: string; backtestLabel: string; symbols: string
   start: string; end: string; fast: number; slow: number; member: string; tradeFraction: number; maxWeight: number; delay: number
+  allowEstimatedDates?: boolean
   symbolsContext?: string
+  memberHandoffs?: string[]
 }
 export interface PaperOrderDraft { orderSymbol: string; orderSide: string; budget: number; thesis: string; clientOrderId: string }
 export interface CongressDraft { csv: string }
@@ -14,6 +16,7 @@ const text = (value: unknown, max: number): value is string => typeof value === 
 const number = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1000000000
 const costs = (value: unknown): value is Costs => object(value) && number(value.slippage_bps) && number(value.spread_bps) && number(value.commission)
 const funding = (value: Record<string, unknown>) => number(value.capital) && text(value.benchmark, 10) && costs(value.costs)
+const handoffId = (value: unknown): value is string => typeof value === 'string' && /^[a-zA-Z0-9-]{1,100}$/.test(value)
 
 // Drafts may contain incomplete input; the existing API validates final execution rules.
 export function isPaperSetupDraft(value: unknown): value is PaperSetupDraft {
@@ -24,7 +27,39 @@ export function isBacktestDraft(value: unknown): value is BacktestDraft {
     && ['buy_hold', 'sma', 'congress'].includes(value.strategy as string)
     && text(value.start, 10) && text(value.end, 10) && text(value.member, 150)
     && [value.fast, value.slow, value.tradeFraction, value.maxWeight, value.delay].every(number)
+    && (value.allowEstimatedDates === undefined || typeof value.allowEstimatedDates === 'boolean')
     && (value.symbolsContext === undefined || text(value.symbolsContext, 1000))
+    && (value.memberHandoffs === undefined || (Array.isArray(value.memberHandoffs) && value.memberHandoffs.length <= 100
+      && value.memberHandoffs.every(handoffId) && new Set(value.memberHandoffs).size === value.memberHandoffs.length))
+}
+
+export function isBacktestWorkspace(pathname: string, tab: string): boolean {
+  return pathname === '/trading' && tab === 'backtest'
+}
+
+export type MemberBacktestHandoff = { status: 'none' | 'pending' } | { status: 'invalid'; message: string }
+  | { status: 'ready'; member: string; handoff: string }
+
+/** A member link cannot select a person before the imported member list is known. */
+export function resolveMemberBacktestHandoff(
+  pathname: string, tab: string, member: string | null, handoff: string | null,
+  members: string[], membersReady: boolean,
+): MemberBacktestHandoff {
+  if (!isBacktestWorkspace(pathname, tab) || member === null) return { status: 'none' }
+  if (!member || member.length > 150 || member !== member.trim() || /[\u0000-\u001f\u007f]/.test(member) || !handoffId(handoff)) {
+    return { status: 'invalid', message: 'This member link is invalid. Open a new backtest link from disclosures, or choose a member below. Your experiment draft was kept.' }
+  }
+  if (!membersReady) return { status: 'pending' }
+  if (!members.includes(member)) {
+    return { status: 'invalid', message: `No disclosures were found for “${member}”. Choose a member with available disclosures, or import this member’s source-backed records first. Your experiment draft was kept.` }
+  }
+  return { status: 'ready', member, handoff }
+}
+
+/** Remember recent explicit handoffs so refresh and Back/Forward keep later edits. */
+export function applyBacktestMember(draft: BacktestDraft, member: string, handoff: string): BacktestDraft {
+  if (draft.memberHandoffs?.includes(handoff)) return draft
+  return { ...draft, strategy: 'congress', member, memberHandoffs: [...(draft.memberHandoffs || []), handoff].slice(-100) }
 }
 
 /** Apply a research handoff once; reloads of that URL retain later draft edits. */

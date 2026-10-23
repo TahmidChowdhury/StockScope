@@ -448,7 +448,9 @@ def test_price_history_missing_volume_keeps_prices_and_observed_zero(api, monkey
     ([12], (12, None, None)),
     ([0, 12], (12, None, None)),
     ([float("nan"), 12], (12, None, None)),
-    ([12, float("inf")], (None, None, None)),
+    ([12, float("inf")], (12, None, None)),
+    ([float("nan"), float("inf")], (None, None, None)),
+    ([10, float("nan"), 12], (12, None, None)),
     ([12, 12], (12, 0, 0)),
     ([12, 0], (0, -12, -100)),
 ])
@@ -463,6 +465,28 @@ def test_watchlist_does_not_invent_change_without_comparable_closes(api, monkeyp
     else:
         assert result["price_as_of"].startswith("2024-01-")
     json.dumps(result, allow_nan=False)
+
+
+def test_watchlist_incomplete_latest_bar_keeps_observed_close_change_and_date(api, monkeypatch):
+    import pandas as pd
+    import yfinance
+
+    history = pd.DataFrame({"Close": [10, 12, float("nan")]},
+                           index=pd.date_range("2024-01-02", periods=3, tz="America/New_York"))
+    class Ticker:
+        info = {"longName": "Fixture"}
+
+        def history(self, **kwargs):
+            # A supported multi-session window also covers weekends/holidays.
+            assert kwargs == {"period": "5d", "timeout": 10}
+            return history
+
+    monkeypatch.setattr(yfinance, "Ticker", lambda symbol: Ticker())
+    monkeypatch.setattr(api, "get_available_tickers", lambda: ["AAPL"])
+    result = api.get_available_stocks("demo")["stocks"][0]
+    assert (result["currentPrice"], result["priceChange"], result["priceChangePercent"]) == (12, 2, 20)
+    assert result["price_as_of"] == "2024-01-03T05:00:00+00:00"
+    assert result["price_basis"] == "latest_daily_close"
 
 
 def test_saved_news_excludes_legacy_social_posts_but_keeps_company_releases(api):

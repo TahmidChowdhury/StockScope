@@ -87,12 +87,14 @@ def test_history_does_not_supply_a_quote_time_or_divide_by_zero(api, monkeypatch
     json.dumps(data, allow_nan=False)
 
 
-def test_nonfinite_history_stays_unavailable(api, monkeypatch):
+def test_incomplete_latest_history_uses_last_observed_close_and_its_date(api, monkeypatch):
     history = pd.DataFrame({"Close": [10, float("nan")]}, index=pd.to_datetime(["2020-01-01", "2020-01-02"], utc=True))
     fake_ticker(monkeypatch, {"regularMarketTime": float("inf")}, history)
     success, data = api.get_company_info("AAPL")
     assert success
-    for key in ("quote_as_of", "lastTradePrice", "lastTradeChange", "lastTradeChangePercent"):
+    assert data["lastTradePrice"] == 10
+    assert data["history_as_of"] == "2020-01-01T00:00:00+00:00"
+    for key in ("quote_as_of", "lastTradeChange", "lastTradeChangePercent"):
         assert data[key] is None
     json.dumps(data, allow_nan=False)
 

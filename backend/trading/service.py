@@ -157,9 +157,9 @@ def run_backtest(request: BacktestInput):
             raise ValueError("No eligible stock/ETF disclosures for this member within the selected date range. Automatic records use StockScope's first-observed date by default; historical filing-day estimates require the explicit exploratory-test option.")
         if len(signals) > 1000:
             raise ValueError("Limit a Congress test to 1,000 eligible disclosures")
+        # The disclosure count bounds work. A member's broader annual portfolio
+        # must not be truncated to the manually selected basket limit.
         symbols = sorted({s["symbol"] for s in signals})
-        if len(symbols) > 20:
-            raise ValueError("Congress test spans more than 20 symbols; shorten the date range")
     data = market.prepare_data(request, symbols)
     result = simulate(data=data, start=request.start.isoformat(), end=request.end.isoformat(),
                       initial_cash=request.initial_cash, benchmark=request.benchmark, costs=request.costs,

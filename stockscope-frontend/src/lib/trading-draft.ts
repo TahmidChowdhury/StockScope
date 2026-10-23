@@ -67,8 +67,35 @@ export function applyBacktestSymbols(draft: BacktestDraft, symbols: string[], ha
   const context = JSON.stringify([symbols, handoff && handoff.length <= 100 ? handoff : ''])
   if (draft.symbolsContext === context) return draft
   return { ...draft, symbols: symbols.join(', '), symbolsContext: context,
-    strategy: draft.strategy === 'sma' && symbols.length > 1 ? 'buy_hold' : draft.strategy }
+    strategy: draft.strategy === 'sma' && symbols.length === 1 ? 'sma' : 'buy_hold' }
 }
+
+/** Only the selected strategy's inputs belong in a request; hidden draft edits stay local. */
+export function buildBacktestRequest(draft: BacktestDraft, dates: Pick<BacktestDraft, 'start' | 'end'>) {
+  const shared = {
+    name: draft.backtestLabel.trim() || null,
+    strategy: draft.strategy,
+    ...dates,
+    initial_cash: draft.capital,
+    benchmark: draft.benchmark,
+    costs: draft.costs,
+  }
+  if (draft.strategy === 'congress') return {
+    ...shared,
+    symbols: [],
+    member: draft.member,
+    trade_fraction: draft.tradeFraction / 100,
+    max_weight: draft.maxWeight / 100,
+    disclosure_delay_days: draft.delay,
+    allow_estimated_disclosure_dates: draft.allowEstimatedDates ?? false,
+  }
+  return {
+    ...shared,
+    symbols: draft.symbols.split(',').map((symbol) => symbol.trim()).filter(Boolean),
+    ...(draft.strategy === 'sma' ? { fast_window: draft.fast, slow_window: draft.slow } : {}),
+  }
+}
+
 export function isPaperOrderDraft(value: unknown): value is PaperOrderDraft {
   return object(value) && text(value.orderSymbol, 10) && ['buy', 'sell'].includes(value.orderSide as string)
     && number(value.budget) && text(value.thesis, 2000) && typeof value.clientOrderId === 'string'

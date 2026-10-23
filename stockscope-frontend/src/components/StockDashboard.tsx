@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { Activity, ExternalLink, FileText, RefreshCw, X } from 'lucide-react'
 import { apiFetch, getAuthSession } from '@/lib/api'
+import { companyFundamentalsHref } from '@/lib/research-workflow'
 import type { InvestmentAdvice, QuantitativeAnalysis, StockAnalysis, StockDashboardProps } from '@/types'
 
 function displayDate(value?: string | null) {
@@ -37,6 +39,7 @@ function pause(ms: number, signal: AbortSignal) {
 }
 
 export default function StockDashboard({ symbol, onBack, embedded = false }: StockDashboardProps) {
+  const search = useSearchParams()
   const [stockData, setStockData] = useState<StockAnalysis | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -235,7 +238,7 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
           <div className="flex flex-wrap gap-3">
             <button disabled={detailsLoading || refreshing} onClick={() => loadDetails('research')} className="flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-3 text-sm disabled:opacity-50"><FileText className="h-4 w-4" />Research summary</button>
             <button disabled={detailsLoading || refreshing} onClick={() => loadDetails('quantitative')} className="flex items-center gap-2 rounded-lg bg-slate-700 px-4 py-3 text-sm disabled:opacity-50"><Activity className="h-4 w-4" />Metric availability</button>
-            <Link href={`/fundamentals/${encodeURIComponent(symbol)}`} className="rounded-lg border border-slate-600 px-4 py-3 text-sm">Company fundamentals</Link>
+            <Link href={companyFundamentalsHref(symbol, search.get('returnTo') || '')} className="rounded-lg border border-slate-600 px-4 py-3 text-sm">Company fundamentals</Link>
           </div>
           {detailsLoading && <p role="status" className="text-sm text-slate-300">Loading research details…</p>}
 

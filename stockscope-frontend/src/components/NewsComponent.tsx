@@ -2,9 +2,12 @@
 
 import { apiFetch } from '@/lib/api'
 import { newsDateLabels, normalizeNewsSentiment } from '@/lib/news'
+import { companyResearchHref } from '@/lib/research-workflow'
+import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Newspaper, RefreshCw, ExternalLink } from 'lucide-react'
+import { ArrowUpRight, Newspaper, RefreshCw, ExternalLink } from 'lucide-react'
 import FilterSortBar from './FilterSortBar'
 
 interface NewsArticle {
@@ -68,6 +71,8 @@ function getSourceIcon(source: string): string {
 }
 
 export default function NewsComponent({ symbol, className = '' }: NewsComponentProps) {
+  const search = useSearchParams()
+  const researchHref = companyResearchHref(symbol, search.get('returnTo') || '', 'analysis')
   const [articles, setArticles] = useState<NewsArticle[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -336,7 +341,7 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
           </button>
         </div>
 
-        <p className="text-xs text-white/50 mb-4">Saved articles may be out of date. Use Refresh sources in Research summary to collect new research. Company releases are company statements and are not scored. News sentiment describes wording, not expected returns.</p>
+        <p className="text-xs text-white/50 mb-4">Saved articles may be out of date. Use Refresh sources in <Link href={researchHref} className="text-violet-300 underline underline-offset-2">Research summary</Link> to collect new research. Company releases are company statements and are not scored. News sentiment describes wording, not expected returns.</p>
 
         {/* Pull-to-refresh indicator for mobile */}
         <div className="lg:hidden text-center text-white/40 text-xs mb-4">
@@ -358,7 +363,14 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
         {filteredAndSortedArticles.length === 0 ? (
           <div className="text-center py-6 sm:py-8">
             <Newspaper className="h-12 w-12 text-white/20 mx-auto mb-4" />
-            <p className="text-white/60 text-sm sm:text-base">No news articles found with current filters</p>
+            {articles.length === 0 ? <>
+              <p className="text-white/60 text-sm sm:text-base">No saved news for {symbol} yet.</p>
+              <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-400">Open Research summary and refresh sources to collect articles and filing evidence.</p>
+              <Link href={researchHref} className="button-primary mt-5">Open research to collect news<ArrowUpRight className="h-4 w-4" /></Link>
+            </> : <>
+              <p className="text-white/60 text-sm sm:text-base">No news articles found with current filters</p>
+              <button onClick={() => setDisabledSources(new Set())} className="button-secondary mt-4">Clear source filters</button>
+            </>}
           </div>
         ) : (
           <div className="space-y-3 sm:space-y-4 lg:grid lg:gap-4 lg:grid-cols-2 lg:space-y-0">

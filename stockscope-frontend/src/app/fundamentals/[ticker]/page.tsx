@@ -2,7 +2,8 @@
 
 import { useFundamentals } from '@/hooks/useFundamentals'
 import { useParams, useSearchParams } from 'next/navigation'
-import { companyResearchHref, researchReturn } from '@/lib/research-workflow'
+import { companyComparisonHref, companyResearchHref, researchReturn } from '@/lib/research-workflow'
+import { Scale } from 'lucide-react'
 import { amount } from '@/lib/financial-format'
 import {
   ComposedChart,
@@ -206,13 +207,19 @@ function FundamentalsOverview({
               </p>
             </div>
           </div>
-          {ttm.insufficient_data && (
-            <div className="rounded-lg border border-amber-400/20 bg-amber-400/[0.08] px-4 py-2">
-              <span className="text-sm font-medium text-amber-200">
-                Limited financial data
-              </span>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-3">
+            {ttm.insufficient_data && (
+              <div className="rounded-lg border border-amber-400/20 bg-amber-400/[0.08] px-4 py-2">
+                <span className="text-sm font-medium text-amber-200">
+                  Limited financial data
+                </span>
+              </div>
+            )}
+            <Link href={companyComparisonHref(ticker)} className="button-secondary">
+              <Scale className="h-4 w-4" />
+              Compare company
+            </Link>
+          </div>
         </div>
 
         <div className="surface mb-6 space-y-2 p-4 text-sm leading-6 text-slate-400">

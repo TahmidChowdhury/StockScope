@@ -42,6 +42,57 @@ def is_article_candidate(title, url):
         return False
     return not re.search(r'stock price, news, quote\s*&\s*history|stock quotes, company news and chart analysis|stock forecast and price target \d{4}|stock chart\s*(?:-\s*ChartMill)?$', str(title), re.IGNORECASE)
 
+
+def parse_finviz_news(soup, *, observed_at=None):
+    """Resolve Finviz's relative listing dates in its market timezone.
+
+    finvizfinance's dataframe resolves ``Today`` using the host's date. By the
+    time we receive that dataframe the original label is lost, so a UTC server
+    can silently put evening articles on tomorrow's New York calendar date.
+    Parse the original table instead, retaining unknown dates as unknown.
+    """
+    market_zone = ZoneInfo("America/New_York")
+    today = (observed_at or datetime.now(timezone.utc)).astimezone(market_zone).date()
+    table = soup.find("table", class_="fullview-news-outer")
+    if table is None:
+        return []
+    articles, last_date = [], None
+    for row in table.find_all("tr"):
+        cells = row.find_all("td")
+        if len(cells) < 2:
+            continue
+        parts = cells[0].get_text(" ", strip=True).split()
+        if len(parts) == 2:
+            label, clock = parts
+            try:
+                last_date = today if label.lower() == "today" else datetime.strptime(label, "%b-%d-%y").date()
+            except ValueError:
+                last_date = None
+        elif len(parts) == 1:
+            clock = parts[0]
+        else:
+            last_date = None
+            clock = ""
+        published_at = None
+        if last_date is not None:
+            try:
+                local = datetime.strptime(f"{last_date.isoformat()} {clock}", "%Y-%m-%d %I:%M%p").replace(tzinfo=market_zone)
+                published_at = local.astimezone(timezone.utc).isoformat()
+            except ValueError:
+                pass
+        link = cells[1].find("a", href=True)
+        if link is None or not link.get_text(strip=True):
+            continue
+        articles.append({
+            "source": "Finviz", "title": link.get_text(" ", strip=True),
+            "description": "", "url": link["href"], "publishedAt": published_at,
+            "source_date_label": cells[0].get_text(" ", strip=True),
+        })
+        if len(articles) == 10:
+            break
+    return articles
+
+
 class EnhancedNewsScraper:
     """Enhanced news scraper with multiple sources including Yahoo Finance and web scraping."""
     
@@ -358,52 +409,18 @@ class EnhancedNewsScraper:
             from finvizfinance.quote import finvizfinance
 
             stock = finvizfinance(ticker)
-            news_df = stock.ticker_news()
+            articles = parse_finviz_news(stock.soup)
 
-            if news_df is None or news_df.empty:
+            if not articles:
                 print(f"  ⚠️ No Finviz news found for {ticker}")
                 return []
 
-            articles = []
-            for _, row in news_df.head(10).iterrows():
-                try:
-                    title = str(row.get('Title', '') or row.get('title', ''))
-                    url = str(row.get('Link', '') or row.get('link', '') or row.get('URL', '') or row.get('url', ''))
-                    date_val = row.get('Date', '') or row.get('date', '')
-
-                    if not title or not url or url == 'nan':
-                        continue
-
-                    # Parse date
-                    published_at = None
-                    if date_val:
-                        try:
-                            parsed_date = datetime.fromisoformat(str(date_val))
-                        except (ValueError, TypeError):
-                            try:
-                                parsed_date = datetime.strptime(str(date_val), '%b-%d-%y %I:%M%p')
-                            except (ValueError, TypeError):
-                                parsed_date = None
-                        if parsed_date is not None:
-                            if parsed_date.tzinfo is None:
-                                parsed_date = parsed_date.replace(tzinfo=ZoneInfo("America/New_York"))
-                            published_at = parsed_date.astimezone(timezone.utc).isoformat()
-
-                    sentiment_scores = self.analyzer.polarity_scores(title)
-
-                    articles.append({
-                        'source': 'Finviz',
-                        'title': title,
-                        'description': '',
-                        'url': url,
-                        'publishedAt': published_at,
-                        'sentiment': {
-                            'compound': sentiment_scores['compound'],
-                            'label': self.classify_sentiment(sentiment_scores['compound'])
-                        }
-                    })
-                except Exception:
-                    continue
+            for article in articles:
+                sentiment_scores = self.analyzer.polarity_scores(article["title"])
+                article["sentiment"] = {
+                    "compound": sentiment_scores["compound"],
+                    "label": self.classify_sentiment(sentiment_scores["compound"]),
+                }
 
             print(f"  ✅ Found {len(articles)} Finviz articles")
             return articles

@@ -97,18 +97,21 @@ export default function Home() {
           Shared watchlist · Saved research
         </span>
       </div>
-      <section className="research-hero relative mb-6 rounded-2xl border border-white/10 p-6 sm:p-8">
+      <section className="research-hero relative mb-6 rounded-2xl border border-white/10 p-4 sm:p-8">
         <div className="relative z-10 max-w-2xl">
-          <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-400/[0.08] px-3 py-1 text-[11px] font-medium text-violet-200">
+          <span className="mb-4 hidden items-center gap-2 rounded-full border border-violet-400/20 bg-violet-400/[0.08] px-3 py-1 text-[11px] font-medium text-violet-200 sm:inline-flex">
             <span className="h-1 w-1 rounded-full bg-violet-300" />
             The company comes first
           </span>
-          <h2 className="text-2xl font-medium tracking-tight text-white sm:text-3xl">
-            Start with a question.
-            <br />
-            <span className="text-slate-400">Get closer to the evidence.</span>
+          <h2 className="mb-3 text-base font-medium tracking-tight text-white sm:mb-0 sm:text-3xl">
+            <span className="sm:hidden">Find a company</span>
+            <span className="hidden sm:inline">
+              Start with a question.
+              <br />
+              <span className="text-slate-400">Get closer to the evidence.</span>
+            </span>
           </h2>
-          <p className="mb-6 mt-3 max-w-lg text-sm leading-6 text-slate-400">
+          <p className="mb-6 mt-3 hidden max-w-lg text-sm leading-6 text-slate-400 sm:block">
             Explore financials, read the news, and trace the numbers back to
             their sources.
           </p>

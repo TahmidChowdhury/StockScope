@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { skipToken, useQuery } from '@tanstack/react-query'
 import {
@@ -12,16 +13,22 @@ import {
   Scale,
 } from 'lucide-react'
 import PriceChart from './PriceChart'
-import NewsComponent from './NewsComponent'
 import KeyMetrics from './KeyMetrics'
-import StockDashboard from './StockDashboard'
-import SecFactsPanel from './SecFactsPanel'
-import SentimentLabPanel from './SentimentLabPanel'
-import ValuationPanel from './ValuationPanel'
+import DeferredPanel from './DeferredPanel'
 import CompanyLogo from './CompanyLogo'
-import CompanyDisclosures from './CompanyDisclosures'
 import type { StockMetadata } from '@/types'
 import { companyComparisonHref, companyFundamentalsHref, researchReturn } from '@/lib/research-workflow'
+
+function SectionLoading() {
+  return <div role="status" className="surface min-h-64 p-6 text-sm text-slate-400">Loading research section…</div>
+}
+
+const NewsComponent = dynamic(() => import('./NewsComponent'), { loading: SectionLoading })
+const StockDashboard = dynamic(() => import('./StockDashboard'), { loading: SectionLoading })
+const SecFactsPanel = dynamic(() => import('./SecFactsPanel'), { loading: SectionLoading })
+const SentimentLabPanel = dynamic(() => import('./SentimentLabPanel'), { loading: SectionLoading })
+const ValuationPanel = dynamic(() => import('./ValuationPanel'), { loading: SectionLoading })
+const CompanyDisclosures = dynamic(() => import('./CompanyDisclosures'), { loading: SectionLoading })
 
 interface StockAnalysisHubProps {
   symbol: string
@@ -178,10 +185,14 @@ export default function StockAnalysisHub({
               <KeyMetrics symbol={symbol} />
             </div>
             <div className="mt-5">
-              <ValuationPanel symbol={symbol} />
+              <DeferredPanel label="valuation evidence">
+                <ValuationPanel symbol={symbol} />
+              </DeferredPanel>
             </div>
             <div className="mt-5">
-              <CompanyDisclosures symbol={symbol} />
+              <DeferredPanel label="company disclosures">
+                <CompanyDisclosures symbol={symbol} />
+              </DeferredPanel>
             </div>
             <div className="surface mt-5 flex items-start gap-3 px-5 py-4">
               <ChartNoAxesCombined className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />

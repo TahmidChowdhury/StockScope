@@ -159,7 +159,7 @@ function CompareWorkspace() {
         className="surface mb-6 p-5 sm:p-6"
         aria-label="Company selection"
       >
-        <div className="mb-5 flex items-center justify-between gap-3">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-semibold">Build your comparison</h2>
           <span className="text-xs text-slate-500">
             {tickers.length} / 20 companies
@@ -196,14 +196,14 @@ function CompareWorkspace() {
             tickers.map((ticker) => (
               <span
                 key={ticker}
-                className="inline-flex items-center gap-3 rounded-lg border border-violet-400/20 bg-violet-400/[0.08] py-2 pl-3 pr-2 text-xs font-medium text-violet-200"
+                className="inline-flex items-center gap-2 rounded-lg border border-violet-400/20 bg-violet-400/[0.08] pl-3 text-xs font-medium text-violet-200 sm:py-1 sm:pr-1"
               >
                 {ticker}
                 <button
                   disabled={compare.isPending}
                   aria-label={`Remove ${ticker}`}
                   onClick={() => commit(tickers.filter((t) => t !== ticker))}
-                  className="rounded p-1 hover:bg-white/10"
+                  className="flex h-11 w-11 items-center justify-center rounded hover:bg-white/10 sm:h-7 sm:w-7"
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -316,11 +316,12 @@ function CompareWorkspace() {
                 monetary totals.
               </p>
               <div className="surface overflow-hidden">
-                <div className="overflow-x-auto">
+                <p className="border-b border-white/[0.07] px-4 py-3 text-xs text-slate-500 sm:hidden">Swipe across to compare companies. Metric names stay visible.</p>
+                <div className="overflow-x-auto" role="region" aria-label="Financial comparison, scroll horizontally for more companies" tabIndex={0}>
                   <table className="w-full text-left text-xs">
                     <thead>
                       <tr className="border-b border-white/10">
-                        <th className="min-w-40 p-4 font-medium text-slate-500">
+                        <th scope="col" className="sticky left-0 z-10 min-w-32 bg-[#171a22] p-3 font-medium text-slate-500 sm:min-w-40 sm:p-4">
                           Metric
                         </th>
                         {results.map((company) => (
@@ -350,7 +351,7 @@ function CompareWorkspace() {
                           key={key}
                           className="border-b border-white/[0.05] last:border-0"
                         >
-                          <th className="p-4 font-normal text-slate-400">
+                          <th scope="row" className="sticky left-0 z-10 bg-[#171a22] p-3 font-normal text-slate-400 sm:p-4">
                             {label}
                           </th>
                           {results.map((company) => {

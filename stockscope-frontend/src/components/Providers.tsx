@@ -10,7 +10,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: {
       queries: {
-        refetchOnWindowFocus: false,
+        // iOS resumes installed apps via visibilitychange. Refresh only stale
+        // active queries, while keeping their cached observations on screen.
+        refetchOnWindowFocus: true,
         staleTime: 5 * 60 * 1000,
         gcTime: 10 * 60 * 1000,
         retry: (count, error) => !(error instanceof ApiError && error.status === 401) && count < 2,
@@ -23,11 +25,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [sessionVersion, setSessionVersion] = useState(0)
 
   useEffect(() => {
-    const syncSession = () => {
+    const syncSession = (event?: Event) => {
       void queryClient.cancelQueries()
       queryClient.clear()
       setSession(getAuthSession())
       setSessionVersion(version => version + 1)
+      // Signing in on a phone can leave the document at the password field's
+      // scroll position. Preserve reload restoration, but reset auth transitions.
+      if (event) window.scrollTo(0, 0)
     }
     window.addEventListener(AUTH_CHANGED_EVENT, syncSession)
     syncSession()

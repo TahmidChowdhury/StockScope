@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react'
+import { Dialog, DialogPanel, DialogTitle, Portal } from '@headlessui/react'
 import {
   ArrowUpRight,
   ChartNoAxesCombined,
@@ -43,6 +43,9 @@ const items = [
   },
 ] as const
 
+// Keep primary destinations comfortably tappable; the menu contains every page.
+const mobileItems = items.filter((item) => item.id !== 'disclosures')
+
 export default function SideNav({
   stocks = [],
   onLogout = clearAuthSession,
@@ -54,6 +57,14 @@ export default function SideNav({
   onWatchlistRetry,
 }: SideNavProps) {
   const [open, setOpen] = useState(false)
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 1024px)')
+    const closeOnDesktop = () => {
+      if (desktop.matches) setOpen(false)
+    }
+    desktop.addEventListener('change', closeOnDesktop)
+    return () => desktop.removeEventListener('change', closeOnDesktop)
+  }, [])
   const logo = (
     <Link
       href="/"
@@ -117,7 +128,7 @@ export default function SideNav({
           Loading saved companies…
         </p>
       ) : stocks.length ? (
-        <div className="max-h-72 space-y-1 overflow-y-auto">
+        <div className="space-y-1 lg:max-h-72 lg:overflow-y-auto">
           {stocks.slice(0, 12).map((stock) => (
             <Link
               key={stock.symbol}
@@ -129,7 +140,7 @@ export default function SideNav({
                 }
                 setOpen(false)
               }}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-white/5 ${currentStock === stock.symbol ? 'bg-white/5 text-white' : 'text-slate-400'}`}
+              className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-white/5 ${currentStock === stock.symbol ? 'bg-white/5 text-white' : 'text-slate-400'}`}
             >
               <CompanyLogo symbol={stock.symbol} size="small" />
               <span className="font-medium">{stock.symbol}</span>
@@ -188,38 +199,42 @@ export default function SideNav({
         {watchlist}
         {footer}
       </aside>
-      <nav
+      <Portal><nav
         aria-label="Mobile navigation"
-        className="shell-mobile-nav fixed inset-x-0 bottom-0 z-40 flex border-t border-white/10 bg-[#101218]/95 backdrop-blur-xl lg:hidden"
+        className="shell-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-white/10 bg-[#101218] lg:hidden"
       >
-        {items.map(({ id, href, label, Icon }) => (
+        {mobileItems.map(({ id, href, label, Icon }) => (
           <Link
             key={id}
             href={href}
+            prefetch={false}
+            aria-label={label}
             aria-current={activePage === id ? 'page' : undefined}
-            className={`flex min-h-16 flex-1 flex-col items-center justify-center gap-1 text-[10px] ${activePage === id ? 'text-violet-300' : 'text-slate-400'}`}
+            className={`flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-[11px] ${activePage === id ? 'bg-violet-400/[0.06] font-medium text-violet-300' : 'text-slate-400'}`}
           >
             <Icon className="h-5 w-5" />
-            {label}
+            {id === 'trading' ? 'Paper' : label}
           </Link>
         ))}
         <button
           aria-label="Open workspace menu"
+          aria-expanded={open}
+          aria-haspopup="dialog"
           onClick={() => setOpen(true)}
-          className="flex min-h-16 flex-1 flex-col items-center justify-center gap-1 text-[10px] text-slate-400"
+          className={`flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-[11px] ${activePage === 'disclosures' ? 'bg-violet-400/[0.06] font-medium text-violet-300' : 'text-slate-400'}`}
         >
           <Menu className="h-5 w-5" />
-          Menu
+          {activePage === 'disclosures' ? 'Disclosures' : 'Menu'}
         </button>
-      </nav>
+      </nav></Portal>
       <Dialog open={open} onClose={setOpen} className="relative z-50 lg:hidden">
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" />
-        <DialogPanel className="shell-sidebar fixed inset-y-0 left-0 flex w-72 max-w-[90vw] flex-col overflow-y-auto">
+        <DialogPanel className="shell-sidebar shell-drawer fixed left-0 top-0 flex h-dvh w-80 max-w-[90vw] flex-col overflow-y-auto overscroll-contain">
           <DialogTitle className="sr-only">Workspace menu</DialogTitle>
           <button
             aria-label="Close workspace menu"
             onClick={() => setOpen(false)}
-            className="absolute right-2 top-2 rounded-lg p-2 text-slate-400"
+            className="shell-drawer-close absolute right-2 rounded-lg p-3 text-slate-400"
           >
             <X className="h-4 w-4" />
           </button>

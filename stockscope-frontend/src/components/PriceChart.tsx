@@ -1,35 +1,12 @@
 'use client'
 
-import { apiFetch } from '@/lib/api'
-
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { TrendingUp, TrendingDown } from 'lucide-react'
+import { apiFetch } from '@/lib/api'
+import { priceHistorySummary, type PriceData, type PriceHistoryResponse } from '@/lib/price-history'
 import { useWindowWidth } from '@/hooks/useWindowWidth'
-
-interface PriceData {
-  date: string
-  timestamp: number
-  open: number
-  high: number
-  low: number
-  close: number
-  volume: number | null
-}
-
-interface PriceHistoryResponse {
-  symbol: string
-  period: string
-  interval: string
-  currentPrice: number | null
-  priceChange: number | null
-  priceChangePercent: number | null
-  quote_as_of: string | null
-  price_source: string
-  lastHistoricalClose: number | null
-  lastHistoricalCloseDate: string | null
-  data: PriceData[]
-}
 
 interface PriceChartProps {
   symbol: string
@@ -43,155 +20,96 @@ const PERIOD_OPTIONS = [
   { value: '6mo', label: '6M' },
   { value: '1y', label: '1Y' },
   { value: '2y', label: '2Y' },
-  { value: '5y', label: '5Y' }
+  { value: '5y', label: '5Y' },
 ]
 
+const formatPrice = (price: number | null | undefined) => {
+  if (price == null || !Number.isFinite(price)) return 'Unavailable'
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2,
+  }).format(price)
+}
+
+const formatDate = (dateStr: string) => {
+  // Daily bars are trading dates, not midnight instants in the viewer's timezone.
+  const date = new Date(`${dateStr}T00:00:00Z`)
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+}
+
+function CustomTooltip({ active, payload }: { active?: boolean; payload?: ReadonlyArray<{ payload?: PriceData }> }) {
+  const data = active ? payload?.[0]?.payload : undefined
+  if (!data) return null
+  return (
+    <div className="bg-slate-900/95 backdrop-blur-sm p-3 rounded-lg shadow-lg border border-white/20">
+      <p className="font-semibold text-white">{formatDate(data.date)}</p>
+      <p className="text-green-400">Close: {formatPrice(data.close)}</p>
+      <p className="text-gray-300">Volume: {data.volume?.toLocaleString() ?? 'Unavailable'}</p>
+    </div>
+  )
+}
+
 export default function PriceChart({ symbol, className = '' }: PriceChartProps) {
-  const [priceData, setPriceData] = useState<PriceHistoryResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [selectedPeriod, setSelectedPeriod] = useState('1y')
-  const [retryVersion, setRetryVersion] = useState(0)
   const windowWidth = useWindowWidth()
-
-  const fetchPriceData = useCallback(async (period: string, signal: AbortSignal) => {
-    setLoading(true)
-    setError(null)
-    
-    try {
+  const query = useQuery({
+    queryKey: ['price-history', symbol, selectedPeriod],
+    queryFn: async ({ signal }): Promise<PriceHistoryResponse> => {
       const response = await apiFetch(
-        `/api/stocks/${encodeURIComponent(symbol)}/price-history?period=${period}&interval=1d`,
-        { signal }
+        `/api/stocks/${encodeURIComponent(symbol)}/price-history?period=${selectedPeriod}&interval=1d`,
+        { signal },
       )
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch price data')
-      }
-      
-      const data = await response.json()
-      if (!signal.aborted) setPriceData(data)
-    } catch (err) {
-      if (!signal.aborted) setError(err instanceof Error ? err.message : 'Unknown error')
-    } finally {
-      if (!signal.aborted) setLoading(false)
-    }
-  }, [symbol])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    if (symbol) {
-      fetchPriceData(selectedPeriod, controller.signal)
-    }
-    return () => controller.abort()
-  }, [symbol, selectedPeriod, fetchPriceData, retryVersion])
-
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(price)
-  }
-
-  const formatDate = (dateStr: string) => {
-    // Daily bars are trading dates, not midnight instants in the viewer's timezone.
-    const date = new Date(`${dateStr}T00:00:00Z`)
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      timeZone: 'UTC'
-    })
-  }
-
-  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: ReadonlyArray<{ payload?: PriceData }> }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload
-      if (!data) return null
-      return (
-        <div className="bg-slate-900/95 backdrop-blur-sm p-3 rounded-lg shadow-lg border border-white/20">
-          <p className="font-semibold text-white">{formatDate(data.date)}</p>
-          <p className="text-green-400">Close: {formatPrice(data.close)}</p>
-          <p className="text-gray-300">Volume: {data.volume?.toLocaleString() ?? 'Unavailable'}</p>
-        </div>
-      )
-    }
-    return null
-  }
-
-  if (loading) {
-    return (
-      <div className={`bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-4 sm:p-6 ${className}`}>
-        <div className="animate-pulse">
-          <div className="h-6 bg-white/10 rounded w-1/4 mb-4"></div>
-          <div className="h-48 sm:h-64 bg-white/10 rounded"></div>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className={`bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-4 sm:p-6 ${className}`}>
-        <div className="text-center text-red-400">
-          <p role="alert">Error loading price chart: {error}</p>
-          <button onClick={() => setRetryVersion(version => version + 1)} className="button-secondary mt-4">Retry price history</button>
-        </div>
-      </div>
-    )
-  }
-
-  if (!priceData) {
-    return null
-  }
-
-  const change = priceData.priceChange
-  const changePercent = priceData.priceChangePercent
+      if (!response.ok) throw new Error('Price history could not be loaded.')
+      return response.json()
+    },
+    enabled: Boolean(symbol),
+    staleTime: 60_000,
+    // Keep the chart's size and quote stable during range changes. Never carry
+    // a previous company's prices into a new company's view.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === symbol ? previous : undefined,
+  })
+  const priceData = query.data
+  const bars = priceData?.data ?? []
+  const summary = priceHistorySummary(bars)
+  const change = priceData?.priceChange
+  const changePercent = priceData?.priceChangePercent
   const chartColor = change == null || change === 0 ? '#94A3B8' : change > 0 ? '#10B981' : '#EF4444'
-  const quoteDate = priceData.quote_as_of ? new Date(priceData.quote_as_of) : null
+  const quoteDate = priceData?.quote_as_of ? new Date(priceData.quote_as_of) : null
   const quoteDateLabel = quoteDate && !Number.isNaN(quoteDate.getTime()) ? quoteDate.toLocaleString() : 'Unknown'
-  const volumes = priceData.data.map(d => d.volume).filter((volume): volume is number => volume != null)
+  const selectedLabel = PERIOD_OPTIONS.find((option) => option.value === selectedPeriod)?.label
+  const displayedLabel = PERIOD_OPTIONS.find((option) => option.value === priceData?.period)?.label ?? priceData?.period
+  const waiting = query.isPending || query.isPlaceholderData
 
   return (
     <div className={`bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-3 sm:p-6 ${className}`}>
-      {/* Header with current price - Mobile optimized */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 sm:mb-6">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-4 mb-4 sm:mb-6">
         <div className="min-w-0">
-          <h3 className="text-base sm:text-lg font-semibold text-white mb-1 truncate">
-            {symbol} Stock Price
-          </h3>
+          <h3 className="text-base sm:text-lg font-semibold text-white mb-1 truncate">{symbol} Stock Price</h3>
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <span className="text-xl sm:text-2xl font-bold text-white">
-              {priceData.currentPrice == null ? 'Quote unavailable' : formatPrice(priceData.currentPrice)}
+              {!priceData && query.isPending ? 'Loading quote…' : priceData?.currentPrice == null ? 'Quote unavailable' : formatPrice(priceData.currentPrice)}
             </span>
-            {change != null && changePercent != null ? <div className={`flex items-center gap-1 ${change === 0 ? 'text-white/60' : change > 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {change > 0 ? (
-                <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4" />
-              ) : change < 0 ? (
-                <TrendingDown className="h-3 w-3 sm:h-4 sm:w-4" />
-              ) : null}
-              <span className="text-sm sm:text-base font-semibold">
-                {change > 0 ? '+' : ''}{formatPrice(change)} ({changePercent > 0 ? '+' : ''}{changePercent.toFixed(2)}%)
-              </span>
-            </div> : <span className="text-sm text-white/60">Daily change unavailable</span>}
+            {change != null && changePercent != null ? (
+              <div className={`flex items-center gap-1 ${change === 0 ? 'text-white/60' : change > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {change > 0 ? <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4" /> : change < 0 ? <TrendingDown className="h-3 w-3 sm:h-4 sm:w-4" /> : null}
+                <span className="text-sm sm:text-base font-semibold">
+                  {change > 0 ? '+' : ''}{formatPrice(change)} ({changePercent > 0 ? '+' : ''}{changePercent.toFixed(2)}%)
+                </span>
+              </div>
+            ) : <span className="text-sm text-white/60">Daily change unavailable</span>}
           </div>
-          <p className="mt-2 text-xs text-white/60">{priceData.price_source || 'Price provider'} · Quote time: {quoteDateLabel}</p>
-          {priceData.lastHistoricalClose != null && <p className="mt-1 text-xs text-white/60">Latest chart close: {formatPrice(priceData.lastHistoricalClose)} · {priceData.lastHistoricalCloseDate ?? 'Date unknown'}</p>}
+          <p className="mt-2 text-xs text-white/60">{priceData?.price_source || 'Price provider'} · Quote time: {quoteDateLabel}</p>
+          <p className="mt-1 text-xs text-white/60">Latest chart close: {formatPrice(priceData?.lastHistoricalClose)} · {priceData?.lastHistoricalCloseDate ?? 'Date unknown'}</p>
         </div>
-
-        {/* Period selector - Better mobile layout */}
-        <div className="flex-shrink-0">
-          <div className="flex items-center bg-white/5 rounded-lg p-1 gap-1 overflow-x-auto">
+        <div className="min-w-0 max-w-full">
+          <div role="group" aria-label="Price history period" className="flex items-center bg-white/5 rounded-lg p-1 gap-1 overflow-x-auto">
             {PERIOD_OPTIONS.map((option) => (
               <button
                 key={option.value}
+                type="button"
                 onClick={() => setSelectedPeriod(option.value)}
                 aria-pressed={selectedPeriod === option.value}
-                className={`px-2 sm:px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap min-w-[32px] ${
-                  selectedPeriod === option.value
-                    ? 'bg-purple-600 text-white shadow-sm'
-                    : 'text-white/70 hover:text-white hover:bg-white/10'
-                }`}
+                className={`min-h-11 flex-1 px-2 sm:px-3 rounded text-xs font-medium transition-colors whitespace-nowrap min-w-[36px] ${selectedPeriod === option.value ? 'bg-purple-600 text-white shadow-sm' : 'text-white/70 hover:text-white hover:bg-white/10'}`}
               >
                 {option.label}
               </button>
@@ -200,63 +118,56 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
         </div>
       </div>
 
-      {/* Chart - Better mobile height */}
-      <div className="h-48 sm:h-64 lg:h-80 mb-4">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={priceData.data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-            <XAxis 
-              dataKey="date"
-              tickFormatter={formatDate}
-              stroke="rgba(255,255,255,0.7)"
-              fontSize={windowWidth < 640 ? 10 : 12}
-              tick={{ fill: 'rgba(255,255,255,0.7)' }}
-            />
-            <YAxis 
-              domain={['dataMin', 'dataMax']}
-              tickFormatter={(value) => `$${value.toFixed(2)}`}
-              stroke="rgba(255,255,255,0.7)"
-              fontSize={windowWidth < 640 ? 10 : 12}
-              tick={{ fill: 'rgba(255,255,255,0.7)' }}
-              width={windowWidth < 640 ? 50 : 60}
-            />
-            <Tooltip content={<CustomTooltip />} />
-            <Line
-              type="monotone"
-              dataKey="close"
-              stroke={chartColor}
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: windowWidth < 640 ? 3 : 4, fill: chartColor }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+      <div role="status" className="mb-2 min-h-5 text-xs text-slate-400">
+        {query.fetchStatus === 'paused'
+          ? query.isPlaceholderData
+            ? `Waiting for a connection to load ${selectedLabel}. Showing ${displayedLabel}.`
+            : `Waiting for a connection.${priceData ? ' Previously loaded prices are shown.' : ''}`
+          : query.isPlaceholderData
+            ? `Loading ${selectedLabel}… Showing ${displayedLabel} until it is ready.`
+            : query.isFetching
+              ? priceData ? 'Refreshing price history…' : 'Loading price history…'
+              : null}
+      </div>
+      {query.isError && (
+        <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-200">
+          <p>Price history could not be reloaded.{priceData ? ' Previously loaded prices are shown.' : ''}</p>
+          <button type="button" onClick={() => void query.refetch()} disabled={query.isFetching} className="button-secondary">Retry price history</button>
+        </div>
+      )}
+
+      <div aria-busy={waiting} className="h-48 sm:h-64 lg:h-80 mb-4 touch-pan-y">
+        {!priceData && query.isPending ? (
+          <div className="h-full animate-pulse rounded-lg bg-white/5" />
+        ) : bars.length ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={bars} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <XAxis dataKey="date" tickFormatter={formatDate} stroke="rgba(255,255,255,0.7)" fontSize={windowWidth < 640 ? 10 : 12} tick={{ fill: 'rgba(255,255,255,0.7)' }} minTickGap={24} />
+              <YAxis domain={['dataMin', 'dataMax']} tickFormatter={(value) => `$${value.toFixed(2)}`} stroke="rgba(255,255,255,0.7)" fontSize={windowWidth < 640 ? 10 : 12} tick={{ fill: 'rgba(255,255,255,0.7)' }} width={windowWidth < 640 ? 50 : 60} />
+              <Tooltip content={<CustomTooltip />} />
+              <Line type="monotone" dataKey="close" stroke={chartColor} strokeWidth={2} dot={false} activeDot={{ r: windowWidth < 640 ? 3 : 4, fill: chartColor }} isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-white/10 p-4 text-center text-sm text-slate-400">
+            {query.isError ? 'Price history is unavailable. Try another period or retry.' : 'No price history is available for this period.'}
+          </div>
+        )}
       </div>
 
-      {/* Key metrics - Better mobile grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 pt-4 border-t border-white/10">
-        <div className="text-center bg-white/5 rounded-lg p-2 sm:p-3">
-          <p className="text-xs text-white/60 mb-1">Period High</p>
-          <p className="text-sm sm:text-base font-semibold text-white">
-            {formatPrice(Math.max(...priceData.data.map(d => d.high)))}
-          </p>
-        </div>
-        <div className="text-center bg-white/5 rounded-lg p-2 sm:p-3">
-          <p className="text-xs text-white/60 mb-1">Period Low</p>
-          <p className="text-sm sm:text-base font-semibold text-white">
-            {formatPrice(Math.min(...priceData.data.map(d => d.low)))}
-          </p>
-        </div>
-        <div className="text-center bg-white/5 rounded-lg p-2 sm:p-3">
-          <p className="text-xs text-white/60 mb-1">Avg Volume</p>
-          <p className="text-sm sm:text-base font-semibold text-white">
-            {volumes.length ? (volumes.reduce((sum, volume) => sum + volume, 0) / volumes.length).toLocaleString(undefined, {maximumFractionDigits: 0}) : 'Unavailable'}
-          </p>
-        </div>
-        <div className="text-center bg-white/5 rounded-lg p-2 sm:p-3">
-          <p className="text-xs text-white/60 mb-1">Data Points</p>
-          <p className="text-sm sm:text-base font-semibold text-white">{priceData.data.length}</p>
-        </div>
+        {[
+          ['Period High', formatPrice(summary.high)],
+          ['Period Low', formatPrice(summary.low)],
+          ['Avg Volume', summary.averageVolume == null ? 'Unavailable' : summary.averageVolume.toLocaleString(undefined, { maximumFractionDigits: 0 })],
+          ['Data Points', priceData ? bars.length.toLocaleString() : '—'],
+        ].map(([label, value]) => (
+          <div key={label} className="min-w-0 text-center bg-white/5 rounded-lg p-2 sm:p-3">
+            <p className="text-xs text-white/60 mb-1">{label}</p>
+            <p className="break-words text-sm sm:text-base font-semibold text-white">{value}</p>
+          </div>
+        ))}
       </div>
     </div>
   )

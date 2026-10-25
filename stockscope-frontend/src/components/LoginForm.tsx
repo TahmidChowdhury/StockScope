@@ -52,7 +52,7 @@ export default function LoginForm({ onLoginSuccess }: LoginFormProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center p-3 sm:p-4">
+    <div className="pwa-auth min-h-dvh bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center p-3 sm:p-4">
       <div className="max-w-4xl w-full">
         {/* Header - Mobile optimized */}
         <div className="text-center mb-6 sm:mb-8 lg:mb-12">

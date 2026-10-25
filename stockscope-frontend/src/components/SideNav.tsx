@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Dialog, DialogPanel, DialogTitle, Portal } from '@headlessui/react'
+import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react'
 import {
   ArrowUpRight,
   ChartNoAxesCombined,
@@ -199,9 +199,9 @@ export default function SideNav({
         {watchlist}
         {footer}
       </aside>
-      <Portal><nav
+      <nav
         aria-label="Mobile navigation"
-        className="shell-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-white/10 bg-[#101218] lg:hidden"
+        className="shell-mobile-nav relative z-40 grid grid-cols-5 border-t border-white/10 bg-[#101218] lg:hidden"
       >
         {mobileItems.map(({ id, href, label, Icon }) => (
           <Link
@@ -226,7 +226,7 @@ export default function SideNav({
           <Menu className="h-5 w-5" />
           {activePage === 'disclosures' ? 'Disclosures' : 'Menu'}
         </button>
-      </nav></Portal>
+      </nav>
       <Dialog open={open} onClose={setOpen} className="relative z-50 lg:hidden">
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" />
         <DialogPanel className="shell-sidebar shell-drawer fixed left-0 top-0 flex h-dvh w-80 max-w-[90vw] flex-col overflow-y-auto overscroll-contain">

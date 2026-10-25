@@ -7,6 +7,7 @@ import { ChevronRight, PanelTop } from 'lucide-react'
 import SideNav from './SideNav'
 import { useWatchlist } from '@/hooks/useWatchlist'
 import { getAuthSession } from '@/lib/api'
+import { useMobileScrollRestoration } from '@/hooks/useMobileScrollRestoration'
 
 export default function AppShell({
   children,
@@ -18,6 +19,7 @@ export default function AppShell({
   const { data: stocks = [], isPending, isError, refetch } = useWatchlist()
   const role = getAuthSession()?.role
   const pathname = usePathname()
+  const mainRef = useMobileScrollRestoration()
   const activePage = pathname.startsWith('/compare')
     ? 'compare'
     : pathname.startsWith('/screener')
@@ -44,7 +46,7 @@ export default function AppShell({
         watchlistError={isError}
         onWatchlistRetry={() => void refetch()}
       />
-      <div className="min-w-0 flex-1">
+      <div className="shell-content min-w-0 flex-1">
         <header className="shell-topbar sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-white/[0.07] px-5 sm:px-8 lg:px-10">
           <div className="flex min-w-0 items-center gap-2 text-xs text-slate-400">
             <PanelTop className="mr-2 hidden h-4 w-4 sm:block" />
@@ -72,21 +74,24 @@ export default function AppShell({
           </div>
         </header>
         <main
+          ref={mainRef}
           id="main-content"
           tabIndex={-1}
           className="shell-main mx-auto min-w-0 max-w-[1440px] px-4 py-6 sm:px-8 sm:py-9 lg:px-10"
         >
-          {children}
-          <footer className="mt-8 text-right">
-            <a
-              href="https://elbstream.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-base text-slate-400 underline-offset-4 hover:text-slate-200 hover:underline"
-            >
-              Logos provided by Elbstream
-            </a>
-          </footer>
+          <div>
+            {children}
+            <footer className="mt-8 text-right">
+              <a
+                href="https://elbstream.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-base text-slate-400 underline-offset-4 hover:text-slate-200 hover:underline"
+              >
+                Logos provided by Elbstream
+              </a>
+            </footer>
+          </div>
         </main>
       </div>
     </div>

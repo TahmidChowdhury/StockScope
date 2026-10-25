@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { useEffect, useState } from 'react'
 import LoginForm from './LoginForm'
+import { MobileScrollProvider } from '@/hooks/useMobileScrollRestoration'
 import { apiFetch, ApiError, AUTH_CHANGED_EVENT, AuthSession, clearAuthSession, getAuthSession } from '@/lib/api'
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -52,7 +53,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       {!ready ? <div className="min-h-screen bg-slate-900" /> : session ? (
         <div key={sessionVersion}>
-          {children}
+          <MobileScrollProvider>{children}</MobileScrollProvider>
         </div>
       ) : <LoginForm onLoginSuccess={() => {}} />}
       {process.env.NODE_ENV === 'development' && <ReactQueryDevtools initialIsOpen={false} />}

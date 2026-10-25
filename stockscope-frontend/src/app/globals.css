@@ -352,16 +352,15 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .field-input:focus { border-color: #a78bfa66; }
 fieldset:disabled .field-input { opacity: .5; }
 
-/* The document owns vertical scrolling. Keep fixed navigation outside the shell
-   so clipping, animated panels and Safari containing blocks cannot move it. */
+/* Desktop uses document scrolling. On mobile the shell owns the viewport and
+   only main scrolls, so no page content can paint below the navigation. */
 :root {
-  --mobile-nav-height: calc(65px + env(safe-area-inset-bottom, 0px));
   --shell-header-height: calc(64px + env(safe-area-inset-top, 0px));
 }
 html {
   background: var(--background);
   scroll-padding-top: calc(var(--shell-header-height) + 16px);
-  scroll-padding-bottom: calc(var(--mobile-nav-height) + 16px);
+  scroll-padding-bottom: 24px;
 }
 body { min-width: 0; }
 .app-shell .shell-topbar {
@@ -371,7 +370,7 @@ body { min-width: 0; }
   padding-right: max(20px, env(safe-area-inset-right, 0px));
 }
 .app-shell .shell-main {
-  padding-bottom: calc(var(--mobile-nav-height) + 32px);
+  padding-bottom: 32px;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   overflow-wrap: anywhere;
@@ -403,6 +402,41 @@ button, a, select { touch-action: manipulation; }
   .app-shell .shell-main { padding-bottom: 48px; }
 }
 @media (max-width: 1023px) {
+  /* Keep login's document scrolling, and leave dialog scroll locking to
+     Headless UI. The authenticated mobile page has one bounded scroller. */
+  html:has(.app-shell), body:has(.app-shell) {
+    overflow: hidden;
+    overscroll-behavior-y: none;
+  }
+  .app-shell {
+    height: 100dvh;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .shell-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .app-shell .shell-topbar {
+    position: relative;
+    flex-shrink: 0;
+  }
+  .app-shell .shell-main {
+    /* Keep absolutely positioned screen-reader labels inside this scrollport. */
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scroll-padding-block: 16px;
+  }
+  .shell-mobile-nav {
+    order: 1;
+    flex-shrink: 0;
+  }
   .app-shell button, .pwa-auth button, .button-primary, .button-secondary { min-height: 44px; }
   .app-shell button, .pwa-auth button { min-width: 44px; }
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),

@@ -45,7 +45,7 @@ export default function AppShell({
         onWatchlistRetry={() => void refetch()}
       />
       <div className="min-w-0 flex-1">
-        <header className="shell-topbar flex h-16 items-center justify-between gap-3 border-b border-white/[0.07] px-5 sm:px-8 lg:px-10">
+        <header className="shell-topbar sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-white/[0.07] px-5 sm:px-8 lg:px-10">
           <div className="flex min-w-0 items-center gap-2 text-xs text-slate-400">
             <PanelTop className="mr-2 hidden h-4 w-4 sm:block" />
             <Link href="/" className="transition-colors hover:text-white">
@@ -73,7 +73,8 @@ export default function AppShell({
         </header>
         <main
           id="main-content"
-          className="mx-auto max-w-[1440px] px-5 py-7 pb-28 sm:px-8 sm:py-9 lg:px-10 lg:pb-12"
+          tabIndex={-1}
+          className="shell-main mx-auto min-w-0 max-w-[1440px] px-4 py-6 sm:px-8 sm:py-9 lg:px-10"
         >
           {children}
           <footer className="mt-8 text-right">

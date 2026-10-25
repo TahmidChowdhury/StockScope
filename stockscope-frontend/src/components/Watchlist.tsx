@@ -109,21 +109,21 @@ export default function Watchlist() {
       </div>
       <div className="surface overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] px-4 py-3">
-          <label className="flex items-center gap-2 text-slate-500">
+          <label className="flex min-w-0 flex-1 basis-full items-center gap-2 text-slate-500 sm:basis-auto">
             <Search className="h-4 w-4" />
             <input
               aria-label="Filter watchlist"
               placeholder="Find a company…"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              className="w-44 bg-transparent py-1 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none"
+              className="min-h-11 w-full min-w-0 bg-transparent py-2 text-base text-slate-200 placeholder:text-slate-500 focus:outline-none sm:min-h-0 sm:w-44 sm:text-xs"
             />
           </label>
           <select
             aria-label="Sort watchlist"
             value={sort}
             onChange={(e) => setSort(e.target.value)}
-            className="rounded-md border border-white/[0.08] bg-[#171a22] px-2 py-1.5 text-xs text-slate-300"
+            className="min-h-11 w-full max-w-full rounded-md border border-white/[0.08] bg-[#171a22] px-2 py-1.5 text-base text-slate-300 sm:min-h-0 sm:w-auto sm:text-xs"
           >
             <option value="symbol">Ticker A–Z</option>
             <option value="updated">Recently updated</option>
@@ -194,7 +194,8 @@ export default function Watchlist() {
               <thead>
                 <tr className="border-b border-white/[0.07] text-[10px] uppercase tracking-wider text-slate-500">
                   {managing && (
-                    <th className="w-10 py-3 pl-5">
+                    <th className="w-12 py-1 pl-1 sm:pl-3">
+                      <label className="flex h-11 w-11 cursor-pointer items-center justify-center">
                       <input
                         type="checkbox"
                         aria-label="Select all visible companies"
@@ -210,6 +211,7 @@ export default function Watchlist() {
                           )
                         }
                       />
+                      </label>
                     </th>
                   )}
                   <th className="px-5 py-3 font-medium">Company</th>
@@ -222,7 +224,7 @@ export default function Watchlist() {
                   <th className="hidden px-4 py-3 font-medium sm:table-cell">
                     Latest evidence
                   </th>
-                  <th className="w-10">
+                  <th className={`w-10 ${managing ? 'hidden sm:table-cell' : ''}`}>
                     <span className="sr-only">Open</span>
                   </th>
                 </tr>
@@ -234,7 +236,8 @@ export default function Watchlist() {
                     className="group transition-colors hover:bg-white/[0.025]"
                   >
                     {managing && (
-                      <td className="pl-5">
+                      <td className="pl-1 sm:pl-3">
+                        <label className="flex h-11 w-11 cursor-pointer items-center justify-center">
                         <input
                           type="checkbox"
                           aria-label={`Select ${stock.symbol}`}
@@ -247,12 +250,13 @@ export default function Watchlist() {
                             )
                           }
                         />
+                        </label>
                       </td>
                     )}
                     <td className="px-3 py-4 sm:px-5">
                       <Link
                         href={`/stock/${encodeURIComponent(stock.symbol)}`}
-                        className="flex items-center gap-3"
+                        className="flex min-h-11 items-center gap-3"
                       >
                         <span className="hidden sm:block">
                           <CompanyLogo symbol={stock.symbol} />
@@ -299,11 +303,11 @@ export default function Watchlist() {
                           : `${stock.total_posts.toLocaleString()} evidence records`}
                       </span>
                     </td>
-                    <td className="pr-2 sm:pr-4">
+                    <td className={`pr-2 sm:pr-4 ${managing ? 'hidden sm:table-cell' : ''}`}>
                       <Link
                         href={`/stock/${encodeURIComponent(stock.symbol)}`}
                         aria-label={`Open ${stock.symbol} research`}
-                        className="inline-flex rounded-lg p-2 text-slate-500 hover:bg-white/5 hover:text-violet-300"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-white/5 hover:text-violet-300"
                       >
                         <ArrowUpRight className="h-4 w-4" />
                       </Link>
@@ -342,7 +346,8 @@ export default function Watchlist() {
         className="relative z-[60]"
       >
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm" />
-        <div className="fixed inset-0 flex items-center justify-center p-5">
+        <div className="fixed inset-0 overflow-y-auto p-5">
+          <div className="flex min-h-full items-center justify-center">
           <DialogPanel className="surface w-full max-w-md p-6">
             <DialogTitle className="text-lg font-semibold">
               Delete selected research?
@@ -351,7 +356,7 @@ export default function Watchlist() {
               Saved research for {selected.join(', ')} will be permanently
               deleted from the shared workspace. This cannot be undone.
             </Description>
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
               <button
                 disabled={deleting}
                 onClick={() => setConfirm(false)}
@@ -368,6 +373,7 @@ export default function Watchlist() {
               </button>
             </div>
           </DialogPanel>
+          </div>
         </div>
       </Dialog>
     </section>

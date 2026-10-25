@@ -14,9 +14,10 @@ import {
 export const useFundamentals = (ticker: string) => {
   return useQuery({
     queryKey: ['fundamentals', ticker],
-    queryFn: async (): Promise<FundamentalsResponse> => {
+    queryFn: async ({ signal }): Promise<FundamentalsResponse> => {
       const response = await apiFetch(
-        `/api/fundamentals/${ticker}`
+        `/api/fundamentals/${encodeURIComponent(ticker)}`,
+        { signal },
       )
       
       if (!response.ok) {

@@ -1,5 +1,15 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## iPhone and PWA behavior
+
+The production app supports Add to Home Screen with a standalone manifest and Apple touch icon. Serve it over HTTPS (localhost also works for development). Service workers register only with `npm run build && npm start`, after the initial page has loaded.
+
+The document owns page scrolling; mobile navigation renders in a Headless UI portal so it stays attached to the viewport and becomes inert behind dialogs. Keep content clear of both navigation and iPhone safe areas using the shared shell spacing. Do not add transformed ancestors around navigation or nested vertical scrolling to mobile article/list panels. Responsive Tailwind utilities appear after custom CSS in the production stylesheet; shell padding uses higher specificity so tablet utilities cannot overwrite bottom-bar clearance.
+
+Price ranges are cached in memory and stale active queries refresh on return to the app. Deeper company panels load near the viewport. The worker caches only `/offline.html`; research, API responses, sessions, and application pages are not stored by it. A network connection is required to open new research. Authentication storage is unchanged. Worker updates wait for existing app windows to close; increment the offline-cache version in `public/sw.js` when changing the fallback.
+
+Before releasing mobile changes, check the production build at 320px, 390px, landscape/tablet widths below 1024px, and desktop. Verify the bottom bar while scrolling to the footer, menu open/close and focus restoration, input focus, horizontal tables, chart range changes, and news filters. On a physical iPhone, additionally verify home-screen launch, notch/home-indicator spacing, keyboard dismissal, rotation, and return from background. For offline fallback testing, load and reload the app online first so the worker controls the page, then disconnect and reload; retry after reconnecting.
+
 ## Getting Started
 
 First, run the development server:

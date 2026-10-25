@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useId } from 'react'
 import { Filter, ArrowUpDown, CheckCircle, X } from 'lucide-react'
 
 interface FilterOption {
@@ -39,10 +39,12 @@ export default function FilterSortBar({
   const [showSort, setShowSort] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
   const sortRef = useRef<HTMLDivElement>(null)
+  const filterId = useId()
+  const sortId = useId()
 
   // Close dropdowns when clicking outside — eliminates the dark backdrop flash
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
+    const handler = (e: PointerEvent) => {
       if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
         setShowFilters(false)
       }
@@ -50,8 +52,18 @@ export default function FilterSortBar({
         setShowSort(false)
       }
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowFilters(false)
+        setShowSort(false)
+      }
+    }
+    document.addEventListener('pointerdown', handler)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handler)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
   }, [])
 
   const activeFiltersCount = filters.filter(f => f.enabled).length
@@ -67,13 +79,16 @@ export default function FilterSortBar({
         </div>
 
         {/* Bottom/Right side - Filter and Sort controls */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="relative flex items-center gap-2 sm:gap-3">
           {/* Filter Dropdown */}
-          <div className="relative flex-1 sm:flex-initial" ref={filterRef}>
+          <div className="min-w-0 flex-1 sm:relative sm:flex-initial" ref={filterRef}>
             <button
-              onClick={() => setShowFilters(!showFilters)}
+              type="button"
+              aria-expanded={showFilters}
+              aria-controls={filterId}
+              onClick={() => { setShowFilters(!showFilters); setShowSort(false) }}
               className={`
-                w-full sm:w-auto flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-all text-sm
+                min-h-11 w-full sm:w-auto flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-all text-sm
                 ${activeFiltersCount > 0 
                   ? 'bg-purple-600/20 border-purple-500/40 text-purple-300' 
                   : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
@@ -89,7 +104,7 @@ export default function FilterSortBar({
             </button>
 
             {showFilters && (
-              <div className="absolute right-0 top-full mt-2 w-64 sm:w-56 bg-slate-900/95 backdrop-blur-sm border border-white/20 rounded-xl shadow-xl z-50 max-h-80 overflow-y-auto">
+              <div id={filterId} className="absolute inset-x-0 top-full mt-2 sm:left-auto sm:w-56 bg-slate-900/95 backdrop-blur-sm border border-white/20 rounded-xl shadow-xl z-50 max-h-[min(20rem,50dvh)] overflow-y-auto overscroll-contain">
                   <div className="p-3 sm:p-4">
                     <div className="flex items-center justify-between mb-3">
                       <div className="text-sm font-medium text-white">Filter by Source</div>
@@ -99,17 +114,17 @@ export default function FilterSortBar({
                       {filters.map((filter) => (
                         <label
                           key={filter.id}
-                          className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors"
+                          className="flex min-h-11 items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors"
                         >
                           <div className="relative">
                             <input
                               type="checkbox"
                               checked={filter.enabled}
                               onChange={(e) => onFilterChange(filter.id, e.target.checked)}
-                              className="sr-only"
+                              className="peer sr-only"
                             />
                             <div className={`
-                              w-5 h-5 rounded border-2 flex items-center justify-center transition-all
+                              w-5 h-5 rounded border-2 flex items-center justify-center transition-all peer-focus-visible:ring-2 peer-focus-visible:ring-violet-300
                               ${filter.enabled 
                                 ? 'bg-purple-600 border-purple-600' 
                                 : 'border-gray-400 hover:border-gray-300'
@@ -118,7 +133,7 @@ export default function FilterSortBar({
                               {filter.enabled && <CheckCircle className="h-3 w-3 text-white" />}
                             </div>
                           </div>
-                          <span className="text-sm text-gray-200 flex items-center gap-2 flex-1">
+                          <span className="min-w-0 break-words text-sm text-gray-200 flex items-center gap-2 flex-1">
                             {filter.icon && <span>{filter.icon}</span>}
                             {filter.label}
                           </span>
@@ -130,7 +145,8 @@ export default function FilterSortBar({
                     {activeFiltersCount > 0 && (
                       <button
                         onClick={() => filters.forEach(f => onFilterChange(f.id, false))}
-                        className="w-full mt-3 px-3 py-2 text-sm text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+                        type="button"
+                        className="min-h-11 w-full mt-3 px-3 py-2 text-sm text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
                       >
                         Clear All
                       </button>
@@ -141,23 +157,28 @@ export default function FilterSortBar({
           </div>
 
           {/* Sort Dropdown */}
-          <div className="relative flex-1 sm:flex-initial" ref={sortRef}>
+          <div className="min-w-0 flex-1 sm:relative sm:flex-initial" ref={sortRef}>
             <button
-              onClick={() => setShowSort(!showSort)}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-3 py-2 rounded-lg border bg-white/5 border-white/20 text-white/70 hover:bg-white/10 transition-all text-sm"
+              type="button"
+              aria-expanded={showSort}
+              aria-controls={sortId}
+              onClick={() => { setShowSort(!showSort); setShowFilters(false) }}
+              className="min-h-11 w-full sm:w-auto flex items-center justify-center gap-2 px-3 py-2 rounded-lg border bg-white/5 border-white/20 text-white/70 hover:bg-white/10 transition-all text-sm"
             >
               <ArrowUpDown className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Sort</span>
             </button>
 
             {showSort && (
-              <div className="absolute right-0 top-full mt-2 w-48 bg-slate-900/95 backdrop-blur-sm border border-white/20 rounded-xl shadow-xl z-50">
+              <div id={sortId} className="absolute inset-x-0 top-full mt-2 sm:left-auto sm:w-48 bg-slate-900/95 backdrop-blur-sm border border-white/20 rounded-xl shadow-xl z-50">
                 <div className="p-2">
                   <div className="flex items-center justify-between mb-2 sm:hidden px-2">
                     <span className="text-sm font-medium text-white">Sort by</span>
                     <button
+                      type="button"
+                      aria-label="Close sort options"
                       onClick={() => setShowSort(false)}
-                      className="text-white/60 hover:text-white"
+                      className="flex h-11 w-11 items-center justify-center text-white/60 hover:text-white"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -166,12 +187,14 @@ export default function FilterSortBar({
                     {sortOptions.map((option) => (
                       <button
                         key={option.id}
+                        type="button"
+                        aria-pressed={currentSort === option.id}
                         onClick={() => {
                           onSortChange(option.id)
                           setShowSort(false)
                         }}
                         className={`
-                          w-full text-left px-3 py-2 rounded-lg text-sm transition-colors
+                          min-h-11 w-full text-left px-3 py-2 rounded-lg text-sm transition-colors
                           ${currentSort === option.id 
                             ? 'bg-purple-600/20 text-purple-300' 
                             : 'text-gray-300 hover:bg-white/5 hover:text-white'
@@ -194,19 +217,17 @@ export default function FilterSortBar({
         <div className="mt-3 pt-3 border-t border-white/10">
           <div className="flex flex-wrap gap-1.5 sm:gap-2">
             {filters.filter(f => f.enabled).map((filter) => (
-              <span
+              <button
                 key={filter.id}
-                className="inline-flex items-center gap-1 px-2 py-1 bg-purple-600/20 text-purple-300 rounded-md text-xs"
+                type="button"
+                aria-label={`Hide articles from ${filter.label}`}
+                onClick={() => onFilterChange(filter.id, false)}
+                className="inline-flex min-h-11 max-w-full items-center gap-2 px-3 py-2 bg-purple-600/20 text-purple-300 rounded-md text-xs hover:bg-purple-600/30 sm:min-h-0 sm:px-2 sm:py-1"
               >
                 {filter.icon && <span className="text-xs">{filter.icon}</span>}
                 <span className="truncate max-w-[20ch] sm:max-w-none">{filter.label}</span>
-                <button
-                  onClick={() => onFilterChange(filter.id, false)}
-                  className="ml-1 hover:text-purple-200 transition-colors flex-shrink-0"
-                >
-                  ×
-                </button>
-              </span>
+                <X aria-hidden="true" className="h-3 w-3 shrink-0" />
+              </button>
             ))}
           </div>
         </div>

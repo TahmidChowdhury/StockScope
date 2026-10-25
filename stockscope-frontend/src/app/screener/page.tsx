@@ -419,14 +419,15 @@ function ScreenForm() {
           </div>
           {data.results.length ? (
             <div className="surface overflow-hidden">
-              <div className="overflow-x-auto">
+              <p className="border-b border-white/[0.07] px-4 py-3 text-xs text-slate-500 sm:hidden">Swipe across for more metrics. Select companies to compare.</p>
+              <div className="overflow-x-auto" role="region" aria-label="Screening results, scroll horizontally for more metrics" tabIndex={0}>
                 <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="border-b border-white/10 text-[10px] uppercase tracking-wider text-slate-500">
-                      <th className="p-4">
+                      <th className="sticky left-0 z-10 w-12 min-w-12 bg-[#171a22] p-0">
                         <span className="sr-only">Select</span>
                       </th>
-                      <th className="p-4">Company</th>
+                      <th scope="col" className="sticky left-12 z-10 min-w-28 bg-[#171a22] p-3">Company</th>
                       {columns.map((column) => (
                         <th
                           key={column.key}
@@ -443,7 +444,8 @@ function ScreenForm() {
                         key={company.ticker}
                         className="border-b border-white/[0.05] last:border-0 hover:bg-white/[0.02]"
                       >
-                        <td className="p-4">
+                        <td className="sticky left-0 z-10 bg-[#171a22] p-0">
+                          <label className="flex h-12 w-12 cursor-pointer items-center justify-center">
                           <input
                             type="checkbox"
                             aria-label={`Select ${company.ticker} for comparison`}
@@ -462,10 +464,11 @@ function ScreenForm() {
                               }))
                             }}
                           />
+                          </label>
                         </td>
-                        <td className="p-4 font-semibold">
+                        <td className="sticky left-12 z-10 bg-[#171a22] p-3 font-semibold">
                           <Link
-                            className="text-violet-200"
+                            className="inline-flex min-h-11 items-center text-violet-200"
                             href={companyResearchHref(company.ticker, returnTo)}
                           >
                             {company.ticker} ↗

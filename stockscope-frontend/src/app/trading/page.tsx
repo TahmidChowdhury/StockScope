@@ -265,7 +265,7 @@ function Results({
           Execution ledger · {result.fills.length} fills
         </h3>
         {result.fills.length ? (
-          <div className="max-h-96 overflow-auto">
+          <div className="overflow-x-auto lg:max-h-96 lg:overflow-auto">
             <table className="w-full whitespace-nowrap text-left text-sm">
               <thead className="text-white/45">
                 <tr>
@@ -327,7 +327,7 @@ function Results({
         (result.exclusions?.length || 0) > 0) && (
         <div className={panelStyle}>
           <h3 className="mb-3 font-semibold">Unexecuted signals</h3>
-          <ul className="max-h-64 space-y-2 overflow-y-auto text-sm text-amber-200/80">
+          <ul className="space-y-2 text-sm text-amber-200/80 lg:max-h-64 lg:overflow-y-auto">
             {result.rejected.map((r, i) => (
               <li key={`r-${i}`}>
                 {r.execution_date}: {r.side} {r.symbol} — {r.reason}
@@ -561,7 +561,7 @@ function TradingWorkspace() {
           </p>
         )}
         <nav
-          className="flex gap-5 overflow-x-auto border-b border-white/10"
+          className="flex gap-4 overflow-x-auto border-b border-white/10 sm:gap-5"
           aria-label="Trading workspace"
         >
           {(
@@ -574,7 +574,7 @@ function TradingWorkspace() {
             <button
               key={id}
               disabled={busy}
-              className={`whitespace-nowrap border-b-2 px-1 pb-3 pt-2 text-sm ${tab === id ? 'border-violet-400 text-violet-200' : 'border-transparent text-slate-500 hover:text-slate-200'}`}
+              className={`min-h-11 shrink-0 whitespace-nowrap border-b-2 px-1 pb-3 pt-2 text-sm ${tab === id ? 'border-violet-400 text-violet-200' : 'border-transparent text-slate-500 hover:text-slate-200'}`}
               onClick={() => setTab(id)}
               aria-pressed={tab === id}
             >
@@ -692,7 +692,7 @@ function TradingWorkspace() {
               </form>
               <div className={panelStyle}>
                 <h2 className="mb-4 text-lg font-semibold">Saved portfolios</h2>
-                <div className="max-h-96 space-y-2 overflow-y-auto">
+                <div className="space-y-2 lg:max-h-96 lg:overflow-y-auto">
                   {portfolios.length === 0 ? (
                     <p className="text-sm text-white/50">
                       No paper portfolios yet.
@@ -862,7 +862,7 @@ function TradingWorkspace() {
                       Your submitted orders and reasons will appear here.
                     </p>
                   ) : (
-                    <div className="max-h-80 space-y-3 overflow-y-auto">
+                    <div className="space-y-3 lg:max-h-80 lg:overflow-y-auto">
                       {portfolio.orders.map((o) => {
                         const filled = portfolio.result?.fills.some(
                           (f) => f.id === o.id,
@@ -1237,7 +1237,7 @@ function TradingWorkspace() {
             {runs.length > 0 && (
               <div className={panelStyle}>
                 <h3 className="mb-3 font-semibold">Saved experiments</h3>
-                <div className="flex max-h-52 flex-wrap gap-2 overflow-y-auto">
+                <div className="flex flex-wrap gap-2 lg:max-h-52 lg:overflow-y-auto">
                   {runs.map((r) => (
                     <Link
                       key={r.id}

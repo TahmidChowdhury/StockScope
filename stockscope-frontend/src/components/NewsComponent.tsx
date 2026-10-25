@@ -6,7 +6,7 @@ import { companyResearchHref } from '@/lib/research-workflow'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { ArrowUpRight, Newspaper, RefreshCw, ExternalLink } from 'lucide-react'
 import FilterSortBar from './FilterSortBar'
 
@@ -106,11 +106,8 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
     { id: 'sentiment-asc', label: 'Most Negative', direction: 'asc' }
   ]
 
-  // Mobile-specific state
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const refreshStartY = useRef(0)
-  const refreshDistance = useRef(0)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const requestRef = useRef<AbortController | null>(null)
 
   // Filtered and sorted articles using dynamic source set
   const filteredAndSortedArticles = useMemo(() => {
@@ -155,43 +152,18 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
     setCurrentSort(sortId)
   }
 
-  // Pull-to-refresh handlers for mobile
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (containerRef.current && containerRef.current.scrollTop === 0) {
-      refreshStartY.current = e.touches[0].clientY
-    }
-  }
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (containerRef.current && containerRef.current.scrollTop === 0 && refreshStartY.current > 0) {
-      refreshDistance.current = e.touches[0].clientY - refreshStartY.current
-      if (refreshDistance.current > 0 && refreshDistance.current < 100) {
-        e.preventDefault()
-        // Add visual feedback here if needed
-      }
-    }
-  }
-
-  const handleTouchEnd = () => {
-    if (refreshDistance.current > 60 && !isRefreshing) {
-      handleRefresh()
-    }
-    refreshStartY.current = 0
-    refreshDistance.current = 0
-  }
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true)
-    await fetchNews()
-    setTimeout(() => setIsRefreshing(false), 500)
-  }
-
-  const fetchNews = async () => {
-    if (!isRefreshing) setLoading(true)
+  const fetchNews = useCallback(async (refresh = false) => {
+    requestRef.current?.abort()
+    const controller = new AbortController()
+    requestRef.current = controller
+    setLoading(!refresh)
+    setIsRefreshing(refresh)
     setError(null)
 
     try {
-      const response = await apiFetch(`/api/stocks/${symbol}/news`)
+      const response = await apiFetch(`/api/stocks/${encodeURIComponent(symbol)}/news`, {
+        signal: controller.signal,
+      })
       
       if (!response.ok) {
         throw new Error('Failed to fetch news data')
@@ -264,19 +236,23 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
         }
       }) || []
       
-      setArticles(transformedArticles.slice(0, 20)) // Limit to 20 articles
+      if (!controller.signal.aborted) setArticles(transformedArticles.slice(0, 20))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error')
+      if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
-      if (!isRefreshing) setLoading(false)
+      if (!controller.signal.aborted) {
+        setLoading(false)
+        setIsRefreshing(false)
+      }
     }
-  }
+  }, [symbol])
 
   useEffect(() => {
-    if (symbol) {
-      fetchNews()
-    }
-  }, [symbol]) // eslint-disable-line react-hooks/exhaustive-deps
+    setArticles([])
+    setDisabledSources(new Set())
+    if (symbol) void fetchNews()
+    return () => requestRef.current?.abort()
+  }, [symbol, fetchNews])
 
   if (loading) {
     return (
@@ -299,7 +275,7 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
     )
   }
 
-  if (error) {
+  if (error && articles.length === 0) {
     return (
       <div className={`bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 sm:p-6 ${className}`}>
         <div className="flex items-center gap-2 sm:gap-3 mb-4">
@@ -309,6 +285,7 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
         <div className="text-center py-6 sm:py-8">
           <p className="text-red-400 mb-2 text-sm sm:text-base">Failed to load news</p>
           <p className="text-gray-400 text-xs sm:text-sm">{error}</p>
+          <button onClick={() => void fetchNews()} className="button-secondary mt-4">Try again</button>
         </div>
       </div>
     )
@@ -316,12 +293,9 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
 
   return (
     <>
-      <div 
-        ref={containerRef}
-        className={`bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-3 sm:p-6 ${className} overflow-y-auto max-h-[80vh] lg:max-h-none`}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+      <div
+        className={`min-w-0 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-3 sm:p-6 ${className}`}
+        aria-busy={isRefreshing}
       >
         {/* Header with refresh button - Mobile optimized */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 mb-4 sm:mb-6">
@@ -332,9 +306,9 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
           </div>
           
           <button
-            onClick={handleRefresh}
+            onClick={() => void fetchNews(true)}
             disabled={isRefreshing || loading}
-            className="flex items-center gap-2 px-3 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-lg text-white text-sm transition-all disabled:opacity-50 touch-manipulation self-start sm:self-auto"
+            className="flex min-h-11 items-center gap-2 px-3 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-lg text-white text-sm transition-all disabled:opacity-50 touch-manipulation self-start sm:self-auto"
           >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span>Reload saved news</span>
@@ -343,10 +317,7 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
 
         <p className="text-xs text-white/50 mb-4">Saved articles may be out of date. Use Refresh sources in <Link href={researchHref} className="text-violet-300 underline underline-offset-2">Research summary</Link> to collect new research. Company releases are company statements and are not scored. News sentiment describes wording, not expected returns.</p>
 
-        {/* Pull-to-refresh indicator for mobile */}
-        <div className="lg:hidden text-center text-white/40 text-xs mb-4">
-          Pull down to reload saved news
-        </div>
+        {error && <p role="status" className="mb-4 text-xs text-amber-200">Could not reload news. Previously loaded articles are still shown. {error}</p>}
 
         {/* Filter and Sort Bar - Mobile responsive */}
         <FilterSortBar

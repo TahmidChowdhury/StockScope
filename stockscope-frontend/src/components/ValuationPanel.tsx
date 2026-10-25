@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowDownUp, Calculator, RefreshCw } from 'lucide-react'
 import { apiFetch, ApiError } from '@/lib/api'
+import { withRequestTimeout } from '@/lib/request-timeout'
 import { amount, percent, observed, ratio } from '@/lib/financial-format'
 import { useWorkspaceDraft } from '@/hooks/useWorkspaceDraft'
 import { isScenarioDraft, type ScenarioDraft } from '@/lib/company-drafts'
@@ -271,10 +272,10 @@ function Scenarios({ data }: { data: ValuationEvidence }) {
 export default function ValuationPanel({ symbol }: { symbol: string }) {
   const query = useQuery({
     queryKey: ['valuation', symbol],
-    queryFn: async ({ signal }): Promise<ValuationEvidence> => {
+    queryFn: ({ signal }): Promise<ValuationEvidence> => withRequestTimeout(signal, 30_000, async (requestSignal) => {
       const response = await apiFetch(
         `/api/valuation/${encodeURIComponent(symbol)}`,
-        { signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]) },
+        { signal: requestSignal },
       )
       if (!response.ok) {
         const body = await response.json().catch(() => null)
@@ -285,7 +286,7 @@ export default function ValuationPanel({ symbol }: { symbol: string }) {
         )
       }
       return response.json()
-    },
+    }),
     enabled: !!symbol,
     staleTime: 90_000,
     retry: (count, error) =>

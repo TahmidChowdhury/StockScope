@@ -13,14 +13,14 @@ function storage() {
   const values = new Map()
   return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }
 }
-function harness(fetchImpl = async () => new Response('{}', { status: 200 })) {
+function harness(fetchImpl = async () => new Response('{}', { status: 200 }), timers = {}) {
   const window = new EventTarget()
   window.localStorage = storage()
   window.sessionStorage = storage()
   const exports = {}
   const calls = []
   vm.runInNewContext(compiled, {
-    exports, window, Headers, Event, Date,
+    exports, window, Headers, Event, Date, AbortController, setTimeout, clearTimeout, ...timers,
     process: { env: { NEXT_PUBLIC_API_URL: 'https://api.example.test/' } },
     fetch: async (...args) => { calls.push(args); return fetchImpl(...args) },
   })
@@ -118,4 +118,22 @@ test('incomplete login responses cannot create an authenticated session', () => 
   const { api } = harness()
   assert.throws(() => api.saveAuthSession({ success: true, message: 'Legacy response' }))
   assert.equal(api.getAuthSession(), null)
+})
+
+
+test('stalled reads time out and caller cancellation is preserved', async () => {
+  let expire
+  let delay
+  const { api } = harness((_url, init) => new Promise((_resolve, reject) => {
+    init.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+  }), { setTimeout: (callback, ms) => { expire = callback; delay = ms; return 1 }, clearTimeout: () => {} })
+  login(api)
+  const stalled = api.apiFetch('/api/stocks')
+  assert.equal(delay, 45000)
+  expire()
+  await assert.rejects(stalled, error => error.status === 504 && /too long/.test(error.message))
+  const controller = new AbortController()
+  const cancelled = api.apiFetch('/api/stocks', { signal: controller.signal })
+  controller.abort()
+  await assert.rejects(cancelled, error => error.message === 'aborted' && error.status !== 504)
 })

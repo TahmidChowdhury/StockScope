@@ -1,5 +1,7 @@
 'use client'
 
+import AnimatedAccordion from '@/components/ui/AnimatedAccordion'
+
 import { useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUpRight, CheckCircle2, Clock3, Database, RefreshCw } from 'lucide-react'
@@ -105,8 +107,7 @@ export default function DisclosureCollectionStatus({ onCollected }: { onCollecte
       <div><dt className="text-[10px] text-slate-500">Collected records, including revisions</dt><dd className="mt-1 text-slate-300">{data.row_count.toLocaleString()}</dd></div>
     </dl>
 
-    <details className="border-t border-white/[0.06] px-4 py-3 text-xs sm:px-5">
-      <summary className="w-fit cursor-pointer text-slate-400 hover:text-violet-200">Source, coverage & timing</summary>
+    <AnimatedAccordion className="border-t border-white/[0.06] px-4 py-3 text-xs sm:px-5" triggerClassName="text-slate-400 hover:text-violet-200" title="Source, coverage & timing">
       <div className="mt-3 space-y-2 leading-5 text-slate-500">
         <p>Third-party normalized filing data can contain extraction errors. Confirm transactions in the original linked filing. Reported amount ranges do not show exact allocations or current holdings.</p>
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-slate-400">
@@ -123,6 +124,6 @@ export default function DisclosureCollectionStatus({ onCollected }: { onCollecte
         </div>
         <p>For personal research. Review the source terms before redistributing disclosure data.</p>
       </div>
-    </details>
+    </AnimatedAccordion>
   </section>
 }

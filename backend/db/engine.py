@@ -19,7 +19,17 @@ def create_database_engine(database_url, *, allow_sqlite=False):
         if isinstance(host, str) and host.endswith((".supabase.co", ".supabase.com")):
             if url.query.get("sslmode") not in {"require", "verify-ca", "verify-full"}:
                 url = url.update_query_dict({"sslmode": "require"})
-        return create_engine(url, pool_pre_ping=True, hide_parameters=True, connect_args={"prepare_threshold": None})
+        return create_engine(
+            url, pool_pre_ping=True, pool_timeout=10, hide_parameters=True,
+            connect_args={
+                "prepare_threshold": None,
+                "connect_timeout": 8,
+                "keepalives": 1, "keepalives_idle": 10,
+                "keepalives_interval": 5, "keepalives_count": 3,
+                "tcp_user_timeout": 15000,
+                "options": "-c statement_timeout=30000",
+            },
+        )
     if allow_sqlite and url.drivername == "sqlite":
         options = {"poolclass": StaticPool} if url.database in {None, "", ":memory:"} else {}
         engine = create_engine(url, hide_parameters=True, connect_args={"check_same_thread": False}, **options)

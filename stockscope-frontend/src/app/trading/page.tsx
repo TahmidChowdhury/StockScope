@@ -1,5 +1,9 @@
 'use client'
 
+import AnimatedSelect from '@/components/ui/AnimatedSelect'
+
+import AnimatedAccordion from '@/components/ui/AnimatedAccordion'
+
 import { FormEvent, ReactNode, Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -347,16 +351,13 @@ function Results({
           </ul>
         </div>
       )}
-      <details className={panelStyle}>
-        <summary className="cursor-pointer text-sm font-semibold">
-          Execution assumptions and limitations
-        </summary>
+      <AnimatedAccordion className={panelStyle} triggerClassName="text-sm font-semibold" title="Execution assumptions and limitations">
         <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-white/60">
           {result.assumptions.map((a) => (
             <li key={a}>{a}</li>
           ))}
         </ul>
-      </details>
+      </AnimatedAccordion>
     </div>
   )
 }
@@ -801,14 +802,14 @@ function TradingWorkspace() {
                           />
                         </Field>
                         <Field label="Action">
-                          <select
+                          <AnimatedSelect
                             className={inputStyle}
                             value={orderSide}
-                            onChange={(e) => setOrderSide(e.target.value)}
+                            onValueChange={(value) => setOrderSide(value)}
                           >
                             <option value="buy">Buy by cash budget</option>
                             <option value="sell">Sell entire position</option>
-                          </select>
+                          </AnimatedSelect>
                         </Field>
                         <Field label="Buy budget, including costs ($)">
                           <input
@@ -1028,12 +1029,12 @@ function TradingWorkspace() {
                 </Field>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <Field label="Strategy">
-                    <select
+                    <AnimatedSelect
                       className={inputStyle}
                       value={strategy}
-                      onChange={(e) => {
-                        setStrategy(e.target.value)
-                        if (e.target.value === 'sma')
+                      onValueChange={(value) => {
+                        setStrategy(value)
+                        if (value === 'sma')
                           setSymbols(backtestSymbols(symbols)?.[0] || 'AAPL')
                       }}
                     >
@@ -1044,7 +1045,7 @@ function TradingWorkspace() {
                       <option value="congress">
                         Copy Congress disclosures
                       </option>
-                    </select>
+                    </AnimatedSelect>
                   </Field>
                   <Field label="Start date">
                     <input
@@ -1077,18 +1078,18 @@ function TradingWorkspace() {
                 {strategy === 'congress' ? (
                   <>
                     <Field label="Member with available disclosures">
-                      <select
+                      <AnimatedSelect
                         className={inputStyle}
                         required
                         value={member}
-                        onChange={(e) => setMember(e.target.value)}
+                        onValueChange={(value) => setMember(value)}
                       >
                         <option value="">Select a member</option>
                         {unavailableDraftMember && <option value={member} disabled>{member} · no available disclosures</option>}
                         {congress.members.map((m) => (
                           <option key={m}>{m}</option>
                         ))}
-                      </select>
+                      </AnimatedSelect>
                     </Field>
                     <div className="grid gap-3 sm:grid-cols-3">
                       <Field label="Budget per buy (% of initial cash)">
@@ -1411,10 +1412,7 @@ function TradingWorkspace() {
                   Senate disclosure portal ↗
                 </a>
               </div>
-              <details className="mt-4 text-sm text-white/60">
-                <summary className="cursor-pointer">
-                  CSV field requirements
-                </summary>
+              <AnimatedAccordion className="mt-4 text-sm text-white/60" triggerClassName="" title="CSV field requirements">
                 <p className="mt-3 leading-6">
                   Required columns in order: disclosure_id, member, owner,
                   symbol, side, transaction_date, available_date, asset_type,
@@ -1425,7 +1423,7 @@ function TradingWorkspace() {
                   commas. Identical reimports are skipped; conflicting IDs
                   reject the entire import.
                 </p>
-              </details>
+              </AnimatedAccordion>
               <form
                 className="mt-5"
                 onSubmit={(e) =>
@@ -1494,12 +1492,11 @@ function TradingWorkspace() {
                 </div>
                 <label className="text-xs text-white/60">
                   Filter member
-                  <select
+                  <AnimatedSelect
                     disabled={busy}
                     className={inputStyle}
                     value={memberFilter}
-                    onChange={(e) => {
-                      const value = e.target.value
+                    onValueChange={(value) => {
                       void act(async () => {
                         const data = await tradingRequest<CongressData>(
                           `/congress?member=${encodeURIComponent(value)}`,
@@ -1513,7 +1510,7 @@ function TradingWorkspace() {
                     {congress.members.map((m) => (
                       <option key={m}>{m}</option>
                     ))}
-                  </select>
+                  </AnimatedSelect>
                 </label>
               </div>
               {congress.records.length === 0 ? (

@@ -1,5 +1,6 @@
 'use client'
 
+import AnimatedAccordion from './ui/AnimatedAccordion'
 import { ReactNode, useState } from 'react'
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline'
 
@@ -149,7 +150,6 @@ export function DashboardSection({
   variant = 'default',
   collapsible = false
 }: DashboardSectionProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false)
   
   const variants = {
     default: 'bg-white/5 border-white/10',
@@ -157,29 +157,29 @@ export function DashboardSection({
     subtle: 'bg-white/[0.02] border-white/5'
   }
 
+  if (collapsible) {
+    return (
+      <AnimatedAccordion
+        title={<span className="flex items-center gap-2 sm:gap-3">{icon && <span className="shrink-0 text-purple-400">{icon}</span>}<span className="truncate">{title}</span></span>}
+        className={`backdrop-blur-sm border rounded-xl sm:rounded-2xl p-4 sm:p-6 ${variants[variant]} ${className}`}
+        triggerClassName="text-lg sm:text-xl font-semibold text-white"
+        headingLevel={2}
+        headerAction={headerAction}
+        defaultOpen
+      >
+        <div className="pt-4 sm:pt-6">{children}</div>
+      </AnimatedAccordion>
+    )
+  }
+
   return (
     <div className={`backdrop-blur-sm border rounded-xl sm:rounded-2xl p-4 sm:p-6 ${variants[variant]} ${className}`}>
       {/* Section Header */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">
-        {collapsible ? (
-          <button
-            className="flex items-center gap-2 sm:gap-3 cursor-pointer hover:opacity-80 transition-opacity flex-1 min-w-0"
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            aria-expanded={!isCollapsed}
-            aria-controls={`section-${title.replace(/\s+/g, '-').toLowerCase()}`}
-          >
-            {icon && <div className="text-purple-400 flex-shrink-0">{icon}</div>}
-            <h2 className="text-lg sm:text-xl font-semibold text-white truncate">{title}</h2>
-            <div className={`text-white/60 transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`}>
-              ▼
-            </div>
-          </button>
-        ) : (
-          <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-            {icon && <div className="text-purple-400 flex-shrink-0">{icon}</div>}
-            <h2 className="text-lg sm:text-xl font-semibold text-white truncate">{title}</h2>
-          </div>
-        )}
+        <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+          {icon && <div className="text-purple-400 flex-shrink-0">{icon}</div>}
+          <h2 className="text-lg sm:text-xl font-semibold text-white truncate">{title}</h2>
+        </div>
         {headerAction && (
           <div className="flex-shrink-0 ml-2">
             {headerAction}
@@ -188,14 +188,7 @@ export function DashboardSection({
       </div>
 
       {/* Section Content */}
-      {!isCollapsed && (
-        <div 
-          className="transition-opacity duration-200 opacity-100"
-          id={`section-${title.replace(/\s+/g, '-').toLowerCase()}`}
-        >
-          {children}
-        </div>
-      )}
+      <div>{children}</div>
     </div>
   )
 }

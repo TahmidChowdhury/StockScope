@@ -1,5 +1,9 @@
 'use client'
 
+import AnimatedSelect from '@/components/ui/AnimatedSelect'
+
+import AnimatedAccordion from '@/components/ui/AnimatedAccordion'
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Download, FlaskConical, Play, RefreshCw } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
@@ -79,8 +83,7 @@ function Tone({ prediction }: { prediction: Prediction }) {
         </p>
       )}
       {prediction.probabilities && (
-        <details className="pt-1 text-[11px] text-white/40">
-          <summary className="cursor-pointer">Distribution</summary>
+        <AnimatedAccordion className="pt-1 text-[11px] text-white/40" triggerClassName="" title="Distribution">
           <div className="mt-2 space-y-1">
             {['negative', 'neutral', 'positive'].map((label) => (
               <p key={label} className="capitalize">
@@ -90,7 +93,7 @@ function Tone({ prediction }: { prediction: Prediction }) {
             ))}
             <p>Uncalibrated model softmax</p>
           </div>
-        </details>
+        </AnimatedAccordion>
       )}
     </div>
   )
@@ -449,10 +452,7 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
                     {model.load_latency_ms?.toFixed(0) ?? '—'} ms
                   </p>
                 )}
-                <details className="mt-3 text-xs text-white/50">
-                  <summary className="cursor-pointer text-violet-300">
-                    Model details and terms
-                  </summary>
+                <AnimatedAccordion className="mt-3 text-xs text-white/50" triggerClassName="text-violet-300" title="Model details and terms">
                   <div className="mt-3 space-y-2">
                     <a
                       href={model.source_url}
@@ -468,7 +468,7 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
                     <p className="leading-relaxed">{model.provenance}</p>
                     <p>{model.license}</p>
                   </div>
-                </details>
+                </AnimatedAccordion>
               </article>
             ))}
           </div>
@@ -643,10 +643,7 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
                             : row.source?.name || 'Source unavailable'}{' '}
                           · {publication(row.published_at)}
                         </p>
-                        <details className="mt-2 text-xs text-white/50">
-                          <summary className="cursor-pointer text-violet-300">
-                            Inspect saved input
-                          </summary>
+                        <AnimatedAccordion className="mt-2 text-xs text-white/50" triggerClassName="text-violet-300" title="Inspect saved input">
                           <p className="mt-2 whitespace-pre-wrap break-words leading-relaxed">
                             {row.text || 'No text available'}
                           </p>
@@ -664,16 +661,16 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
                               Read source article
                             </a>
                           )}
-                        </details>
+                        </AnimatedAccordion>
                         {labelling && row.status === 'eligible' && (
                           <label className="mt-3 block text-xs text-white/50">
                             Reference label for article {index + 1}
-                            <select
+                            <AnimatedSelect
                               aria-label={`Reference label for article ${index + 1}`}
                               disabled={busy}
                               value={annotations[row.sample_id] || ''}
-                              onChange={(event) => {
-                                const value = event.target.value as
+                              onValueChange={(nextValue) => {
+                                const value = nextValue as
                                   ReferenceLabel | ''
                                 const key = `${row.sample_id}:${row.text_sha256}`
                                 if (
@@ -704,7 +701,7 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
                               <option value="negative">Negative</option>
                               <option value="neutral">Neutral</option>
                               <option value="positive">Positive</option>
-                            </select>
+                            </AnimatedSelect>
                           </label>
                         )}
                       </td>

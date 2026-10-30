@@ -279,3 +279,18 @@ def test_file_snapshot_filter_does_not_open_unrequested_facts(monkeypatch, tmp_p
         return original(path, *args, **kwargs)
     monkeypatch.setattr(Path, "read_text", read_text)
     assert research.saved_news("AAPL") == [{"title": "News"}]
+
+
+def test_postgres_connections_have_bounded_waits(monkeypatch):
+    captured = {}
+    def capture(url, **kwargs):
+        captured.update(kwargs)
+        return object()
+    monkeypatch.setattr('backend.db.engine.create_engine', capture)
+    create_database_engine('postgresql://user:password@localhost/research')
+    assert captured['pool_timeout'] == 10
+    args = captured['connect_args']
+    assert args['connect_timeout'] == 8
+    assert args['keepalives'] == 1
+    assert args['tcp_user_timeout'] == 15000
+    assert 'statement_timeout=30000' in args['options']

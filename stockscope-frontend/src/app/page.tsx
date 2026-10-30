@@ -15,6 +15,8 @@ import {
 import AppShell from '@/components/AppShell'
 import StockSearch from '@/components/StockSearch'
 import Watchlist from '@/components/Watchlist'
+import SpotlightCard from '@/components/ui/SpotlightCard'
+import AnimatedAction from '@/components/ui/AnimatedAction'
 import { useWatchlist } from '@/hooks/useWatchlist'
 import { useAnalysisProgress } from '@/hooks/useAnalysisProgress'
 import { apiFetch } from '@/lib/api'
@@ -217,11 +219,7 @@ export default function Home() {
             action: 'Compare companies',
           },
         ].map(({ href, title, description, Icon, action }) => (
-          <Link
-            key={href}
-            href={href}
-            className="surface group p-6 transition-colors hover:border-violet-400/30"
-          >
+          <SpotlightCard key={href} className="p-6">
             <div className="mb-4 flex items-center justify-between">
               <Icon className="h-5 w-5 text-violet-300" />
               <ArrowUpRight className="h-4 w-4 text-slate-500 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
@@ -230,11 +228,13 @@ export default function Home() {
             <p className="mt-2 max-w-md text-xs leading-6 text-slate-400">
               {description}
             </p>
-            <span className="mt-4 inline-flex items-center gap-2 text-xs font-medium text-violet-300">
-              {action}
-              <ArrowRight className="h-3 w-3" />
-            </span>
-          </Link>
+            <AnimatedAction asChild className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg border border-violet-400/20 bg-violet-400/[0.08] px-3 text-xs font-medium text-violet-200 hover:bg-violet-400/[0.14]">
+              <Link href={href}>
+                {action}
+                <ArrowRight aria-hidden="true" className="h-3 w-3" />
+              </Link>
+            </AnimatedAction>
+          </SpotlightCard>
         ))}
       </div>
       <p className="mt-8 text-center text-[11px] leading-5 text-slate-500">

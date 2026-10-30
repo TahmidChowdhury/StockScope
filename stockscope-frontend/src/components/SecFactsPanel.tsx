@@ -1,5 +1,9 @@
 'use client'
 
+import AnimatedSelect from '@/components/ui/AnimatedSelect'
+
+import AnimatedAccordion from '@/components/ui/AnimatedAccordion'
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '@/lib/api'
 
@@ -252,16 +256,16 @@ export default function SecFactsPanel({ symbol }: { symbol: string }) {
           </div>
           <div className="mt-5 flex flex-wrap items-end gap-4">
             <label className="min-w-0 flex-1 text-sm text-slate-300">Reported concept
-              <select value={concept} disabled={refreshing} onChange={event => { setConcept(event.target.value); setUnit(''); setOffset(0) }} className="mt-1 block w-full rounded-lg border border-white/20 bg-slate-900 p-2 text-white">
+              <AnimatedSelect value={concept} disabled={refreshing} onValueChange={value => { setConcept(value); setUnit(''); setOffset(0) }} className="mt-1 block w-full rounded-lg border border-white/20 bg-slate-900 p-2 text-white">
                 <option value="">All saved concepts</option>
                 {currentData.concepts.map(item => <option key={item.key} value={item.key}>{item.label || item.concept} ({item.key}) · {item.count} versions</option>)}
-              </select>
+              </AnimatedSelect>
             </label>
             <label className="text-sm text-slate-300">Unit
-              <select value={unit} disabled={refreshing} onChange={event => { setUnit(event.target.value); setOffset(0) }} className="mt-1 block w-full rounded-lg border border-white/20 bg-slate-900 p-2 text-white">
+              <AnimatedSelect value={unit} disabled={refreshing} onValueChange={value => { setUnit(value); setOffset(0) }} className="mt-1 block w-full rounded-lg border border-white/20 bg-slate-900 p-2 text-white">
                 <option value="">All units</option>
                 {units.map(value => <option key={value} value={value}>{value}</option>)}
-              </select>
+              </AnimatedSelect>
             </label>
           </div>
           {!loading && !readFailed && <>
@@ -288,10 +292,10 @@ export default function SecFactsPanel({ symbol }: { symbol: string }) {
               </div>
             </div>
           </>}
-          <details className="mt-5 text-sm text-slate-400"><summary className="cursor-pointer text-slate-300">Coverage and source limitations</summary>
+          <AnimatedAccordion className="mt-5 text-sm text-slate-400" triggerClassName="text-slate-300" title="Coverage and source limitations">
             <ul className="mt-2 list-disc space-y-1 pl-5">{(currentData.metadata.limitations ?? []).map(item => <li key={item}>{item}</li>)}</ul>
             {Object.entries(currentData.metadata.collections ?? {}).map(([name, collection]) => <p key={name} className="mt-2">{name.replaceAll('_', ' ')}: {collection.status}{collection.from_cache ? ' · cached source response' : ''}{collection.error ? ` · ${collection.error}` : ''}</p>)}
-          </details>
+          </AnimatedAccordion>
         </>}
       </>}
     </section>

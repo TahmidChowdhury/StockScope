@@ -1,5 +1,7 @@
 'use client'
 
+import AnimatedSelect from '@/components/ui/AnimatedSelect'
+
 import { Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -110,17 +112,17 @@ function DisclosureWorkspace() {
             <div className="mt-1 flex gap-2"><input name="q" defaultValue={params.get('q') || ''} maxLength={120} placeholder="Member, owner, ticker…" className="field-input !mt-0" /><button className="button-secondary" aria-label="Search disclosures"><Search className="h-4 w-4" /></button></div>
           </label>
           <label className="min-w-0 flex-1 text-xs text-slate-400 sm:max-w-[210px]">Member
-            <select className="field-input" value={member} onChange={(event) => navigate({ member: event.target.value })}>
+            <AnimatedSelect className="field-input" value={member} onValueChange={(value) => navigate({ member: value })}>
               <option value="">All members</option>{member && !data?.members.includes(member) && <option>{member}</option>}{data?.members.map((name) => <option key={name}>{name}</option>)}
-            </select>
+            </AnimatedSelect>
           </label>
           <label className="min-w-[110px] flex-1 text-xs text-slate-400 sm:max-w-[150px]">Symbol
-            <select className="field-input" value={symbol} onChange={(event) => navigate({ symbol: event.target.value })}>
+            <AnimatedSelect className="field-input" value={symbol} onValueChange={(value) => navigate({ symbol: value })}>
               <option value="">All symbols</option>{symbol && !data?.symbols.includes(symbol) && <option>{symbol}</option>}{data?.symbols.map((name) => <option key={name}>{name}</option>)}
-            </select>
+            </AnimatedSelect>
           </label>
           <label className="min-w-[110px] flex-1 text-xs text-slate-400 sm:max-w-[140px]">Activity
-            <select className="field-input" value={side} onChange={(event) => navigate({ side: event.target.value })}><option value="">Buys & sells</option><option value="buy">Buys</option><option value="sell">Sells</option></select>
+            <AnimatedSelect className="field-input" value={side} onValueChange={(value) => navigate({ side: value })}><option value="">Buys & sells</option><option value="buy">Buys</option><option value="sell">Sells</option></AnimatedSelect>
           </label>
         </form>
         {hasFilters && <button className="mt-3 text-xs text-violet-300 hover:underline" onClick={() => router.push('/disclosures', { scroll: false })}>Clear filters</button>}

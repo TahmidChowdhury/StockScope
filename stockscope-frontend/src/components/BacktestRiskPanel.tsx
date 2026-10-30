@@ -1,5 +1,7 @@
 'use client'
 
+import AnimatedAccordion from '@/components/ui/AnimatedAccordion'
+
 import { useQuery } from '@tanstack/react-query'
 import { tradingRequest } from '@/lib/trading'
 
@@ -147,16 +149,13 @@ export default function BacktestRiskPanel({
             {number(query.data.method.annual_risk_free_rate * 100, '%')} ·{' '}
             {query.data.method.library} {query.data.method.library_version}
           </p>
-          <details className="mt-3 text-xs leading-6 text-slate-400">
-            <summary className="cursor-pointer text-slate-300">
-              Risk methodology
-            </summary>
+          <AnimatedAccordion className="mt-3 text-xs leading-6 text-slate-400" triggerClassName="text-slate-300" title="Risk methodology">
             <ul className="mt-3 list-disc space-y-1 pl-5">
               {query.data.assumptions.map((assumption) => (
                 <li key={assumption}>{assumption}</li>
               ))}
             </ul>
-          </details>
+          </AnimatedAccordion>
         </>
       )}
     </section>

@@ -80,7 +80,25 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   }
   const headers = new Headers(init.headers)
   headers.set('Authorization', `Bearer ${session.accessToken}`)
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers, cache: 'no-store', redirect: 'error' })
+  const controller = new AbortController()
+  const cancel = () => controller.abort()
+  if (init.signal?.aborted) cancel()
+  else init.signal?.addEventListener('abort', cancel, { once: true })
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, !init.method || init.method === 'GET' ? 45000 : 180000)
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, { ...init, signal: controller.signal, headers, cache: 'no-store', redirect: 'error' })
+  } catch (error) {
+    if (timedOut) throw new ApiError('The server took too long to respond. Please try again.', 504)
+    throw error
+  } finally {
+    clearTimeout(timer)
+    init.signal?.removeEventListener('abort', cancel)
+  }
   if (response.status === 401) {
     // An old in-flight request must not clear a newer login session.
     if (getAuthSession()?.accessToken === session.accessToken) clearAuthSession()

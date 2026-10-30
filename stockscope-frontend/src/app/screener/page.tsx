@@ -1,5 +1,7 @@
 'use client'
 
+import AnimatedSelect from '@/components/ui/AnimatedSelect'
+
 import { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -222,17 +224,17 @@ function ScreenForm() {
           <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <label className="field-label">
               Company universe
-              <select
+              <AnimatedSelect
                 className="field-input"
                 value={universe}
-                onChange={(e) => setUniverse(e.target.value)}
+                onValueChange={(value) => setUniverse(value)}
               >
                 <option value="curated">Curated US-stock list</option>
                 <option value="watchlist">
                   Shared watchlist ({stocks.length})
                 </option>
                 <option value="custom">Custom tickers</option>
-              </select>
+              </AnimatedSelect>
             </label>
             {universe === 'custom' && (
               <label className="field-label sm:col-span-2">
@@ -282,28 +284,28 @@ function ScreenForm() {
           <div className="mt-6 grid gap-4 border-t border-white/[0.07] pt-6 sm:grid-cols-3">
             <label className="field-label">
               Sort by
-              <select
+              <AnimatedSelect
                 className="field-input"
                 value={sort}
-                onChange={(e) => setSort(e.target.value)}
+                onValueChange={(value) => setSort(value)}
               >
                 {sortOptions.map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
                   </option>
                 ))}
-              </select>
+              </AnimatedSelect>
             </label>
             <label className="field-label">
               Direction
-              <select
+              <AnimatedSelect
                 className="field-input"
                 value={direction}
-                onChange={(e) => setDirection(e.target.value)}
+                onValueChange={(value) => setDirection(value)}
               >
                 <option value="desc">Highest first</option>
                 <option value="asc">Lowest first</option>
-              </select>
+              </AnimatedSelect>
             </label>
             <label className="field-label">
               Maximum results

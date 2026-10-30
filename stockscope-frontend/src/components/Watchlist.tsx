@@ -1,5 +1,7 @@
 'use client'
 
+import AnimatedSelect from '@/components/ui/AnimatedSelect'
+
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
@@ -10,6 +12,8 @@ import {
 } from '@headlessui/react'
 import { ArrowUpRight, Building2, Search, Trash2 } from 'lucide-react'
 import CompanyLogo from './CompanyLogo'
+import SpotlightCard from './ui/SpotlightCard'
+import AnimatedAction from './ui/AnimatedAction'
 import { useWatchlist } from '@/hooks/useWatchlist'
 import { apiFetch, getAuthSession } from '@/lib/api'
 
@@ -96,7 +100,7 @@ export default function Watchlist() {
           </p>
         </div>
         {admin && (
-          <button
+          <AnimatedAction
             className="button-secondary text-xs"
             onClick={() => {
               setManaging(!managing)
@@ -104,7 +108,7 @@ export default function Watchlist() {
             }}
           >
             {managing ? 'Done' : 'Manage watchlist'}
-          </button>
+          </AnimatedAction>
         )}
       </div>
       <div className="surface overflow-hidden">
@@ -119,15 +123,15 @@ export default function Watchlist() {
               className="min-h-11 w-full min-w-0 bg-transparent py-2 text-base text-slate-200 placeholder:text-slate-500 focus:outline-none sm:min-h-0 sm:w-44 sm:text-xs"
             />
           </label>
-          <select
+          <AnimatedSelect
             aria-label="Sort watchlist"
             value={sort}
-            onChange={(e) => setSort(e.target.value)}
+            onValueChange={(value) => setSort(value)}
             className="min-h-11 w-full max-w-full rounded-md border border-white/[0.08] bg-[#171a22] px-2 py-1.5 text-base text-slate-300 sm:min-h-0 sm:w-auto sm:text-xs"
           >
             <option value="symbol">Ticker A–Z</option>
             <option value="updated">Recently updated</option>
-          </select>
+          </AnimatedSelect>
         </div>
         {isError && stocks.length > 0 && (
           <div
@@ -138,12 +142,12 @@ export default function Watchlist() {
               Could not update the watchlist. Previously loaded research is
               shown.
             </span>
-            <button
+            <AnimatedAction
               onClick={() => void refetch()}
               className="underline underline-offset-4"
             >
               Retry
-            </button>
+            </AnimatedAction>
           </div>
         )}
         {notice && (
@@ -168,12 +172,12 @@ export default function Watchlist() {
             <p className="text-sm text-slate-300">
               The watchlist could not be loaded.
             </p>
-            <button
+            <AnimatedAction
               onClick={() => void refetch()}
               className="button-secondary mt-4"
             >
               Try again
-            </button>
+            </AnimatedAction>
           </div>
         ) : !stocks.length ? (
           <div className="px-6 py-14 text-center">
@@ -189,133 +193,79 @@ export default function Watchlist() {
             No companies match “{filter}”.
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-white/[0.07] text-[10px] uppercase tracking-wider text-slate-500">
-                  {managing && (
-                    <th className="w-12 py-1 pl-1 sm:pl-3">
-                      <label className="flex h-11 w-11 cursor-pointer items-center justify-center">
-                      <input
-                        type="checkbox"
-                        aria-label="Select all visible companies"
-                        checked={
-                          filtered.length > 0 &&
-                          filtered.every((s) => selected.includes(s.symbol))
-                        }
-                        onChange={(e) =>
-                          setSelected(
-                            e.target.checked
-                              ? filtered.map((s) => s.symbol)
-                              : [],
-                          )
-                        }
-                      />
-                      </label>
-                    </th>
-                  )}
-                  <th className="px-5 py-3 font-medium">Company</th>
-                  <th className="px-4 py-3 text-right font-medium">
-                    Daily price
-                  </th>
-                  <th className="hidden px-4 py-3 font-medium sm:table-cell">
-                    News tone
-                  </th>
-                  <th className="hidden px-4 py-3 font-medium sm:table-cell">
-                    Latest evidence
-                  </th>
-                  <th className={`w-10 ${managing ? 'hidden sm:table-cell' : ''}`}>
-                    <span className="sr-only">Open</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/[0.05]">
-                {filtered.map((stock) => (
-                  <tr
-                    key={stock.symbol}
-                    className="group transition-colors hover:bg-white/[0.025]"
-                  >
+          <div className="p-3 sm:p-4">
+            {managing && (
+              <label className="mb-3 flex min-h-11 w-fit cursor-pointer items-center gap-3 px-2 text-xs text-slate-300">
+                <input
+                  type="checkbox"
+                  aria-label="Select all visible companies"
+                  className="h-4 w-4 accent-violet-400"
+                  checked={filtered.every((stock) => selected.includes(stock.symbol))}
+                  onChange={(event) =>
+                    setSelected(event.target.checked ? filtered.map((stock) => stock.symbol) : [])
+                  }
+                />
+                Select all visible companies
+              </label>
+            )}
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {filtered.map((stock) => (
+                <SpotlightCard key={stock.symbol} selected={selected.includes(stock.symbol)} className="flex flex-col p-5">
+                  <div className="mb-6 flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <CompanyLogo symbol={stock.symbol} />
+                      <div className="min-w-0">
+                        <h3 className="font-semibold tracking-tight text-slate-100">{stock.symbol}</h3>
+                        <p className="mt-1 truncate text-xs text-slate-400">
+                          {stock.companyName || 'Company research'}
+                        </p>
+                      </div>
+                    </div>
                     {managing && (
-                      <td className="pl-1 sm:pl-3">
-                        <label className="flex h-11 w-11 cursor-pointer items-center justify-center">
+                      <label className="-mr-2 -mt-2 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:bg-white/5">
                         <input
                           type="checkbox"
                           aria-label={`Select ${stock.symbol}`}
+                          className="h-4 w-4 accent-violet-400"
                           checked={selected.includes(stock.symbol)}
-                          onChange={(e) =>
-                            setSelected(
-                              e.target.checked
-                                ? [...selected, stock.symbol]
-                                : selected.filter((s) => s !== stock.symbol),
-                            )
-                          }
+                          onChange={(event) => setSelected((current) =>
+                            event.target.checked
+                              ? [...current, stock.symbol]
+                              : current.filter((symbol) => symbol !== stock.symbol),
+                          )}
                         />
-                        </label>
-                      </td>
+                      </label>
                     )}
-                    <td className="px-3 py-4 sm:px-5">
-                      <Link
-                        href={`/stock/${encodeURIComponent(stock.symbol)}`}
-                        className="flex min-h-11 items-center gap-3"
-                      >
-                        <span className="hidden sm:block">
-                          <CompanyLogo symbol={stock.symbol} />
-                        </span>
-                        <span>
-                          <span className="font-semibold text-slate-100 group-hover:text-violet-200">
-                            {stock.symbol}
-                          </span>
-                          <span className="mt-0.5 block max-w-[95px] truncate sm:max-w-48 text-xs text-slate-500">
-                            {stock.companyName || 'Company research'}
-                          </span>
-                        </span>
-                      </Link>
-                    </td>
-                    <td className="px-2 py-4 text-right tabular-nums sm:px-4">
-                      <span className="font-medium">
-                        {stock.currentPrice != null &&
-                        Number.isFinite(stock.currentPrice)
-                          ? `$${stock.currentPrice.toFixed(2)}`
-                          : '—'}
-                      </span>
-                      <span className="mt-0.5 block text-[10px] text-slate-500">
-                        {dateLabel(stock.price_as_of)}
-                      </span>
-                    </td>
-                    <td className="hidden px-4 py-4 sm:table-cell">
-                      <span
-                        className={`rounded-md px-2 py-1 text-[11px] ${stock.avg_sentiment == null ? 'bg-white/5 text-slate-400' : stock.avg_sentiment >= 0.05 ? 'bg-emerald-400/[0.08] text-emerald-300' : stock.avg_sentiment <= -0.05 ? 'bg-rose-400/[0.08] text-rose-300' : 'bg-amber-400/[0.08] text-amber-200'}`}
-                      >
-                        {stock.avg_sentiment == null
-                          ? 'Unavailable'
-                          : stock.avg_sentiment >= 0.05
-                            ? 'Positive'
-                            : stock.avg_sentiment <= -0.05
-                              ? 'Negative'
-                              : 'Neutral'}
-                      </span>
-                    </td>
-                    <td className="hidden px-4 py-4 text-xs text-slate-400 sm:table-cell">
-                      {dateLabel(stock.last_updated)}
-                      <span className="mt-1 block text-[10px] text-slate-500">
-                        {stock.total_posts == null
-                          ? 'Count unavailable'
-                          : `${stock.total_posts.toLocaleString()} evidence records`}
-                      </span>
-                    </td>
-                    <td className={`pr-2 sm:pr-4 ${managing ? 'hidden sm:table-cell' : ''}`}>
-                      <Link
-                        href={`/stock/${encodeURIComponent(stock.symbol)}`}
-                        aria-label={`Open ${stock.symbol} research`}
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-white/5 hover:text-violet-300"
-                      >
-                        <ArrowUpRight className="h-4 w-4" />
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-4">
+                    <div>
+                      <dt className="text-[10px] uppercase tracking-wider text-slate-500">Daily price</dt>
+                      <dd className="mt-1.5 text-2xl font-medium tracking-tight tabular-nums text-white">
+                        {stock.currentPrice != null && Number.isFinite(stock.currentPrice)
+                          ? `$${stock.currentPrice.toFixed(2)}` : '—'}
+                      </dd>
+                      <dd className="mt-1 text-[10px] text-slate-500">{dateLabel(stock.price_as_of)}</dd>
+                    </div>
+                    <div className="text-right">
+                      <dt className="mb-3 text-[10px] uppercase tracking-wider text-slate-500">News tone</dt>
+                      <dd className={`inline-flex rounded-md px-2 py-1 text-[11px] ${stock.avg_sentiment == null ? 'bg-white/5 text-slate-400' : stock.avg_sentiment >= 0.05 ? 'bg-emerald-400/[0.08] text-emerald-300' : stock.avg_sentiment <= -0.05 ? 'bg-rose-400/[0.08] text-rose-300' : 'bg-amber-400/[0.08] text-amber-200'}`}>
+                        {stock.avg_sentiment == null ? 'Unavailable' : stock.avg_sentiment >= 0.05 ? 'Positive' : stock.avg_sentiment <= -0.05 ? 'Negative' : 'Neutral'}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.07] pt-4 text-[11px] text-slate-400">
+                    <span>{stock.total_posts == null ? 'Count unavailable' : `${stock.total_posts.toLocaleString()} evidence records`}</span>
+                    <span>Updated {dateLabel(stock.last_updated)}</span>
+                  </div>
+                  <AnimatedAction asChild className="mt-5 inline-flex min-h-11 items-center justify-between gap-2 rounded-lg border border-violet-400/20 bg-violet-400/[0.08] px-3 text-xs font-medium text-violet-200 hover:border-violet-400/40 hover:bg-violet-400/[0.14]">
+                    <Link href={`/stock/${encodeURIComponent(stock.symbol)}`} aria-label={`View details for ${stock.symbol}`}>
+                      View details
+                      <ArrowUpRight aria-hidden="true" className="h-4 w-4" />
+                    </Link>
+                  </AnimatedAction>
+                </SpotlightCard>
+              ))}
+            </div>
           </div>
         )}
         {managing && (
@@ -323,14 +273,14 @@ export default function Watchlist() {
             <span className="text-xs text-slate-400">
               {selected.length} selected
             </span>
-            <button
+            <AnimatedAction
               disabled={!selected.length}
               onClick={() => setConfirm(true)}
               className="button-secondary text-xs text-rose-300 disabled:opacity-40"
             >
               <Trash2 className="h-3.5 w-3.5" />
               Delete selected
-            </button>
+            </AnimatedAction>
           </div>
         )}
       </div>
@@ -357,20 +307,20 @@ export default function Watchlist() {
               deleted from the shared workspace. This cannot be undone.
             </Description>
             <div className="mt-6 flex flex-wrap justify-end gap-3">
-              <button
+              <AnimatedAction
                 disabled={deleting}
                 onClick={() => setConfirm(false)}
                 className="button-secondary"
               >
                 Cancel
-              </button>
-              <button
+              </AnimatedAction>
+              <AnimatedAction
                 disabled={deleting}
                 onClick={() => void remove()}
                 className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
                 {deleting ? 'Deleting…' : 'Delete research'}
-              </button>
+              </AnimatedAction>
             </div>
           </DialogPanel>
           </div>

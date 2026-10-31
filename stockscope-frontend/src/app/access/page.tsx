@@ -56,7 +56,7 @@ export default function AccessPage() {
       {!!access.data?.invites.length && <section className="surface mt-6 p-5"><h2 className="font-medium">Pending invitations</h2>{access.data.invites.map(value => <div key={value.id} className="mt-4 flex flex-wrap justify-between gap-3 text-xs"><p className="break-all text-slate-400">{value.email} · expires {new Date(value.expires_at).toLocaleDateString()}</p><button disabled={action.isPending} className="text-amber-200" onClick={() => action.mutate({ path: `/api/access/invites/${value.id}`, method: 'DELETE' })}>Revoke invitation</button></div>)}</section>}
       <section className="surface mt-6 p-5">
         <h2 className="font-medium">Shared resource usage</h2>
-        <p className="mt-2 text-xs leading-6 text-slate-500">Counts reset at midnight UTC. Yahoo counts include authentication and retries. When a provider asks us to slow down, the workspace pauses requests and keeps saved research available.</p>
+        <p className="mt-2 text-xs leading-6 text-slate-500">These workspace totals cover the UTC day. Each member has 50 Yahoo requests per day, including authentication and retries. Personal allowances reset at midnight Eastern time. When a provider asks us to slow down, the workspace pauses requests and keeps saved research available.</p>
         {usage.isError && <p className="mt-4 text-xs text-amber-200">Usage is temporarily unavailable.</p>}
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           {usage.data?.providers.map(value => (
@@ -64,7 +64,7 @@ export default function AccessPage() {
               <div className="flex justify-between text-xs">
                 <span className="capitalize text-slate-400">{value.provider}</span>
                 <span className="tabular-nums text-slate-300">
-                  {value.limit === null ? `${value.used} requests · No daily app cap` : value.limit === 0 ? 'Disabled' : `${value.used} / ${value.limit}`}
+                  {value.limit === null ? `${value.used} requests across workspace` : value.limit === 0 ? 'Disabled' : `${value.used} / ${value.limit}`}
                 </span>
               </div>
               {value.limit !== null && value.limit > 0 && <div className="mt-2 h-1 rounded bg-white/5"><div className="h-1 rounded bg-[#b6c8ab]" style={{ width: `${Math.min(100, value.used / value.limit * 100)}%` }} /></div>}

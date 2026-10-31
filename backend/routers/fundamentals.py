@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.core.cache import peek_many
 from backend.core.auth import verify_password_with_role
-from backend.core.resources import BudgetExceeded
+from backend.core.resources import BudgetExceeded, PersonalYahooLimit
 from backend.services.fundamentals import compute_ttm_metrics, compute_quarterly_series, compact
 from backend.models.fundamentals import (
     FundamentalsTTM, FundamentalsSeries, FundamentalsResponse,
@@ -142,9 +142,8 @@ async def compare_fundamentals(request: CompareRequest, current_user: str = Depe
 
         # Share the screener's bounded thread pool and timeout. A slow provider
         # must not block the event loop or discard the other companies.
-        loop = asyncio.get_running_loop()
         raw_results = await asyncio.gather(
-            *[_fetch_ticker_screener(ticker, loop) for ticker in tickers]
+            *[_fetch_ticker_screener(ticker) for ticker in tickers]
         )
         results = [row for row in raw_results if row]
 
@@ -159,6 +158,8 @@ async def compare_fundamentals(request: CompareRequest, current_user: str = Depe
         
     except HTTPException:
         raise
+    except PersonalYahooLimit as exc:
+        raise HTTPException(429, str(exc), headers={"Retry-After": str(exc.retry_after)}) from exc
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error comparing fundamentals: {str(e)}")
 
@@ -168,15 +169,17 @@ _SCREENER_CONCURRENCY = 2
 _screener_semaphore = asyncio.Semaphore(_SCREENER_CONCURRENCY)
 
 
-async def _fetch_ticker_screener(ticker: str, loop: asyncio.AbstractEventLoop) -> Optional[dict]:
+async def _fetch_ticker_screener(ticker: str) -> Optional[dict]:
     """Fetch one ticker's TTM data in a thread, with a per-ticker timeout."""
     async with _screener_semaphore:
         try:
             compacted = await asyncio.wait_for(
-                loop.run_in_executor(None, _compute_ttm_cached, ticker),
+                asyncio.to_thread(_compute_ttm_cached, ticker),
                 timeout=12.0,
             )
             return compacted
+        except PersonalYahooLimit:
+            raise
         except asyncio.TimeoutError:
             print(f"Screener timeout for {ticker}, skipping")
             return None

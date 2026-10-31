@@ -1,4 +1,4 @@
-from backend.core.resources import guarded_get
+from backend.core.resources import PersonalYahooLimit, guarded_get
 import os
 import requests
 import json
@@ -134,13 +134,8 @@ class EnhancedNewsScraper:
             print(f"🔍 Fetching Yahoo Finance news for {ticker}...")
             
 
-            # Get news data - handle potential errors
-            try:
-                news_data = yf.get_news(ticker)
-            except Exception as e:
-                print(f"  ⚠️ Error accessing Yahoo news data: {e}")
-                news_data = []
-            
+            news_data = yf.get_news(ticker)
+
             if not news_data:
                 print(f"  ⚠️ No Yahoo Finance news found for {ticker}")
                 return []
@@ -197,6 +192,8 @@ class EnhancedNewsScraper:
             print(f"  ✅ Found {len(articles)} Yahoo Finance articles")
             return articles
             
+        except PersonalYahooLimit:
+            raise
         except Exception as e:
             print(f"  ❌ Error fetching Yahoo Finance news: {e}")
             return []
@@ -580,6 +577,9 @@ class EnhancedNewsScraper:
                     all_articles.extend(articles)
                     self.last_provider_results[provider] = self.research_sources.last_results.get(
                         provider, {"status": "ok" if articles else "no_data", "count": len(articles)})
+                except PersonalYahooLimit:
+                    self.last_provider_results[provider] = {"status": "budget_exhausted", "count": 0,
+                                                            "reason": "The requesting account reached its daily Yahoo allowance."}
                 except Exception as exc:
                     self.last_provider_results[provider] = {"status": "failed", "count": 0, "reason": str(exc)[:160]}
         finally:

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from threading import RLock
 
-from backend.core.resources import BudgetExceeded, daily_limit, read_states, state
+from backend.core.resources import BudgetExceeded, PersonalYahooLimit, daily_limit, read_states, state
 
 _locks = [RLock() for _ in range(64)]
 
@@ -78,8 +78,12 @@ def fetch_snapshot(namespace, identity, loader, *, ttl=3600, allow_stale=True,
         except Exception as error:
             with state(key) as entry:
                 if entry.get('lease') == token:
-                    entry.update(lease_until=0, retry_at=time.time() + (error.retry_after if isinstance(error, BudgetExceeded) else 300),
-                                 budget_message=str(error) if isinstance(error, BudgetExceeded) else None)
+                    if isinstance(error, PersonalYahooLimit):
+                        # Another account may refresh this same snapshot immediately.
+                        entry.update(lease_until=0, retry_at=0, budget_message=None)
+                    else:
+                        entry.update(lease_until=0, retry_at=time.time() + (error.retry_after if isinstance(error, BudgetExceeded) else 300),
+                                     budget_message=str(error) if isinstance(error, BudgetExceeded) else None)
             if allow_stale and value_field in previous:
                 return snapshot(previous, True)
             raise

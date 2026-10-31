@@ -166,7 +166,10 @@ async def verify_password_with_role(
     authorization: Optional[str] = Header(None, alias="Authorization"),
 ) -> str:
     import asyncio
+    from backend.core.resources import yahoo_principal
     user = await asyncio.to_thread(authenticate_token, authorization)
+    # Bind on the ASGI request task, before it dispatches sync endpoints or workers.
+    yahoo_principal.set('legacy:' + user if isinstance(user, str) else user.id)
     return user if isinstance(user, str) else user.role
 
 

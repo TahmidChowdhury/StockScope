@@ -130,6 +130,12 @@ def change_password(body: PasswordChange, request: Request, user=Depends(current
     return {"changed": True, "sign_in_required": True}
 
 
+@router.get('/account/yahoo-usage')
+def my_yahoo_usage(user=Depends(current_account)):
+    from backend.core.resources import personal_yahoo_usage
+    return personal_yahoo_usage(user.id)
+
+
 @router.get('/resources')
 def resources(user=Depends(admin)):
     from backend.core.resources import usage_summary

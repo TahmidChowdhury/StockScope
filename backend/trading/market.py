@@ -1,6 +1,7 @@
 """Daily USD equity data. Never silently forward-fill missing observations."""
 from __future__ import annotations
 
+from backend.core.resources import PersonalYahooLimit
 import math
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -48,6 +49,8 @@ def fetch_bars(symbols, start: date, end: date):
                 if split:
                     factor *= split
             output[symbol] = list(reversed(bars))
+        except PersonalYahooLimit:
+            raise
         except Exception as exc:
             # Do not expose vendor responses or credentials through API errors.
             raise ValueError(f"Usable USD price history unavailable for {symbol}; no test was saved") from exc

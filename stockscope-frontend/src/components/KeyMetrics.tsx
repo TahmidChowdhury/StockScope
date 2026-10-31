@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, ApiError, readApiJson } from '@/lib/api'
 
 interface CompanyInfo {
   currentPrice?: number | null
@@ -42,17 +42,20 @@ export default function KeyMetrics({
   symbol: string
   className?: string
 }) {
-  const { data, isPending, isError, isFetching, refetch } = useQuery({
+  const { data, error, isPending, isError, isFetching, refetch } = useQuery({
     queryKey: ['company-info', symbol],
+    retry: false,
+    staleTime: 60 * 60_000,
+    refetchOnWindowFocus: false,
     queryFn: async ({ signal }): Promise<CompanyInfo> => {
       const response = await apiFetch(
         `/api/stocks/${encodeURIComponent(symbol)}/info`,
         { signal },
       )
-      if (!response.ok) throw new Error('Company metrics could not be loaded.')
-      return response.json()
+      return readApiJson<CompanyInfo>(response, 'Company metrics could not be loaded.')
     },
   })
+  const limited = error instanceof ApiError && error.status === 429
   const number = (
     value?: number | null,
     style: 'number' | 'money' | 'compact' | 'percent' = 'number',
@@ -118,7 +121,7 @@ export default function KeyMetrics({
         </h2>
         <button
           onClick={() => void refetch()}
-          disabled={isFetching}
+          disabled={isFetching || limited}
           aria-label="Reload company metrics"
           title="Reload provider metrics; responses may be cached for up to one hour"
           className="rounded-lg p-2 text-slate-500 hover:bg-white/5 hover:text-slate-200 disabled:opacity-40"
@@ -138,10 +141,10 @@ export default function KeyMetrics({
         <>
           {isError && (
             <div role="alert" className="mb-4 text-xs leading-5 text-amber-200">
-              Metrics could not be reloaded.
+              {error?.message}
               {data
                 ? ' Previously loaded observations are shown.'
-                : ' Use the reload button to try again.'}
+                : limited ? '' : ' Use the reload button to try again.'}
             </div>
           )}
           {data && (

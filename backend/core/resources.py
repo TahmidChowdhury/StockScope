@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import os
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from threading import RLock
 from urllib.parse import urlparse
@@ -27,7 +28,9 @@ DEFAULT_LIMITS = {"yahoo": 100, "sec": 200, "newsapi": 0, "google": 30,
 
 
 class BudgetExceeded(RuntimeError):
-    pass
+    def __init__(self, message, retry_after=3600):
+        super().__init__(message)
+        self.retry_after = max(1, math.ceil(retry_after))
 
 
 def provider_for(url):
@@ -100,6 +103,21 @@ def read_states(keys):
     return result
 
 
+def require_available(provider):
+    """Read-only preflight so SDKs cannot disguise a denied request as missing data."""
+    usage = read_states(['provider:' + provider]).get('provider:' + provider, {})
+    now = datetime.now(timezone.utc)
+    if usage.get('blocked_until', 0) > now.timestamp():
+        raise BudgetExceeded(f'{provider.title()} is cooling down after a provider response. Saved research remains available.',
+                             usage['blocked_until'] - now.timestamp())
+    used = usage.get('count', 0) if usage.get('day') == now.date().isoformat() else 0
+    limit = daily_limit(provider)
+    if used >= limit:
+        reset = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        raise BudgetExceeded(f'Shared {provider.title()} daily limit reached ({used}/{limit}). Saved research remains available.',
+                             (reset - now).total_seconds())
+
+
 def reserve(provider, *, cooldown=1.1):
     """Count every attempted request, including failures, before any network I/O."""
     wait = 0
@@ -109,9 +127,10 @@ def reserve(provider, *, cooldown=1.1):
         if usage.get('day') != day:
             usage.update(day=day, count=0)
         if usage.get('blocked_until', 0) > now:
-            raise BudgetExceeded(f'{provider} is cooling down after a provider response. Saved data remains available.')
+            raise BudgetExceeded(f'{provider} is cooling down after a provider response. Saved data remains available.', usage['blocked_until'] - now)
         if usage.get('count', 0) >= daily_limit(provider):
-            raise BudgetExceeded(f'{provider} daily workspace budget reached. Saved data remains available.')
+            reset = (datetime.fromtimestamp(now, timezone.utc) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            raise BudgetExceeded(f'Shared {provider.title()} daily limit reached ({usage.get("count", 0)}/{daily_limit(provider)}). Saved research remains available.', reset.timestamp() - now)
         scheduled = max(now, usage.get('next_request', 0))
         wait = scheduled - now
         if wait > 30:

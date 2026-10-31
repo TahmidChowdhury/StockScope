@@ -126,12 +126,16 @@ def load_dataframes(ticker):
     """Read stored evidence, retaining original dates and excluding SEC template scores."""
     return load_evidence(ticker)
 
+from backend.core.resources import BudgetExceeded, require_available
+
+
 def get_company_info(symbol: str) -> tuple[bool, dict]:
     """Return observed provider metrics without inventing values or quote dates."""
     try:
         import backend.core.market_provider as yf
 
         symbol = symbol.upper().strip()
+        require_available("yahoo")
         ticker = yf.Ticker(symbol)
         info = ticker.info
         numeric_fields = {
@@ -212,7 +216,10 @@ def get_company_info(symbol: str) -> tuple[bool, dict]:
 
         company_data["displayName"] = company_data["longName"] or company_data["shortName"] or symbol
         return True, company_data
+    except BudgetExceeded:
+        raise
     except Exception as exc:
+        require_available("yahoo")
         return False, {"error": f"Error fetching company info: {str(exc)}"}
 
 # In-memory cache with TTL
@@ -823,6 +830,8 @@ def get_company_info_endpoint(symbol: str, current_user: str = Depends(verify_pa
         cache.set(cache_key, company_data, ttl=3600)
         return company_data
         
+    except BudgetExceeded as exc:
+        raise HTTPException(429, str(exc), headers={"Retry-After": str(exc.retry_after)}) from exc
     except HTTPException:
         raise
     except Exception as e:
@@ -853,6 +862,7 @@ def get_price_history(
     try:
         import backend.core.market_provider as yf
         
+        require_available("yahoo")
         # Create ticker object
         ticker = yf.Ticker(symbol)
         
@@ -860,6 +870,7 @@ def get_price_history(
         hist = ticker.history(period=period, interval=interval, timeout=10)
         
         if hist.empty:
+            require_available("yahoo")
             raise HTTPException(status_code=404, detail="No historical data found")
         
         # Convert to list of dictionaries for frontend consumption
@@ -906,10 +917,12 @@ def get_price_history(
             "data": price_data
         }
         
-        # Cache for 5 minutes (price data changes frequently)
+        # Reuse provider observations for one hour to conserve the shared budget.
         cache.set(cache_key, result, ttl=3600)
         return result
         
+    except BudgetExceeded as exc:
+        raise HTTPException(429, str(exc), headers={"Retry-After": str(exc.retry_after)}) from exc
     except HTTPException:
         raise
     except Exception as e:

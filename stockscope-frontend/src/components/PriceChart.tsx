@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { TrendingUp, TrendingDown } from 'lucide-react'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, ApiError, readApiJson } from '@/lib/api'
 import { priceHistorySummary, type PriceData, type PriceHistoryResponse } from '@/lib/price-history'
 import { useWindowWidth } from '@/hooks/useWindowWidth'
 
@@ -58,16 +58,18 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
         `/api/stocks/${encodeURIComponent(symbol)}/price-history?period=${selectedPeriod}&interval=1d`,
         { signal },
       )
-      if (!response.ok) throw new Error('Price history could not be loaded.')
-      return response.json()
+      return readApiJson<PriceHistoryResponse>(response, 'Price history could not be loaded.')
     },
     enabled: Boolean(symbol),
-    staleTime: 60_000,
+    staleTime: 60 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
     // Keep the chart's size and quote stable during range changes. Never carry
     // a previous company's prices into a new company's view.
     placeholderData: (previous, previousQuery) =>
       previousQuery?.queryKey[1] === symbol ? previous : undefined,
   })
+  const limited = query.error instanceof ApiError && query.error.status === 429
   const priceData = query.data
   const bars = priceData?.data ?? []
   const summary = priceHistorySummary(bars)
@@ -107,7 +109,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
               <button
                 key={option.value}
                 type="button"
-                onClick={() => setSelectedPeriod(option.value)}
+                disabled={limited} onClick={() => setSelectedPeriod(option.value)}
                 aria-pressed={selectedPeriod === option.value}
                 className={`min-h-11 flex-1 px-2 sm:px-3 rounded text-xs font-medium transition-colors whitespace-nowrap min-w-[36px] ${selectedPeriod === option.value ? 'bg-purple-600 text-white shadow-sm' : 'text-white/70 hover:text-white hover:bg-white/10'}`}
               >
@@ -131,8 +133,8 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
       </div>
       {query.isError && (
         <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-200">
-          <p>Price history could not be reloaded.{priceData ? ' Previously loaded prices are shown.' : ''}</p>
-          <button type="button" onClick={() => void query.refetch()} disabled={query.isFetching} className="button-secondary">Retry price history</button>
+          <p>{query.error.message}{priceData ? ' Previously loaded prices are shown.' : ''}</p>
+          <button type="button" onClick={() => void query.refetch()} disabled={query.isFetching || limited} className="button-secondary">Retry price history</button>
         </div>
       )}
 
@@ -151,7 +153,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
           </ResponsiveContainer>
         ) : (
           <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-white/10 p-4 text-center text-sm text-slate-400">
-            {query.isError ? 'Price history is unavailable. Try another period or retry.' : 'No price history is available for this period.'}
+            {query.isError ? limited ? 'Price history is paused by the shared request budget. Saved news and filings are still available.' : 'Price history is unavailable. Try again later.' : 'No price history is available for this period.'}
           </div>
         )}
       </div>

@@ -164,3 +164,31 @@ def test_unavailable_or_invalid_dividend_inputs_stay_unavailable(api, monkeypatc
     assert data["dividendYield"] is None
     assert data["dividendYieldBasis"] is None
     json.dumps(data, allow_nan=False)
+
+
+def test_yahoo_budget_denial_is_429_without_contacting_provider(api, monkeypatch):
+    from backend.core import resources
+    resources.reserve('yahoo', cooldown=0)
+    monkeypatch.setenv('PROVIDER_YAHOO_DAILY_LIMIT', '1')
+    monkeypatch.setattr(yf, 'Ticker', lambda *args: pytest.fail('Budget denial must happen before the SDK'))
+    for request in [api.get_company_info_endpoint, api.get_price_history]:
+        with pytest.raises(api.HTTPException) as error:
+            request('IBM', current_user='admin')
+        assert error.value.status_code == 429
+        assert 'daily limit reached (1/1)' in error.value.detail
+        assert 0 < int(error.value.headers['Retry-After']) <= 86400
+    # Cached observations remain accessible after the limit, without new requests.
+    api.cache.set('price_history_IBM_1y_1d', {'symbol': 'IBM', 'data': [], 'quote_as_of': '2024-01-01'})
+    assert api.get_price_history('IBM', current_user='admin')['quote_as_of'] == '2024-01-01'
+
+
+def test_swallowed_sdk_budget_error_is_not_reported_as_missing_history(api, monkeypatch):
+    from backend.core.resources import reserve
+    monkeypatch.setenv('PROVIDER_YAHOO_DAILY_LIMIT', '1')
+    def swallowed(**kwargs):
+        reserve('yahoo', cooldown=0)
+        return pd.DataFrame()
+    monkeypatch.setattr(yf, 'Ticker', lambda symbol: SimpleNamespace(history=swallowed))
+    with pytest.raises(api.HTTPException) as error:
+        api.get_price_history('IBM', current_user='admin')
+    assert error.value.status_code == 429

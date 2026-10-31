@@ -19,6 +19,23 @@ export class ApiError extends Error {
   }
 }
 
+/** Preserve actionable API errors instead of turning rate limits into missing data. */
+export async function readApiJson<T>(response: Response, fallback: string): Promise<T> {
+  if (response.ok) return response.json()
+  let message = fallback
+  try {
+    const body = await response.json()
+    if (typeof body.detail === 'string') message = body.detail
+  } catch { /* Proxy errors may not be JSON. */ }
+  const retry = response.headers.get('Retry-After')
+  if (response.status === 429 && retry) {
+    const seconds = Number(retry)
+    const time = Number.isFinite(seconds) ? Date.now() + seconds * 1000 : Date.parse(retry)
+    if (Number.isFinite(time)) message += ` Available after ${new Date(time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}.`
+  }
+  throw new ApiError(message, response.status)
+}
+
 function removeLegacyCredentials() {
   window.localStorage.removeItem('stockscope_password')
   window.localStorage.removeItem('stockscope_authenticated')

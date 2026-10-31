@@ -1,11 +1,13 @@
 """Private identities and owner-scoped lists; all access is enforced server-side."""
 from typing import Literal
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, update
 
-from backend.core.auth import create_access_token, current_account, get_access_token_expire_minutes
+from backend.core.auth import (DEVICE_SESSION_SECONDS, create_access_token, create_device_token, current_account,
+                               device_account, get_access_token_expire_minutes)
 from backend.db.models import PersonalList, PersonalListItem, WorkspaceUser, WorkspaceInvite, utcnow
 from backend.db.repository import symbol_key
 from backend.services import accounts
@@ -15,6 +17,7 @@ Role = Literal['admin', 'member', 'viewer']
 
 
 class Credentials(BaseModel):
+    remember_device: bool = False
     email: str = Field(max_length=254)
     password: str = Field(min_length=1, max_length=128)
 
@@ -50,11 +53,20 @@ def admin(user=Depends(current_account)):
     return user
 
 
-def response(user):
-    return {"success": True, "message": "Signed in", "role": user.role,
+def response(user, remember_device=False, device_expiry=None):
+    seconds = get_access_token_expire_minutes() * 60
+    if device_expiry is not None:
+        seconds = min(seconds, int(device_expiry - time.time()))
+        if seconds <= 0:
+            raise HTTPException(401, "Device session expired.")
+    result = {"success": True, "message": "Signed in", "role": user.role,
             "user": accounts.public_user(user), "token_type": "bearer",
-            "expires_in_seconds": get_access_token_expire_minutes() * 60,
-            "access_token": create_access_token('user:' + user.id, user.role, session_version=user.session_version)}
+            "expires_in_seconds": seconds,
+            "access_token": create_access_token('user:' + user.id, user.role, expires_minutes=seconds / 60,
+                                                session_version=user.session_version)}
+    if remember_device:
+        result.update(device_token=create_device_token(user), device_max_age=DEVICE_SESSION_SECONDS)
+    return result
 
 
 def limit(request):
@@ -70,19 +82,29 @@ def config():
 @router.post('/auth/sign-in')
 def sign_in(body: Credentials, request: Request):
     limit(request)
-    return response(accounts.login(body.email, body.password))
+    return response(accounts.login(body.email, body.password), body.remember_device)
 
 
 @router.post('/auth/setup', status_code=201)
 def setup(body: Registration, request: Request):
     limit(request)
-    return response(accounts.bootstrap(body.email, body.name, body.password, body.owner_password))
+    return response(accounts.bootstrap(body.email, body.name, body.password, body.owner_password), body.remember_device)
 
 
 @router.post('/auth/accept-invite', status_code=201)
 def accept(body: Registration, request: Request):
     limit(request)
-    return response(accounts.accept_invite(body.token, body.email, body.name, body.password))
+    return response(accounts.accept_invite(body.token, body.email, body.name, body.password), body.remember_device)
+
+
+class DeviceCredential(BaseModel):
+    token: str = Field(min_length=1, max_length=4096)
+
+
+@router.post('/auth/resume')
+def resume(body: DeviceCredential):
+    user, expiry = device_account(body.token)
+    return response(user, device_expiry=expiry)
 
 
 @router.post('/auth/sign-out')
@@ -101,7 +123,7 @@ class PasswordChange(BaseModel):
 def change_password(body: PasswordChange, request: Request, user=Depends(current_account)):
     limit(request)
     if not accounts.valid_password(body.current_password, user.password_hash):
-        raise HTTPException(401, 'Current password is incorrect.')
+        raise HTTPException(400, 'Current password is incorrect.')
     encoded = accounts.hash_password(body.new_password)
     with accounts.account_repository().session_factory.begin() as session:
         session.execute(update(WorkspaceUser).where(WorkspaceUser.id == user.id).values(password_hash=encoded, session_version=WorkspaceUser.session_version + 1))

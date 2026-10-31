@@ -12,6 +12,7 @@ from jose import JWTError, jwt
 
 ALGORITHM = "HS256"
 DEFAULT_ACCESS_TOKEN_EXPIRE_MINUTES = 480
+DEVICE_SESSION_SECONDS = 30 * 24 * 3600
 VALID_ROLES = frozenset({"admin", "demo", "guest", "member", "viewer"})
 
 
@@ -65,17 +66,26 @@ async def authenticate_user(password: str) -> tuple[bool, Optional[str]]:
     return role is not None, role
 
 
-def create_access_token(subject: str, role: str, expires_minutes: Optional[int] = None, session_version: Optional[int] = None) -> str:
+def create_access_token(subject: str, role: str, expires_minutes: Optional[float] = None, session_version: Optional[int] = None) -> str:
+    minutes = expires_minutes if expires_minutes is not None else get_access_token_expire_minutes()
+    return _signed_token(subject, role, timedelta(minutes=minutes), session_version, "access")
+
+
+def create_device_token(user) -> str:
+    return _signed_token("user:" + user.id, user.role, timedelta(seconds=DEVICE_SESSION_SECONDS),
+                         user.session_version, "device")
+
+
+def _signed_token(subject, role, lifetime, session_version, purpose):
     if not subject.strip() or role not in VALID_ROLES:
         raise ValueError("A nonempty subject and a known role are required")
-    minutes = expires_minutes if expires_minutes is not None else get_access_token_expire_minutes()
     now = datetime.now(timezone.utc)
     payload = {
         "sub": subject,
         "role": role,
-        "exp": now + timedelta(minutes=minutes),
+        "exp": now + lifetime,
         "iat": now,
-        "type": "access",
+        "type": purpose,
     }
     if session_version is not None:
         payload["version"] = session_version
@@ -86,7 +96,7 @@ def _unauthorized(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail, headers={"WWW-Authenticate": "Bearer"})
 
 
-def _decode_access_token(token: str) -> dict:
+def _decode_access_token(token: str, *, purpose="access") -> dict:
     secret = _jwt_secret()
     try:
         payload = jwt.decode(
@@ -100,7 +110,7 @@ def _decode_access_token(token: str) -> dict:
 
     issued_at, expires_at = payload.get("iat"), payload.get("exp")
     if (
-        payload.get("type") != "access"
+        payload.get("type") != purpose
         or not isinstance(payload.get("role"), str)
         or payload["role"] not in VALID_ROLES
         or not isinstance(payload.get("sub"), str)
@@ -114,6 +124,23 @@ def _decode_access_token(token: str) -> dict:
     return payload
 
 
+def _active_account(payload):
+    from backend.services.accounts import account_repository
+    from backend.db.models import WorkspaceUser
+    with account_repository().session_factory() as session:
+        user = session.get(WorkspaceUser, payload["sub"][5:])
+        if not user or not user.active or user.session_version != payload.get("version"):
+            raise _unauthorized("Your access has ended. Sign in again or contact the owner.")
+        return user
+
+
+def device_account(token):
+    payload = _decode_access_token(token, purpose="device")
+    if not payload["sub"].startswith("user:"):
+        raise _unauthorized("Invalid device session")
+    return _active_account(payload), payload["exp"]
+
+
 def authenticate_token(authorization):
     if not authorization:
         raise _unauthorized("Sign in to obtain an Authorization Bearer token")
@@ -122,13 +149,7 @@ def authenticate_token(authorization):
         raise _unauthorized("Invalid Authorization header format")
     payload = _decode_access_token(parts[1].strip())
     if payload["sub"].startswith("user:"):
-        from backend.services.accounts import account_repository
-        from backend.db.models import WorkspaceUser
-        with account_repository().session_factory() as session:
-            user = session.get(WorkspaceUser, payload["sub"][5:])
-            if not user or not user.active or user.session_version != payload.get("version"):
-                raise _unauthorized("Your access has ended. Sign in again or contact the owner.")
-            return user
+        return _active_account(payload)
     from backend.services.research import repository
     if repository() is None:
         if os.getenv("ALLOW_LEGACY_FILE_AUTH", "false").lower() != "true":

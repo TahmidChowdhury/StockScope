@@ -160,3 +160,43 @@ test('rate-limit errors retain the backend reason, status and retry time', async
   })
   assert.equal((await api.readApiJson(new Response('{"value":0}'), 'Failed')).value, 0)
 })
+
+test('cold starts share one restore and keep only the access token in the tab', async () => {
+  const resumed = { success: true, access_token: 'short-access', token_type: 'bearer', expires_in_seconds: 120, role: 'member' }
+  const { api, window, calls } = harness(async () => Response.json(resumed))
+  api.rememberDevice(true)
+  await Promise.all([api.restoreDeviceSession(), api.restoreDeviceSession()])
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0][0], '/api/device-session')
+  assert.equal(calls[0][1].credentials, 'same-origin')
+  assert.equal(api.getAuthSession().accessToken, 'short-access')
+  window.sessionStorage = storage()
+  assert.equal(api.getAuthSession(), null)
+  await api.restoreDeviceSession()
+  assert.equal(api.getAuthSession().accessToken, 'short-access')
+  assert.equal(window.localStorage.getItem('stockscope_session'), null)
+})
+
+test('temporary restore failure preserves the device and revoked access stops restoration', async () => {
+  let status = 503
+  const { api, calls } = harness(async () => Response.json({}, { status }))
+  api.rememberDevice(true)
+  await assert.rejects(api.restoreDeviceSession(), { status: 503 })
+  status = 401
+  await api.restoreDeviceSession()
+  await api.restoreDeviceSession()
+  assert.equal(calls.length, 2)
+  assert.equal(api.getAuthSession(), null)
+})
+
+test('signing out during a pending restore cannot bring back the old account', async () => {
+  let finish
+  const { api } = harness((_url, init) => JSON.parse(init.body).action === 'resume'
+    ? new Promise(resolve => { finish = resolve }) : Promise.resolve(Response.json({})))
+  api.rememberDevice(true)
+  const pending = api.restoreDeviceSession()
+  api.signOut()
+  finish(Response.json({ success: true, access_token: 'old', role: 'admin', token_type: 'bearer', expires_in_seconds: 3600 }))
+  await pending
+  assert.equal(api.getAuthSession(), null)
+})

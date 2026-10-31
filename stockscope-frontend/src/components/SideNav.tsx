@@ -17,7 +17,7 @@ import {
   Scale,
   X,
 } from 'lucide-react'
-import { clearAuthSession, apiFetch, getAuthSession } from '@/lib/api'
+import { signOut, getAuthSession } from '@/lib/api'
 import CompanyLogo from './CompanyLogo'
 import type { StockMetadata } from '@/types'
 
@@ -51,7 +51,7 @@ const mobileItems = items.filter((item) => ['dashboard', 'lists', 'screener', 'c
 
 export default function SideNav({
   stocks = [],
-  onLogout = clearAuthSession,
+  onLogout = signOut,
   onStockSelect,
   currentStock,
   activePage = 'dashboard',
@@ -183,7 +183,7 @@ export default function SideNav({
     <div className="scope-nav-footer">
       <div className="flex items-center justify-between gap-2">
         <div><p className="text-xs text-slate-300">Private workspace</p><p className="mt-1 text-[10px] text-slate-500">Saved research & evidence</p></div>
-        <AnimatedAction onClick={() => { if (getAuthSession()?.user) void apiFetch('/api/auth/sign-out', { method: 'POST' }).catch(() => {}).finally(onLogout); else onLogout() }} aria-label="Sign out" className="flex h-11 w-11 items-center justify-center rounded-md text-slate-400 hover:bg-white/5 hover:text-white"><LogOut className="h-4 w-4" /></AnimatedAction>
+        <AnimatedAction onClick={onLogout} aria-label="Sign out" className="flex h-11 w-11 items-center justify-center rounded-md text-slate-400 hover:bg-white/5 hover:text-white"><LogOut className="h-4 w-4" /></AnimatedAction>
       </div>
     </div>
   )

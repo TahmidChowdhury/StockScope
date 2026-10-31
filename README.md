@@ -12,10 +12,8 @@ StockScope is a personal stock-research workspace for a long-term investing core
 - **Refresh:** company research refreshes explicitly, with completion, partial-result, and failure status. Disclosure collection runs on its own schedule. Merely opening saved research does not imply it was refreshed.
 - **Shared watchlist:** saved analyzed symbols are shared across authenticated roles. This is not a holdings ledger or a measure of actual portfolio returns. Dashboard evidence counts include news and filing records, not just distinct articles.
 - **Workspace navigation:** dashboard, company research, financials, comparison, screening, and paper experiments share a responsive shell and watchlist. Saved backtests and paper portfolios have direct URLs. Screener selections carry into Compare; missing data and coverage remain visible.
-- **Browser drafts:** screening inputs/results/selections, comparison inputs/results, trading forms, per-portfolio order drafts, company valuation assumptions, and tone annotations/completed reports restore after refresh or return visits. Drafts use local browser storage separated by API connection and individual account (or legacy access role before owner setup), without cross-device sync. Credentials remain in session storage. Saved snapshots retain their collection dates and do not trigger fresh screening, model inference, or trading actions. Clear controls affect only their local workspace; blocked or full browser storage displays an unsaved warning.
-- **Authentication:** a shared password for each role is exchanged for an expiring bearer token. The browser keeps tokens in sessionStorage, removes old stored passwords, and clears client data on logout/expiry. API credentials are no longer accepted in URL query parameters.
-
-Users sign in on the website with one of the app passwords configured on the backend. `ADMIN_PASSWORD` grants administrative deletion/cache access; `DEMO_PASSWORD` and `GUEST_PASSWORD` currently both allow research reads and refreshes. Everyone sees the same watchlist and saved research. There is no email signup, user-owned portfolio, or account password-reset flow yet. Supabase stores research; Supabase Auth is not connected to this login. The legacy `STOCKSCOPE_PASSWORD` also grants admin if set; remove that variable when deploying the three role passwords. Sessions last eight hours by default and are stored per browser tab; existing sessions must sign in again after the authentication migration.
+- **Browser drafts:** screening inputs/results/selections, comparison inputs/results, trading forms, per-portfolio order drafts, company valuation assumptions, and tone annotations/completed reports restore after refresh or return visits. Drafts use local browser storage separated by API connection and individual account (or legacy access role before owner setup), without cross-device sync. Drafts contain no login credentials. Saved snapshots retain their collection dates and do not trigger fresh screening, model inference, or trading actions. Clear controls affect only their local workspace; blocked or full browser storage displays an unsaved warning.
+- **Authentication:** friends sign in with their individual invited account. The owner can manage access and send single-use password reset links. The installed app selects “Keep me signed in on this device for 30 days” by default. Browser tabs offer the same checkbox. See the private workspace setup below.
 
 The former BUY/SELL/HOLD recommendations, probability-like confidence percentages, and fabricated quantitative metrics have been removed from active API responses. The legacy `/investment-advice` route now returns an evidence summary. `/quantitative` explicitly reports that validated metrics are unavailable. Experimental code in `analysis/` is not a validated investment model and is no longer called by these routes.
 
@@ -461,7 +459,11 @@ allows acceptance, so do not post links publicly. Invite tokens are stored only 
 SHA-256 hashes. Passwords use salted scrypt (N=2^17, r=8, p=1). Sessions expire after
 8 hours by default; each protected request checks the user's current status, role,
 and session version. Signing out, resetting a password, and access changes invalidate
-existing sessions. Sessions remain in tab sessionStorage; production must use HTTPS.
+existing sessions. Short-lived access tokens live in tab sessionStorage. Remembering a device
+sets a host-only HttpOnly cookie on the frontend's device-session route for a fixed 30 days.
+A cold launch exchanges it for a fresh access token after the server checks account access.
+Production requires HTTPS. Deploy both the API and Next.js frontend for this flow.
+The Next.js server uses `STOCKSCOPE_INTERNAL_API_URL` when set, otherwise `NEXT_PUBLIC_API_URL`.
 A database is required. `ALLOW_LEGACY_FILE_AUTH=true` is an explicit offline development
 escape hatch and must remain false for the friends workspace.
 

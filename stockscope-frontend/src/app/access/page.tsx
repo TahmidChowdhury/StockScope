@@ -46,7 +46,22 @@ export default function AccessPage() {
   }
   return <AppShell><h1 className="font-serif text-3xl">Workspace access</h1><p className="mt-3 text-sm leading-6 text-slate-400">A small, private research circle. You choose who can join.</p>
     {!enabled ? <p className="mt-8 text-sm text-amber-200">{session?.role === 'admin' ? <Link href="/account">Set up your owner account to invite friends →</Link> : 'Only an administrator can manage access.'}</p> : <>
-      <form onSubmit={invite} className="surface my-8 p-6"><h2 className="font-medium">Invite a friend</h2><p className="mt-2 text-xs leading-6 text-slate-500">Create a single-use link and share it privately with this person. It expires in three days. No email is sent automatically.</p><div className="mt-5 flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-xs text-slate-400">Their email<input required type="email" maxLength={254} value={email} onChange={e => setEmail(e.target.value)} className="field-input mt-2 block w-full" /></label><label className="text-xs text-slate-400">Access<AnimatedSelect aria-label="Invitation role" value={role} onValueChange={setRole} className="field-input mt-2"><option value="member">Member</option><option value="viewer">Read-only research</option><option value="admin">Administrator</option></AnimatedSelect></label><button className="button-secondary" disabled={action.isPending}>Create invitation</button></div>
+      <form onSubmit={invite} className="surface my-8 p-6">
+        <h2 className="font-medium">Invite a friend</h2>
+        <p className="mt-2 text-xs leading-6 text-slate-500">Create a single-use link and share it privately with this person. It expires in three days. No email is sent automatically.</p>
+        <div className="mt-5 grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+          <label className="min-w-0 text-xs text-slate-400">Their email
+            <input required type="email" maxLength={254} autoCapitalize="none" spellCheck={false}
+              placeholder="friend@example.com" value={email} onChange={e => setEmail(e.target.value)}
+              className="field-input mt-2 w-full" />
+          </label>
+          <label className="min-w-0 text-xs text-slate-400">Access
+            <AnimatedSelect aria-label="Invitation role" value={role} onValueChange={setRole} className="field-input mt-2">
+              <option value="member">Member</option><option value="viewer">Read-only research</option><option value="admin">Administrator</option>
+            </AnimatedSelect>
+          </label>
+          <button type="submit" className="button-secondary" disabled={action.isPending}>Create invitation</button>
+        </div>
         {link && <div className="mt-5 rounded-lg border border-[#b6c8ab]/20 p-4"><label className="text-xs text-slate-400">Private invitation or password reset link<input readOnly value={link} className="field-input mt-2 block w-full text-xs" onFocus={e => e.target.select()} /></label><button type="button" className="mt-3 text-xs text-[#b6c8ab]" onClick={async () => { try { await navigator.clipboard.writeText(link); setCopied(true) } catch { setCopied(false) } }}>{copied ? 'Copied' : 'Copy link'}</button></div>}
       </form>
       {action.error && <p role="alert" className="mb-5 text-sm text-amber-200">{action.error.message}</p>}

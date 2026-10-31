@@ -479,6 +479,30 @@ individual company's Financials view populates it. Screens expose partial covera
 they do not imply all companies were freshly fetched. Watchlist summaries do not
 pretend to be live quotes. Original source and retrieval dates remain visible.
 
+Quotes and daily charts now use durable, shared snapshots with a one-hour freshness
+window. Opening chart and metrics together shares one profile lookup; a usable quote
+no longer triggers a second five-day history lookup. Chart ranges are restricted to
+the seven daily ranges exposed by the UI. Each distinct range can require one cold
+fetch; revisiting it reuses the snapshot. A profile lookup is an SDK operation, not
+one HTTP request: the installed yfinance version fetches a quote summary, additional
+quote fields and complementary data, plus authentication and any internal retries.
+
+Valuation and fundamentals share the same six-hour financial-statement snapshot.
+Yahoo news is shared between collectors for six hours. Simultaneous identical fetches
+are coalesced in-process, and database/file leases prevent a second process from
+refreshing the same key concurrently. Leases expire after five minutes if a process
+exits. Failed fetches and incomplete quotes/statements back off for five minutes across restarts; quota denials
+use the actual reset/cooldown time. Prior good observations remain available with a
+saved-data notice and unchanged retrieval/source dates. Backtests and paper refreshes
+require an unexpired price snapshot and never silently use the stale fallback.
+
+Provider-backed panels do not automatically retry or refresh on window focus. Home,
+lists, quick previews, screener, saved news and filings do not request fresh market
+data. Refreshing/restarting the app does not clear durable provider snapshots or
+budgets. The old standalone `analysis/` prototypes are not imported by the web API;
+their direct Yahoo calls are outside the active app's budget wrapper and should not
+be run alongside the app as unmetered collectors.
+
 All active requests through the SEC/news/disclosure collectors and yfinance transport
 use persistent shared UTC daily budgets. Defaults: Yahoo 100 actual HTTP attempts,
 SEC 200, Google/Finviz/other feeds 30 each, disclosures 10, research jobs 12. Manual
@@ -496,7 +520,24 @@ buys quota. When requests are blocked, saved research remains available. Disclos
 collection retains its existing six-hour schedule and shared database lease; no
 additional automatic market-wide crawler has been enabled. Local verification starts
 the API with `DISCLOSURE_COLLECTION_ENABLED=false` to avoid duplicating the hosted
-scheduler. Check **Access & resources** to inspect actual usage.
+scheduler. Check **Access & resources** to inspect actual usage, operation and request-type
+breakdowns, response counts, active cooldowns, and the last 30 UTC days of recorded
+history. History is persisted alongside resource state and survives restarts; days
+before this instrumentation cannot be reconstructed. Requests are charged when a
+budget slot is reserved (a later cooldown can cancel a queued request); responses
+are counted on the UTC day they complete. Local budget denials do not consume quota.
+
+The `stockscope.usage` logger emits JSON messages for `provider_attempt`,
+`provider_response`, `provider_denied`, and `provider_cooldown`. Collect the API's
+standard logs to retain these events beyond the 30-day aggregate window. Records
+contain fixed operation/category labels and counts, never URLs, credentials, or
+article text. Existing preflight checks can reject work before a reservation event.
+Yahoo usage is measured in HTTP requests, not AI tokens. Successful local transformer
+batches also emit `local_model_usage` with model, input tokens before truncation,
+processed tokens excluding padding, truncated-input count, and batch latency.
+These are local inference measurements, not billable hosted-API tokens; cache reads
+do not run inference or generate new token usage. Token events are retained by the
+log collector, not the resource-history table.
 
 The disclosure browser also filters and paginates the saved PostgreSQL JSON on the
 server, returning only the requested page plus compact summaries. It preserves the

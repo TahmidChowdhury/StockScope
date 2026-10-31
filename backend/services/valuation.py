@@ -12,7 +12,7 @@ from typing import Any
 from cachetools import TTLCache
 import backend.core.market_provider as yf
 
-from backend.services.fundamentals import get_service
+from backend.services.fundamentals import _compute_full_cached
 
 SOURCE = "Yahoo Finance via yfinance"
 PRICE_MAX_AGE_DAYS = 4
@@ -22,7 +22,7 @@ REQUEST_TIMEOUT_SECONDS = 25
 SUPPORTED_CURRENCIES = frozenset("USD EUR GBP JPY CNY HKD CAD AUD CHF NZD INR SGD KRW TWD BRL MXN ZAR NOK SEK DKK ILS PLN CZK HUF TRY THB MYR IDR PHP AED SAR QAR KWD BHD OMR EGP CLP COP PEN ARS VND PKR BDT LKR".split())
 _pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="valuation")
 _lock = threading.Lock()
-_cache: TTLCache = TTLCache(maxsize=100, ttl=90)
+_cache: TTLCache = TTLCache(maxsize=100, ttl=3600)
 _inflight: dict[str, Future] = {}
 
 
@@ -185,16 +185,24 @@ def build_valuation(symbol: str, fundamentals: dict, info: dict, *, now: datetim
 def _load(symbol: str) -> dict:
     issues = []
     try:
-        fundamentals = get_service().get_fundamentals_data(symbol)
+        fundamentals = _compute_full_cached(symbol)
+        if fundamentals.get('metadata', {}).get('stale'):
+            issues.append("Using saved financial statements; the provider could not be refreshed.")
     except Exception:
         fundamentals = {}
         issues.append("Financial statement provider is unavailable.")
     try:
-        info = yf.Ticker(symbol).get_info() or {}
+        saved_info = yf.get_info(symbol)
+        info = saved_info.data
+        if saved_info.stale:
+            issues.append("Using saved quote data; the provider could not be refreshed.")
     except Exception:
         info = {}
         issues.append("Quote and company profile provider is unavailable.")
-    return build_valuation(symbol, fundamentals, info, issues=issues)
+    result = build_valuation(symbol, fundamentals, info, issues=issues)
+    if info:
+        result['quote']['fetched_at'] = saved_info.retrieved_at
+    return result
 
 
 def _completed(symbol: str, future: Future) -> None:

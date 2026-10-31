@@ -169,14 +169,15 @@ def test_stale_and_duplicate_annotations_rejected_before_loading(news, monkeypat
         lab.benchmark("AAPL", labels=[annotation, annotation])
 
 
-def test_transformer_reports_truncation_and_batch_latency_without_confidence_claim(monkeypatch):
+def test_transformer_reports_truncation_and_batch_latency_without_confidence_claim(monkeypatch, caplog):
+    caplog.set_level("INFO", logger="stockscope.usage")
     calls = []
     class Tokenizer:
         def encode(self, text, **kwargs):
             return list(range(200 if text == "long" else 3))
         def __call__(self, texts, **kwargs):
             calls.append((texts, kwargs))
-            return {"input_ids": texts}
+            return {"input_ids": texts, "attention_mask": SimpleNamespace(sum=lambda: SimpleNamespace(item=lambda: 131))}
     model = lambda **kwargs: SimpleNamespace(logits="logits")
     values = SimpleNamespace(tolist=lambda: [[0.1, 0.2, 0.7], [0.8, 0.1, 0.1]])
     monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(
@@ -189,6 +190,13 @@ def test_transformer_reports_truncation_and_batch_latency_without_confidence_cla
     assert results[0]["batch_size"] == 2 and results[0]["batch_latency_ms"] >= 0
     assert "uncalibrated" in results[0]["score_kind"]
     assert calls[0][1]["truncation"] is True and calls[0][1]["max_length"] == 128
+    import json
+    event = json.loads(next(record.message for record in caplog.records if record.name == 'stockscope.usage'))
+    assert event['event'] == 'local_model_usage'
+    assert event['input_tokens'] == 203
+    assert event['processed_tokens'] == 131
+    assert event['truncated_inputs'] == 1
+    assert 'long' not in event and 'short' not in event
 
 
 def test_cached_challengers_batch_bounded_inputs_and_never_set_accuracy_without_labels(news, monkeypatch):

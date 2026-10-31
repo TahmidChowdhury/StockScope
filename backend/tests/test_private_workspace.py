@@ -223,3 +223,19 @@ def test_batch_list_add_is_atomic_and_preserves_pins(workspace):
     items = client.get('/api/lists', headers=auth(owner)).json()[0]['items']
     assert len(items) == 2
     assert next(item for item in items if item['symbol'] == 'AAPL')['pinned'] is True
+
+
+def test_resource_history_is_persistent_and_admin_only(workspace):
+    client, repo, owner, auth = workspace
+    yesterday = (utcnow().date() - timedelta(days=1)).isoformat()
+    with resources.state('provider:yahoo') as usage:
+        usage.update(day=yesterday, count=4, responses={'429': 1})
+    response = client.get('/api/resources', headers=auth(owner))
+    assert response.status_code == 200
+    yahoo = next(row for row in response.json()['providers'] if row['provider'] == 'yahoo')
+    assert yahoo['used'] == 0
+    assert yahoo['history'][0]['count'] == 4
+    with repo.session_factory() as session:
+        assert session.get(ResourceState, 'provider:yahoo').payload['history'][yesterday]['responses'] == {'429': 1}
+    friend, _ = join(owner)
+    assert client.get('/api/resources', headers=auth(friend)).status_code == 403

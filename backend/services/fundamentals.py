@@ -459,3 +459,15 @@ class FundamentalsService:
 _service = FundamentalsService()
 def get_service() -> FundamentalsService:
     return _service
+
+
+from backend.core.cache import cached
+
+
+@cached
+def _compute_full_cached(ticker: str) -> dict:
+    """One shared fundamentals snapshot for detail, comparison and valuation."""
+    from backend.core.resources import provider_operation, require_available
+    require_available('yahoo')
+    with provider_operation('fundamentals'):
+        return get_service().get_fundamentals_data(ticker)

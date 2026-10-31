@@ -23,11 +23,11 @@ def fetch_bars(symbols, start: date, end: date):
     output = {}
     for symbol in sorted(set(symbols)):
         try:
-            ticker = yf.Ticker(symbol)
-            frame = ticker.history(start=start.isoformat(), end=market_today().isoformat(),
+            frame = yf.get_history(symbol, allow_stale=False, include_metadata=True,
+                                   start=start.isoformat(), end=market_today().isoformat(),
                                    auto_adjust=False, actions=True, repair=False, timeout=12,
                                    raise_errors=True)
-            metadata = ticker.history_metadata
+            metadata = frame.attrs["metadata"]
             if metadata.get("currency") != "USD" or metadata.get("instrumentType") not in {"EQUITY", "ETF"}:
                 raise ValueError("Only USD equities and ETFs are supported")
             if frame.empty:

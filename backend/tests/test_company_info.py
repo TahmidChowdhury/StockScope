@@ -178,8 +178,14 @@ def test_yahoo_budget_denial_is_429_without_contacting_provider(api, monkeypatch
         assert 'daily limit reached (1/1)' in error.value.detail
         assert 0 < int(error.value.headers['Retry-After']) <= 86400
     # Cached observations remain accessible after the limit, without new requests.
-    api.cache.set('price_history_IBM_1y_1d', {'symbol': 'IBM', 'data': [], 'quote_as_of': '2024-01-01'})
-    assert api.get_price_history('IBM', current_user='admin')['quote_as_of'] == '2024-01-01'
+    from backend.core.provider_cache import fetch_snapshot
+    frame = pd.DataFrame({'Open': [42.], 'High': [42.], 'Low': [42.], 'Close': [42.], 'Volume': [0.]},
+                         index=pd.date_range('2024-01-01', periods=1, tz='UTC'))
+    fetch_snapshot('yahoo-history-v1', ['MSFT', {'period': '1y', 'interval': '1d'}, False],
+                   lambda: {'frame': frame.to_json(orient='table', date_format='iso'), 'metadata': {}})
+    result = api.get_price_history('MSFT', current_user='admin')
+    assert result['lastHistoricalCloseDate'] == '2024-01-01'
+    assert result['lastHistoricalClose'] == 42
 
 
 def test_swallowed_sdk_budget_error_is_not_reported_as_missing_history(api, monkeypatch):
@@ -192,3 +198,40 @@ def test_swallowed_sdk_budget_error_is_not_reported_as_missing_history(api, monk
     with pytest.raises(api.HTTPException) as error:
         api.get_price_history('IBM', current_user='admin')
     assert error.value.status_code == 429
+
+
+def test_chart_and_metrics_share_profile_and_do_not_fetch_extra_five_day_history(api, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import time
+    calls = {'info': 0, 'history': []}
+    class Ticker:
+        @property
+        def info(self):
+            calls['info'] += 1
+            time.sleep(.03)
+            return {'symbol': 'IBM', 'currentPrice': 42, 'regularMarketTime': 1704240000}
+        def history(self, **kwargs):
+            calls['history'].append(kwargs)
+            return pd.DataFrame({'Open': [40.], 'High': [43.], 'Low': [39.], 'Close': [42.], 'Volume': [0.]},
+                                index=pd.date_range('2024-01-02', periods=1, tz='America/New_York'))
+    monkeypatch.setattr(yf, 'Ticker', lambda _: Ticker())
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        quote = pool.submit(api.get_company_info_endpoint, 'IBM', 'admin')
+        chart = pool.submit(api.get_price_history, 'IBM', current_user='admin')
+        assert quote.result()['currentPrice'] == chart.result()['currentPrice'] == 42
+    assert calls['info'] == 1
+    assert len(calls['history']) == 1
+    assert calls['history'][0]['period'] == '1y'
+    # Restart drops the API's in-memory cache; durable observations still serve both.
+    api.cache.invalidate()
+    monkeypatch.setattr(yf, 'Ticker', lambda _: pytest.fail('Restart must not contact Yahoo'))
+    assert api.get_company_info_endpoint('IBM', 'admin')['currentPrice'] == 42
+    assert api.get_price_history('IBM', current_user='admin')['data'][0]['volume'] == 0
+
+
+@pytest.mark.parametrize('period, interval', [('garbage', '1d'), ('1y', '1m'), ('max', '1d')])
+def test_chart_rejects_unbounded_query_variants_before_provider(api, monkeypatch, period, interval):
+    monkeypatch.setattr(yf, 'Ticker', lambda _: pytest.fail('Invalid ranges must not contact Yahoo'))
+    with pytest.raises(api.HTTPException) as error:
+        api.get_price_history('IBM', period=period, interval=interval, current_user='admin')
+    assert error.value.status_code == 422

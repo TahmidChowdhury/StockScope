@@ -3,12 +3,12 @@ from cachetools import TTLCache
 from functools import wraps
 from threading import RLock
 from time import time
+import copy
 import hashlib
 import json
 from typing import Any, Callable, TypeVar
 
 _cache_lock = RLock()
-_key_locks = [RLock() for _ in range(64)]
 _fundamentals_cache = TTLCache(maxsize=600, ttl=6 * 3600)
 F = TypeVar('F', bound=Callable[..., Any])
 
@@ -28,37 +28,35 @@ def peek_many(name, symbols):
     stored = read_states(list(keys))
     result = {keys[key]: value['result'] for key, value in stored.items() if value.get('result') is not None}
     with _cache_lock:
-        result.update({symbol: _fundamentals_cache[key] for key, symbol in keys.items() if key in _fundamentals_cache})
+        result.update({symbol: copy.deepcopy(_fundamentals_cache[key][1]) for key, symbol in keys.items() if key in _fundamentals_cache})
     return result
 
 
 def cached(func: F) -> F:
     @wraps(func)
     def wrapper(*args, **kwargs):
-        from backend.core.resources import state, read_states
+        from backend.core.provider_cache import fetch_snapshot
         key = _key(func.__name__, args, kwargs)
-        with _key_locks[int(hashlib.sha256(key.encode()).hexdigest(), 16) % len(_key_locks)]:
+        with _cache_lock:
+            entry = _fundamentals_cache.get(key)
+            if entry and entry[0] > time():
+                return copy.deepcopy(entry[1])
+
+        def usable(result):
+            return not (result.get('insufficient_data', result.get('metadata', {}).get('insufficient_data', False)) if isinstance(result, dict) else False)
+
+        def load():
+            return json.loads(json.dumps(func(*args, **kwargs), default=lambda value: value.isoformat(), allow_nan=False))
+
+        saved = fetch_snapshot('fundamentals', None, load, ttl=6 * 3600,
+                               storage_key=key, value_field='result', usable=usable)
+        result = copy.deepcopy(saved.data)
+        if saved.stale and isinstance(result, dict):
+            result.setdefault('metadata', {})['stale'] = True
+        elif saved.expires_at > time():
             with _cache_lock:
-                if key in _fundamentals_cache:
-                    return _fundamentals_cache[key]
-            stored = read_states([key]).get(key, {})
-            previous, expires = stored.get('result'), stored.get('expires_at', 0)
-            if previous is not None and expires > time():
-                return previous
-            result = func(*args, **kwargs)
-            insufficient = result.get('insufficient_data', result.get('metadata', {}).get('insufficient_data', False)) if isinstance(result, dict) else False
-            if insufficient and previous is not None:
-                # Original observation/retrieval dates remain intact.
-                with _cache_lock:
-                    _fundamentals_cache[key] = previous
-                return previous
-            serializable = json.loads(json.dumps(result, default=lambda value: value.isoformat(), allow_nan=False))
-            with _cache_lock:
-                _fundamentals_cache[key] = serializable
-            if not insufficient:
-                with state(key) as stored:
-                    stored.update(result=serializable, expires_at=time() + 6 * 3600)
-            return serializable
+                _fundamentals_cache[key] = (saved.expires_at, result)
+        return copy.deepcopy(result)
     return wrapper
 
 

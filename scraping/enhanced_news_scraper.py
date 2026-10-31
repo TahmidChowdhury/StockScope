@@ -132,11 +132,11 @@ class EnhancedNewsScraper:
         """Fetch news from Yahoo Finance using yfinance."""
         try:
             print(f"🔍 Fetching Yahoo Finance news for {ticker}...")
-            stock = yf.Ticker(ticker)
             
+
             # Get news data - handle potential errors
             try:
-                news_data = stock.news
+                news_data = yf.get_news(ticker)
             except Exception as e:
                 print(f"  ⚠️ Error accessing Yahoo news data: {e}")
                 news_data = []

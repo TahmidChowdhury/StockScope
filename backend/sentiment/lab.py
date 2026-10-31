@@ -181,6 +181,10 @@ def _transformer_batch(spec, texts, loaded):
                         "probabilities": probabilities, "score_kind": "positive minus negative softmax (uncalibrated)",
                         "batch_latency_ms": elapsed, "batch_size": len(texts),
                         "input_tokens": token_count, "max_tokens": spec.max_tokens, "token_truncated": token_count > spec.max_tokens})
+    from backend.core.resources import usage_event
+    usage_event('local_model_usage', model=spec.key, batch_size=len(texts),
+                input_tokens=sum(token_counts), processed_tokens=int(inputs['attention_mask'].sum().item()),
+                truncated_inputs=sum(count > spec.max_tokens for count in token_counts), latency_ms=elapsed)
     return results
 
 

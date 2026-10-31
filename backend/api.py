@@ -100,18 +100,11 @@ def validate_stock_symbol(symbol: str) -> tuple[bool, str]:
     try:
         import backend.core.market_provider as yf
         
-        # Check with yfinance
-        ticker = yf.Ticker(symbol)
-        info = ticker.info
+        info = yf.get_info(symbol).data
         
         # Check if we got valid data back
         if 'symbol' not in info and 'shortName' not in info and 'longName' not in info:
             return False, f"Symbol '{symbol}' not found in market data"
-        
-        # Additional check - try to get some recent data
-        hist = ticker.history(period="5d", timeout=10)
-        if hist.empty:
-            return False, f"No trading data available for '{symbol}'"
         
         return True, f"Valid symbol: {info.get('longName', info.get('shortName', symbol))}"
         
@@ -127,6 +120,7 @@ def load_dataframes(ticker):
     return load_evidence(ticker)
 
 from backend.core.resources import BudgetExceeded, require_available
+from backend.core.provider_cache import ProviderUnavailable
 
 
 def get_company_info(symbol: str) -> tuple[bool, dict]:
@@ -135,9 +129,8 @@ def get_company_info(symbol: str) -> tuple[bool, dict]:
         import backend.core.market_provider as yf
 
         symbol = symbol.upper().strip()
-        require_available("yahoo")
-        ticker = yf.Ticker(symbol)
-        info = ticker.info
+        saved_info = yf.get_info(symbol)
+        info = saved_info.data
         numeric_fields = {
             "marketCap": "marketCap",
             "previousClose": "previousClose",
@@ -196,12 +189,15 @@ def get_company_info(symbol: str) -> tuple[bool, dict]:
         quote_time = finite_number(info.get("regularMarketTime"))
         quote_as_of = parse_timestamp(quote_time) if quote_time is not None and quote_time > 0 else None
         company_data["quote_as_of"] = quote_as_of.isoformat() if quote_as_of else None
-        company_data["retrieved_at"] = datetime.now(timezone.utc).isoformat()
+        company_data["retrieved_at"] = saved_info.retrieved_at if saved_info else None
+        company_data["stale"] = saved_info.stale if saved_info else False
 
         # Optional historical closes are separate from the latest quote. A history
         # failure should not discard available company metrics.
         try:
-            hist = ticker.history(period="5d", timeout=10)
+            # A usable quote needs no extra chart request just for fallback fields.
+            hist = pd.DataFrame() if company_data['currentPrice'] is not None else yf.get_history(symbol, period="5d", timeout=10)
+            company_data["stale"] = company_data["stale"] or hist.attrs.get('stale', False)
             current_price, previous_price, history_as_of = latest_daily_close(hist)
             if current_price is not None:
                 company_data["lastTradePrice"] = current_price
@@ -216,7 +212,7 @@ def get_company_info(symbol: str) -> tuple[bool, dict]:
 
         company_data["displayName"] = company_data["longName"] or company_data["shortName"] or symbol
         return True, company_data
-    except BudgetExceeded:
+    except (BudgetExceeded, ProviderUnavailable):
         raise
     except Exception as exc:
         require_available("yahoo")
@@ -813,25 +809,22 @@ async def get_quantitative_analysis(symbol: str, current_user: str = Depends(ver
 @app.get("/api/stocks/{symbol}/info", tags=["Analysis"])
 def get_company_info_endpoint(symbol: str, current_user: str = Depends(verify_password_with_role)):
     """Get company information for a stock symbol"""
-    symbol = symbol.upper()
-    
-    cache_key = f"company_info_{symbol}"
-    cached_result = cache.get(cache_key)
-    if cached_result:
-        return cached_result
-    
+    try:
+        symbol = normalized_symbol(symbol)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     try:
         success, company_data = get_company_info(symbol)
         
         if not success:
             raise HTTPException(status_code=404, detail=company_data.get("error", "Company information not found"))
         
-        # Cache for 1 hour (company info doesn't change often)
-        cache.set(cache_key, company_data, ttl=3600)
         return company_data
         
     except BudgetExceeded as exc:
         raise HTTPException(429, str(exc), headers={"Retry-After": str(exc.retry_after)}) from exc
+    except ProviderUnavailable as exc:
+        raise HTTPException(503, str(exc), headers={"Retry-After": "300"}) from exc
     except HTTPException:
         raise
     except Exception as e:
@@ -851,23 +844,19 @@ def get_price_history(
     interval: str = "1d",
     current_user: str = Depends(verify_password_with_role)
 ):
-    """Get historical price data for charting"""
-    symbol = symbol.upper()
-    
-    cache_key = f"price_history_{symbol}_{period}_{interval}"
-    cached_result = cache.get(cache_key)
-    if cached_result:
-        return cached_result
+    """Get historical daily price data for charting; reject unbounded query variants."""
+    try:
+        symbol = normalized_symbol(symbol)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if period not in {"5d", "1mo", "3mo", "6mo", "1y", "2y", "5y"} or interval != "1d":
+        raise HTTPException(422, "Choose a supported chart range with daily observations.")
     
     try:
         import backend.core.market_provider as yf
         
-        require_available("yahoo")
-        # Create ticker object
-        ticker = yf.Ticker(symbol)
-        
-        # Get historical data
-        hist = ticker.history(period=period, interval=interval, timeout=10)
+        # Shared durable snapshots coalesce simultaneous visitors and survive restarts.
+        hist = yf.get_history(symbol, period=period, interval=interval, timeout=10)
         
         if hist.empty:
             require_available("yahoo")
@@ -891,8 +880,10 @@ def get_price_history(
         
         # A failed quote request must not discard independently retrieved history.
         try:
-            info = ticker.info or {}
+            saved_info = yf.get_info(symbol)
+            info = saved_info.data
         except Exception:
+            saved_info = None
             logger.debug("Quote unavailable for %s; returning historical bars", symbol)
             info = {}
         current_price = finite_number(info.get('regularMarketPrice'))
@@ -912,17 +903,19 @@ def get_price_history(
             "priceChangePercent": price_change_percent,
             "quote_as_of": quote_time.isoformat() if quote_time else None,
             "price_source": "Yahoo Finance",
+            "retrieved_at": hist.attrs.get('retrieved_at'),
+            "stale": hist.attrs.get('stale', False) or bool(saved_info and saved_info.stale),
             "lastHistoricalClose": historical_close,
             "lastHistoricalCloseDate": price_data[-1]['date'],
             "data": price_data
         }
         
-        # Reuse provider observations for one hour to conserve the shared budget.
-        cache.set(cache_key, result, ttl=3600)
         return result
         
     except BudgetExceeded as exc:
         raise HTTPException(429, str(exc), headers={"Retry-After": str(exc.retry_after)}) from exc
+    except ProviderUnavailable as exc:
+        raise HTTPException(503, str(exc), headers={"Retry-After": "300"}) from exc
     except HTTPException:
         raise
     except Exception as e:

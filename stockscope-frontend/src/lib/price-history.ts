@@ -9,6 +9,8 @@ export interface PriceData {
 }
 
 export interface PriceHistoryResponse {
+  retrieved_at?: string | null
+  stale?: boolean
   symbol: string
   period: string
   interval: string

@@ -146,3 +146,17 @@ test('individual member sessions retain identity and clear it on sign-out', () =
   api.clearAuthSession()
   assert.equal(api.getAuthSession(), null)
 })
+
+test('rate-limit errors retain the backend reason, status and retry time', async () => {
+  const { api } = harness()
+  const response = new Response(JSON.stringify({ detail: 'Shared Yahoo daily limit reached (100/100).' }), {
+    status: 429, headers: { 'Retry-After': '3600', 'Content-Type': 'application/json' },
+  })
+  await assert.rejects(api.readApiJson(response, 'Missing data'), error => {
+    assert.equal(error.status, 429)
+    assert.match(error.message, /Shared Yahoo daily limit/)
+    assert.match(error.message, /Available after/)
+    return true
+  })
+  assert.equal((await api.readApiJson(new Response('{"value":0}'), 'Failed')).value, 0)
+})

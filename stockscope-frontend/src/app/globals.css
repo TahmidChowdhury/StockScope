@@ -511,3 +511,19 @@ button, a, select { touch-action: manipulation; }
   .scope-nav-link:hover { background: #ffffff05; color: #f0eee6; }
   .scope-nav-link:hover .scope-nav-arrow { opacity: 1; }
 }
+
+/* Quick previews become a reachable, scrollable panel above the mobile nav. */
+@media (max-width: 639px) {
+  [data-radix-popper-content-wrapper]:has([data-company-preview]) {
+    transform: none !important;
+    top: auto !important;
+    left: 16px !important;
+    bottom: calc(5.5rem + env(safe-area-inset-bottom)) !important;
+    width: calc(100vw - 32px) !important;
+  }
+  [data-company-preview] {
+    width: 100%;
+    max-height: calc(100dvh - 7rem - env(safe-area-inset-bottom));
+    overscroll-behavior: contain;
+  }
+}

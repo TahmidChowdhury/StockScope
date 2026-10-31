@@ -297,3 +297,26 @@ def test_postgres_connections_have_bounded_waits(monkeypatch):
     assert args['keepalives'] == 1
     assert args['tcp_user_timeout'] == 15000
     assert 'statement_timeout=30000' in args['options']
+
+
+def test_curating_shared_list_preserves_other_research_and_refresh_cannot_add_it(repository):
+    from scripts.curate_shared_watchlist import apply
+    from backend.db.repository import SHARED_COMPANIES
+    from backend.db.models import Company, Watchlist, WatchlistItem
+
+    original = [{"title": "Saved before curation"}]
+    reference = repository.save_snapshot("GOOGL", "news_sentiment", original)
+    # Membership left by the previous release.
+    with repository.session_factory.begin() as session:
+        company = session.scalar(select(Company).where(Company.symbol == "GOOGL"))
+        shared = Watchlist(name="Shared research", scope="shared")
+        session.add(shared)
+        session.flush()
+        session.add(WatchlistItem(watchlist_id=shared.id, company_id=company.id))
+    apply(repository)
+    apply(repository)
+    repository.save_snapshot("GOOGL", "news_sentiment", [{"title": "New research"}])
+    assert repository.read_snapshot_reference(reference) == original
+    assert repository.list_symbols() == sorted(SHARED_COMPANIES)
+    assert len(repository.list_company_summaries()) == 10
+    assert count(repository, WatchlistItem) == 10

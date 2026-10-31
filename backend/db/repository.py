@@ -22,6 +22,14 @@ from backend.db.models import (
     ImportBatch, ResearchNote, SnapshotRevision, Source, Watchlist, WatchlistItem, utcnow,
 )
 
+# Only these companies belong to the workspace's shared list. Other symbols
+# still have research snapshots and can appear in members' personal lists.
+SHARED_COMPANIES = {
+    "AAPL": "Apple", "AMD": "Advanced Micro Devices", "AMZN": "Amazon",
+    "GOOG": "Alphabet", "IBM": "IBM", "META": "Meta Platforms",
+    "MSFT": "Microsoft", "NFLX": "Netflix", "NVDA": "NVIDIA", "TSLA": "Tesla",
+}
+
 SUPPORTED_SUFFIXES = frozenset({
     "news_sentiment", "comprehensive_news", "sec_sentiment", "sec_filings", "sec_companyfacts",
 })
@@ -121,6 +129,8 @@ class ResearchRepository:
         return session.scalars(select(Company).where(Company.id == company.id).with_for_update()).one()
 
     def _watch(self, session, company):
+        if company.symbol not in SHARED_COMPANIES:
+            return
         watchlist = self._upsert(session, Watchlist, ["name"], {"name": "Shared research", "scope": "shared"})
         self._upsert(session, WatchlistItem, ["watchlist_id", "company_id"], {"watchlist_id": watchlist.id, "company_id": company.id})
 
@@ -300,13 +310,15 @@ class ResearchRepository:
 
     def list_symbols(self):
         with self.session_factory() as session:
-            return list(session.scalars(select(Company.symbol).join(WatchlistItem).distinct().order_by(Company.symbol)))
+            return list(session.scalars(select(Company.symbol).join(WatchlistItem).where(
+                Company.symbol.in_(SHARED_COMPANIES)).distinct().order_by(Company.symbol)))
 
     def list_company_summaries(self):
         """Small relational projections only: no snapshot JSON or provider requests."""
         with self.session_factory() as session:
             companies = session.execute(select(Company.id, Company.symbol, Company.name).join(
-                WatchlistItem, WatchlistItem.company_id == Company.id).distinct().order_by(Company.symbol)).all()
+                WatchlistItem, WatchlistItem.company_id == Company.id).where(
+                    Company.symbol.in_(SHARED_COMPANIES)).distinct().order_by(Company.symbol)).all()
             news = {row[0]: row[1:] for row in session.execute(select(
                 ArticleCompany.company_id, func.count(Article.id), func.max(Article.published_at),
             ).join(Article, Article.id == ArticleCompany.article_id).group_by(ArticleCompany.company_id))}

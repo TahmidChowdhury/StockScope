@@ -5,6 +5,7 @@ import { RefreshCw } from 'lucide-react'
 import { apiFetch, ApiError, readApiJson } from '@/lib/api'
 
 interface CompanyInfo {
+  stale?: boolean
   currentPrice?: number | null
   marketCap?: number | null
   priceToEarningsRatio?: number | null
@@ -147,6 +148,7 @@ export default function KeyMetrics({
                 : limited ? '' : ' Use the reload button to try again.'}
             </div>
           )}
+          {data?.stale && <p role="status" className="mb-4 text-xs leading-5 text-amber-200">Showing saved metrics. The provider could not be refreshed; observation dates are unchanged.</p>}
           {data && (
             <>
               <div className="mb-5 border-b border-white/[0.07] pb-5">

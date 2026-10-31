@@ -131,6 +131,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
               ? priceData ? 'Refreshing price history…' : 'Loading price history…'
               : null}
       </div>
+      {priceData?.stale && <p role="status" className="mb-3 text-xs leading-5 text-amber-200">Showing saved prices. The provider could not be refreshed; observation dates are unchanged.</p>}
       {query.isError && (
         <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-200">
           <p>{query.error.message}{priceData ? ' Previously loaded prices are shown.' : ''}</p>

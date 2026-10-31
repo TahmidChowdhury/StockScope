@@ -4,8 +4,9 @@ from typing import List, Dict, Any, Optional
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from backend.core.cache import cached, peek_many
+from backend.core.cache import peek_many
 from backend.core.auth import verify_password_with_role
+from backend.core.resources import BudgetExceeded
 from backend.services.fundamentals import compute_ttm_metrics, compute_quarterly_series, compact
 from backend.models.fundamentals import (
     FundamentalsTTM, FundamentalsSeries, FundamentalsResponse,
@@ -81,21 +82,17 @@ def _compute_series_cached(ticker: str) -> dict:
     return _compute_full_cached(ticker)["series"]
 
 
-@cached
-def _compute_full_cached(ticker: str) -> dict:
-    """Cached full fundamentals computation."""
-    from backend.services.fundamentals import get_service
-    service = get_service()
-    return service.get_fundamentals_data(ticker)
-
+from backend.services.fundamentals import _compute_full_cached
 
 @router.get("/{ticker}/ttm")
 async def get_ttm_fundamentals(ticker: str, current_user: str = Depends(verify_password_with_role)):
     """Get TTM fundamentals data for a single ticker - returns only available fields."""
     try:
-        result = await asyncio.to_thread(_compute_ttm_cached, ticker.upper())
+        result = await asyncio.to_thread(_compute_ttm_cached, normalized_symbol(ticker))
         return result
         
+    except BudgetExceeded as exc:
+        raise HTTPException(429, str(exc), headers={"Retry-After": str(exc.retry_after)}) from exc
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching TTM data: {str(e)}")
 
@@ -104,9 +101,11 @@ async def get_ttm_fundamentals(ticker: str, current_user: str = Depends(verify_p
 async def get_series_fundamentals(ticker: str, current_user: str = Depends(verify_password_with_role)):
     """Get series fundamentals data for a single ticker - returns only available series."""
     try:
-        result = await asyncio.to_thread(_compute_series_cached, ticker.upper())
+        result = await asyncio.to_thread(_compute_series_cached, normalized_symbol(ticker))
         return result
         
+    except BudgetExceeded as exc:
+        raise HTTPException(429, str(exc), headers={"Retry-After": str(exc.retry_after)}) from exc
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching series data: {str(e)}")
 
@@ -115,9 +114,11 @@ async def get_series_fundamentals(ticker: str, current_user: str = Depends(verif
 async def get_fundamentals(ticker: str, current_user: str = Depends(verify_password_with_role)):
     """Get fundamentals data (TTM and series) for a single ticker - compact format."""
     try:
-        result = await asyncio.to_thread(_compute_full_cached, ticker.upper())
+        result = await asyncio.to_thread(_compute_full_cached, normalized_symbol(ticker))
         return result
         
+    except BudgetExceeded as exc:
+        raise HTTPException(429, str(exc), headers={"Retry-After": str(exc.retry_after)}) from exc
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching fundamentals: {str(e)}")
 

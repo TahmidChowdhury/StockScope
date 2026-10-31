@@ -31,10 +31,10 @@ class YahooNewsProvider:
             LOG.info("Fetching Yahoo Finance news for %s", ticker)
             
             # Get ticker object
-            stock = yf.Ticker(ticker)
             
+
             # Get news data
-            news_data = stock.news
+            news_data = yf.get_news(ticker)
             
             if not news_data:
                 LOG.warning("No Yahoo Finance news found for %s", ticker)

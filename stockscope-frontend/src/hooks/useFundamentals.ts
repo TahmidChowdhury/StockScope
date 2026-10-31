@@ -1,4 +1,4 @@
-import { apiFetch, ApiError } from '@/lib/api'
+import { apiFetch, readApiJson } from '@/lib/api'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { 
   FundamentalsResponse, 
@@ -20,15 +20,12 @@ export const useFundamentals = (ticker: string) => {
         { signal },
       )
       
-      if (!response.ok) {
-        throw new Error(`Failed to fetch fundamentals for ${ticker}`)
-      }
-      
-      return response.json()
+      return readApiJson<FundamentalsResponse>(response, `Failed to fetch fundamentals for ${ticker}`)
     },
     enabled: !!ticker && ticker.length > 0,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    retry: (count, error) => !(error instanceof ApiError && error.status === 401) && count < 2
+    staleTime: 6 * 60 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: false
   })
 }
 

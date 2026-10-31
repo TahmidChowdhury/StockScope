@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowDownUp, Calculator, RefreshCw } from 'lucide-react'
-import { apiFetch, ApiError } from '@/lib/api'
+import { apiFetch, readApiJson } from '@/lib/api'
 import { withRequestTimeout } from '@/lib/request-timeout'
 import { amount, percent, observed, ratio } from '@/lib/financial-format'
 import { useWorkspaceDraft } from '@/hooks/useWorkspaceDraft'
@@ -277,20 +277,12 @@ export default function ValuationPanel({ symbol }: { symbol: string }) {
         `/api/valuation/${encodeURIComponent(symbol)}`,
         { signal: requestSignal },
       )
-      if (!response.ok) {
-        const body = await response.json().catch(() => null)
-        throw new Error(
-          typeof body?.detail === 'string'
-            ? body.detail
-            : 'Valuation evidence is unavailable. Try again.',
-        )
-      }
-      return response.json()
+      return readApiJson<ValuationEvidence>(response, 'Valuation evidence is unavailable. Try again later.')
     }),
     enabled: !!symbol,
-    staleTime: 90_000,
-    retry: (count, error) =>
-      !(error instanceof ApiError && error.status === 401) && count < 1,
+    staleTime: 60 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: false,
   })
   return (
     <section

@@ -9,13 +9,32 @@ import Link from 'next/link'
 
 type Member = { id: string; name: string; email: string; role: string; active: boolean }
 type Invitation = { id: string; email: string; role: string; expires_at: string }
-type Usage = { provider: string; used: number; limit: number; blocked_until?: number }
+type Usage = {
+  provider: string; used: number; limit: number; blocked_until?: number; unit?: string
+  operations?: Record<string, number>; categories?: Record<string, number>; responses?: Record<string, number>
+  unattributed?: number; history?: { day: string; count: number; responses: Record<string, number> }[]
+}
+const counts = (values?: Record<string, number>) => Object.entries(values ?? {}).map(([key, count]) => `${key}: ${count}`).join(' · ') || 'None recorded'
+
+function UsageDetails({ value }: { value: Usage }) {
+  return <div className="mt-3 space-y-2 text-xs leading-5 text-slate-400">
+    {!!value.blocked_until && value.blocked_until * 1000 > Date.now() && <p className="text-amber-200">Cooling down until {new Date(value.blocked_until * 1000).toLocaleString()}</p>}
+    <details><summary className="cursor-pointer">Usage details · {value.unit ?? 'requests'}</summary>
+      <p className="mt-2">Operations: {counts(value.operations)}</p>
+      <p>Request types: {counts(value.categories)}</p>
+      <p>Responses: {counts(value.responses)}</p>
+      {(value.unattributed ?? 0) > 0 && <p>Earlier requests without attribution: {value.unattributed}</p>}
+      <p className="mt-3">Recorded history (last 30 UTC days)</p>
+      {value.history?.length ? <ul>{value.history.map(day => <li key={day.day}>{day.day}: {day.count} {value.unit ?? 'requests'} · {counts(day.responses)}</li>)}</ul> : <p>No previous days recorded yet.</p>}
+    </details>
+  </div>
+}
 export default function AccessPage() {
   const session = getAuthSession()
   const enabled = session?.role === 'admin' && !!session.user
   const client = useQueryClient()
   const access = useQuery<{ users: Member[]; invites: Invitation[] }>({ queryKey: ['access'], queryFn: () => workspaceRequest('/api/access'), enabled })
-  const usage = useQuery<{ providers: Usage[] }>({ queryKey: ['resources'], queryFn: () => workspaceRequest('/api/resources'), enabled, staleTime: 60_000 })
+  const usage = useQuery<{ providers: Usage[] }>({ queryKey: ['resources'], queryFn: () => workspaceRequest('/api/resources'), enabled, staleTime: 60_000, refetchInterval: 60_000 })
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('member')
   const [link, setLink] = useState('')
@@ -35,7 +54,7 @@ export default function AccessPage() {
       {access.isPending && <p role="status" className="text-sm text-slate-400">Loading members…</p>}
       <section className="surface divide-y divide-white/10"><h2 className="p-5 font-medium">Members</h2>{access.data?.users.map(user => <div key={user.id} className="flex flex-wrap items-center gap-4 p-5"><div className="min-w-0 flex-1"><p className="text-sm">{user.name}{user.id === session.user?.id && ' (you)'}</p><p className="mt-1 break-all text-xs text-slate-500">{user.email} · {user.active ? 'Active' : 'Suspended'}</p></div>{user.active && <button disabled={action.isPending} className="text-xs text-slate-400" onClick={async () => { try { const result = await action.mutateAsync({ path: `/api/access/users/${user.id}/reset`, method: 'POST' }); setLink(`${window.location.origin}/#invite=${encodeURIComponent(result.token)}&reset=1`); setCopied(false); window.scrollTo({ top: 0, behavior: 'smooth' }) } catch {} }}>Password reset link</button>}<AnimatedSelect aria-label={`Role for ${user.email}`} value={user.role} disabled={action.isPending || user.id === session.user?.id} onValueChange={value => action.mutate({ path: `/api/access/users/${user.id}`, method: 'PUT', body: { role: value, active: user.active } })} className="field-input text-xs"><option value="admin">Administrator</option><option value="member">Member</option><option value="viewer">Read-only research</option></AnimatedSelect>{user.id !== session.user?.id && <button disabled={action.isPending} className="button-secondary text-xs" onClick={() => action.mutate({ path: `/api/access/users/${user.id}`, method: 'PUT', body: { active: !user.active, role: user.role } })}>{user.active ? 'Suspend access' : 'Restore access'}</button>}</div>)}</section>
       {!!access.data?.invites.length && <section className="surface mt-6 p-5"><h2 className="font-medium">Pending invitations</h2>{access.data.invites.map(value => <div key={value.id} className="mt-4 flex flex-wrap justify-between gap-3 text-xs"><p className="break-all text-slate-400">{value.email} · expires {new Date(value.expires_at).toLocaleDateString()}</p><button disabled={action.isPending} className="text-amber-200" onClick={() => action.mutate({ path: `/api/access/invites/${value.id}`, method: 'DELETE' })}>Revoke invitation</button></div>)}</section>}
-      <section className="surface mt-6 p-5"><h2 className="font-medium">Shared resource budget</h2><p className="mt-2 text-xs leading-6 text-slate-500">Daily ceilings reset at midnight UTC. These are conservative app limits, not the provider’s guaranteed allowance. When a budget is used up, saved data stays available.</p>{usage.isError && <p className="mt-4 text-xs text-amber-200">Usage is temporarily unavailable.</p>}<div className="mt-5 grid gap-4 sm:grid-cols-2">{usage.data?.providers.map(value => <div key={value.provider}><div className="flex justify-between text-xs"><span className="capitalize text-slate-400">{value.provider}</span><span className="tabular-nums text-slate-300">{value.limit === 0 ? 'Disabled' : `${value.used} / ${value.limit}`}</span></div><div className="mt-2 h-1 rounded bg-white/5"><div className="h-1 rounded bg-[#b6c8ab]" style={{ width: `${Math.min(100, value.limit ? value.used / value.limit * 100 : 0)}%` }} /></div></div>)}</div></section>
+      <section className="surface mt-6 p-5"><h2 className="font-medium">Shared resource budget</h2><p className="mt-2 text-xs leading-6 text-slate-500">Daily ceilings reset at midnight UTC. These are conservative app limits, not the provider’s guaranteed allowance. When a budget is used up, saved data stays available. Yahoo usage counts HTTP requests, including authentication and retries.</p>{usage.isError && <p className="mt-4 text-xs text-amber-200">Usage is temporarily unavailable.</p>}<div className="mt-5 grid gap-4 sm:grid-cols-2">{usage.data?.providers.map(value => <div key={value.provider}><div className="flex justify-between text-xs"><span className="capitalize text-slate-400">{value.provider}</span><span className="tabular-nums text-slate-300">{value.limit === 0 ? 'Disabled' : `${value.used} / ${value.limit}`}</span></div><div className="mt-2 h-1 rounded bg-white/5"><div className="h-1 rounded bg-[#b6c8ab]" style={{ width: `${Math.min(100, value.limit ? value.used / value.limit * 100 : 0)}%` }} /></div><UsageDetails value={value} /></div>)}</div></section>
     </>}
   </AppShell>
 }

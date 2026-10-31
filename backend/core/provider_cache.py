@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from threading import RLock
 
-from backend.core.resources import BudgetExceeded, read_states, state
+from backend.core.resources import BudgetExceeded, daily_limit, read_states, state
 
 _locks = [RLock() for _ in range(64)]
 
@@ -55,6 +55,11 @@ def fetch_snapshot(namespace, identity, loader, *, ttl=3600, allow_stale=True,
             now = time.time()
             if value_field in entry and entry.get('expires_at', 0) > now:
                 return snapshot(entry)
+            # Older releases persisted the app's Yahoo daily denial until midnight.
+            # Retire only that denial, preserving refresh leases and upstream cooldowns.
+            legacy_yahoo_cap = (entry.get('budget_message') or '').startswith('Shared Yahoo daily limit reached (')
+            if legacy_yahoo_cap and daily_limit('yahoo') is None:
+                entry.update(budget_message=None, retry_at=0)
             if max(entry.get('lease_until', 0), entry.get('retry_at', 0)) > now:
                 if allow_stale and value_field in entry:
                     return snapshot(entry, True)

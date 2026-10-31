@@ -101,10 +101,10 @@ def test_daily_bars_keep_timezone_zero_and_missing_volume_after_restart(monkeypa
     assert len(calls) == 1
 
 
-def test_saved_profile_available_when_budget_is_zero(monkeypatch):
+def test_saved_profile_available_during_provider_cooldown(monkeypatch):
     monkeypatch.setattr(market, 'Ticker', lambda _: SimpleNamespace(info={'currentPrice': 42}))
     saved = market.get_info('IBM')
-    monkeypatch.setenv('PROVIDER_YAHOO_DAILY_LIMIT', '0')
+    resources.record_response('yahoo', 429, {})
     monkeypatch.setattr(market, 'Ticker', lambda _: pytest.fail('Cache hit must not call Yahoo'))
     assert market.get_info('IBM') == saved
 
@@ -197,3 +197,27 @@ def test_fundamentals_preserve_last_good_data_and_back_off_durably(failure):
     assert stale['metadata']['stale'] is True
     assert stale['metadata']['retrieved_at'] == original['metadata']['retrieved_at']
     assert stale['ttm']['revenue_ttm'] == 42
+
+
+def test_upgrade_resumes_ibm_at_old_cap_and_keeps_counting(monkeypatch):
+    # Start with the ledger, config, and cached denial from the capped release.
+    monkeypatch.setenv('PROVIDER_YAHOO_DAILY_LIMIT', '100')
+    with resources.state('provider:yahoo') as usage:
+        usage.update(day=datetime.now(timezone.utc).date().isoformat(), count=101)
+    key = snapshot_key('yahoo-info-v1', 'IBM')
+    with resources.state(key) as saved:
+        saved.update(budget_message='Shared Yahoo daily limit reached (100/100). Saved research remains available.',
+                     retry_at=time.time() + 3600)
+    class FakeTicker:
+        @property
+        def info(self):
+            resources.reserve('yahoo', cooldown=0, category='quote')
+            return {'symbol': 'IBM', 'currentPrice': 42}
+    monkeypatch.setattr(market, 'Ticker', lambda _: FakeTicker())
+    assert market.get_info('IBM').data['currentPrice'] == 42
+    assert market.get_info('IBM').data['currentPrice'] == 42
+    summary = {row['provider']: row for row in resources.usage_summary()}
+    assert summary['yahoo']['used'] == 102
+    assert summary['yahoo']['limit'] is None
+    assert summary['yahoo']['categories'] == {'quote': 1}
+    assert summary['newsapi']['limit'] == 0

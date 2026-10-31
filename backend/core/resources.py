@@ -75,7 +75,7 @@ def request_category(url):
     return 'other'
 
 # Hard local ceilings, not claims about a provider's plan allowance.
-DEFAULT_LIMITS = {"yahoo": 100, "sec": 200, "newsapi": 0, "google": 30,
+DEFAULT_LIMITS = {"yahoo": None, "sec": 200, "newsapi": 0, "google": 30,
                   "finviz": 30, "disclosures": 10, "rss": 30, "refresh": 12}
 
 
@@ -103,11 +103,19 @@ def provider_for(url):
 
 
 def daily_limit(provider):
-    # Operators can lower ceilings without permitting accidental unbounded use.
+    ceiling = DEFAULT_LIMITS[provider]
+    configured = os.getenv('PROVIDER_' + provider.upper() + '_DAILY_LIMIT')
+    if configured is None:
+        return ceiling
     try:
-        return max(0, min(DEFAULT_LIMITS[provider], int(os.getenv('PROVIDER_' + provider.upper() + '_DAILY_LIMIT', str(DEFAULT_LIMITS[provider])))))
+        requested = max(0, int(configured))
     except ValueError:
-        return DEFAULT_LIMITS[provider]
+        return ceiling
+    if ceiling is None:
+        # Older installs may still specify 100. Keep an explicit disable switch.
+        return 0 if requested == 0 else None
+    return min(ceiling, requested)
+
 
 
 @contextmanager
@@ -164,7 +172,7 @@ def require_available(provider):
                              usage['blocked_until'] - now.timestamp())
     used = usage.get('count', 0) if usage.get('day') == now.date().isoformat() else 0
     limit = daily_limit(provider)
-    if used >= limit:
+    if limit is not None and used >= limit:
         reset = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         raise BudgetExceeded(f'Shared {provider.title()} daily limit reached ({used}/{limit}). Saved research remains available.',
                              (reset - now).total_seconds())
@@ -190,9 +198,10 @@ def _reserve(provider, *, cooldown=1.1, category="other"):
         _roll_day(usage, day)
         if usage.get('blocked_until', 0) > now:
             raise BudgetExceeded(f'{provider} is cooling down after a provider response. Saved data remains available.', usage['blocked_until'] - now)
-        if usage.get('count', 0) >= daily_limit(provider):
+        limit = daily_limit(provider)
+        if limit is not None and usage.get('count', 0) >= limit:
             reset = (datetime.fromtimestamp(now, timezone.utc) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-            raise BudgetExceeded(f'Shared {provider.title()} daily limit reached ({usage.get("count", 0)}/{daily_limit(provider)}). Saved research remains available.', reset.timestamp() - now)
+            raise BudgetExceeded(f'Shared {provider.title()} daily limit reached ({usage.get("count", 0)}/{limit}). Saved research remains available.', reset.timestamp() - now)
         scheduled = max(now, usage.get('next_request', 0))
         wait = scheduled - now
         if wait > 30:

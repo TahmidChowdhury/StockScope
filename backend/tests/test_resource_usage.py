@@ -32,7 +32,6 @@ def test_history_rollover_retention_and_cooldown(local_state):
 
 
 def test_request_response_and_denial_logs(local_state, monkeypatch, caplog):
-    monkeypatch.setenv('PROVIDER_YAHOO_DAILY_LIMIT', '1')
     caplog.set_level(logging.INFO, logger='stockscope.usage')
     with resources.provider_operation('history'):
         resources.reserve('yahoo', cooldown=0, category='chart')
@@ -57,3 +56,11 @@ def test_response_after_midnight_preserves_previous_day(local_state):
     assert summary['used'] == 0
     assert summary['responses'] == {'network_error': 1}
     assert summary['history'][0]['count'] == 1
+
+
+def test_operators_can_still_disable_yahoo_entirely(local_state, monkeypatch):
+    monkeypatch.setenv('PROVIDER_YAHOO_DAILY_LIMIT', '0')
+    with pytest.raises(resources.BudgetExceeded):
+        resources.require_available('yahoo')
+    with pytest.raises(resources.BudgetExceeded):
+        resources.reserve('yahoo', cooldown=0)

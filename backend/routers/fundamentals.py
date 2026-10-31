@@ -18,6 +18,20 @@ from backend.services.sec_facts import is_sec_configured
 router = APIRouter()
 
 
+@router.get("/{ticker}/preview")
+async def get_saved_preview(ticker: str, current_user: str = Depends(verify_password_with_role)):
+    """Quick views only read existing cache entries, including dated last-good data."""
+    try:
+        symbol = normalized_symbol(ticker)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    saved = (await asyncio.to_thread(peek_many, '_compute_full_cached', [symbol])).get(symbol)
+    metadata = (saved or {}).get('metadata') or {}
+    return {'symbol': symbol, 'saved': saved is not None,
+            'ttm': (saved or {}).get('ttm'),
+            'metadata': {key: metadata.get(key) for key in ('retrieved_at', 'source', 'currency')}}
+
+
 @router.get("/{ticker}/sec-facts")
 async def get_saved_sec_facts(
     ticker: str,

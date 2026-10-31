@@ -89,7 +89,8 @@ def latest_daily_close(history):
 # Add utility functions directly to replace the removed ones
 def get_available_tickers():
     """Read the shared watchlist from the configured authoritative storage."""
-    return list_saved_symbols()
+    from backend.db.repository import SHARED_COMPANIES
+    return [symbol for symbol in list_saved_symbols() if symbol in SHARED_COMPANIES]
 
 def validate_stock_symbol(symbol: str) -> tuple[bool, str]:
     """Validate if a stock symbol exists using yfinance"""

@@ -3,6 +3,47 @@ import type { SimpleAuthResponse } from '@/types'
 export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '')
 export const AUTH_CHANGED_EVENT = 'stockscope:auth-changed'
 const SESSION_KEY = 'stockscope_session'
+export const DEVICE_STATE_KEY = 'stockscope_device_state'
+let generation = 0
+let pendingRestore: { state: string; generation: number; promise: Promise<void> } | undefined
+let endingSession: Promise<unknown> | undefined
+
+export async function requestDeviceSession(action: string, credentials?: object, signal?: AbortSignal) {
+  if (action !== 'forget' && endingSession) await endingSession
+  return fetch('/api/device-session', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-StockScope-Device': '1' },
+    credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
+    body: JSON.stringify({ action, credentials }),
+  })
+}
+
+export function rememberDevice(enabled: boolean) {
+  // Non-secret signal for logout while offline and for open windows to sync.
+  window.localStorage.setItem(DEVICE_STATE_KEY, (enabled ? 'remember:' : 'forget:') + Date.now())
+}
+
+export function restoreDeviceSession(): Promise<void> {
+  const state = window.localStorage.getItem(DEVICE_STATE_KEY)
+  if (!state?.startsWith('remember:')) return Promise.resolve()
+  if (pendingRestore?.state === state && pendingRestore.generation === generation) return pendingRestore.promise
+  const started = generation
+  const promise = (async () => {
+    const response = await requestDeviceSession('resume')
+    if (started !== generation || window.localStorage.getItem(DEVICE_STATE_KEY) !== state) return
+    if (response.status === 401) { rememberDevice(false); return }
+    const session = await readApiJson<SimpleAuthResponse>(response, 'Could not reconnect to your workspace.')
+    if (started === generation && window.localStorage.getItem(DEVICE_STATE_KEY) === state) saveAuthSession(session)
+  })().finally(() => { if (pendingRestore?.promise === promise) pendingRestore = undefined })
+  pendingRestore = { state, generation: started, promise }
+  return promise
+}
+
+export function signOut() {
+  const revoke = getAuthSession()?.user ? apiFetch('/api/auth/sign-out', { method: 'POST' }) : Promise.resolve()
+  rememberDevice(false)
+  clearAuthSession()
+  endingSession = Promise.allSettled([revoke, requestDeviceSession('forget')]).finally(() => { endingSession = undefined })
+}
 const ROLES = ['admin', 'demo', 'guest', 'member', 'viewer'] as const
 
 export interface AuthSession {
@@ -43,6 +84,7 @@ function removeLegacyCredentials() {
 
 export function clearAuthSession(): void {
   if (typeof window === 'undefined') return
+  generation++
   window.sessionStorage.removeItem(SESSION_KEY)
   removeLegacyCredentials()
   window.dispatchEvent(new Event(AUTH_CHANGED_EVENT))
@@ -83,6 +125,7 @@ export function saveAuthSession(response: SimpleAuthResponse): void {
     expiresAt: Date.now() + response.expires_in_seconds * 1000,
   }
   removeLegacyCredentials()
+  generation++
   window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(session))
   window.dispatchEvent(new Event(AUTH_CHANGED_EVENT))
 }

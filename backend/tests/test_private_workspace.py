@@ -239,3 +239,29 @@ def test_resource_history_is_persistent_and_admin_only(workspace):
         assert session.get(ResourceState, 'provider:yahoo').payload['history'][yesterday]['responses'] == {'429': 1}
     friend, _ = join(owner)
     assert client.get('/api/resources', headers=auth(friend)).status_code == 403
+
+
+def test_remembered_device_is_opt_in_scoped_and_revocable(workspace):
+    client, _, owner, auth = workspace
+    friend, _ = join(owner)
+    creds = {'email': friend.email, 'password': PASSWORD}
+    regular = client.post('/api/auth/sign-in', json=creds).json()
+    assert 'device_token' not in regular
+    assert client.post('/api/auth/resume', json={'token': regular['access_token']}).status_code == 401
+    remembered = client.post('/api/auth/sign-in', json={**creds, 'remember_device': True}).json()
+    assert remembered['device_max_age'] == 30 * 86400
+    credential = {'token': remembered['device_token']}
+    assert client.get('/api/lists', headers={'Authorization': 'Bearer ' + credential['token']}).status_code == 401
+    resumed = client.post('/api/auth/resume', json=credential).json()
+    assert resumed['user']['id'] == friend.id and 'device_token' not in resumed
+    headers = {'Authorization': 'Bearer ' + resumed['access_token']}
+    assert client.get('/api/lists', headers=headers).status_code == 200
+    assert client.post('/api/auth/password', headers=headers, json={
+        'current_password': 'wrong', 'new_password': 'different-long-password'
+    }).status_code == 400
+    assert client.post('/api/auth/resume', json=credential).status_code == 200
+    assert client.post('/api/auth/sign-out', headers=headers).status_code == 200
+    assert client.post('/api/auth/resume', json=credential).status_code == 401
+    newer = client.post('/api/auth/sign-in', json={**creds, 'remember_device': True}).json()
+    client.put('/api/access/users/' + friend.id, headers=auth(owner), json={'active': False, 'role': 'member'})
+    assert client.post('/api/auth/resume', json={'token': newer['device_token']}).status_code == 401

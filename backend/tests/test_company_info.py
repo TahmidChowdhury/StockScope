@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 import pytest
-import yfinance as yf
+import backend.core.market_provider as yf
 
 
 @pytest.fixture

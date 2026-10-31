@@ -97,7 +97,7 @@ class ResearchRepository:
         """Verify an explicitly migrated schema, without creating or altering it."""
         with self.engine.connect() as connection:
             tables = set(inspect(connection).get_table_names())
-            if not set(Base.metadata.tables).issubset(tables) or "alembic_version" not in tables:
+            if not (set(Base.metadata.tables) - {"workspace_users", "workspace_invites", "personal_lists", "personal_list_items", "resource_state"}).issubset(tables) or "alembic_version" not in tables:
                 raise RuntimeError("Database schema is not initialized; run Alembic migrations")
             versions = set(connection.execute(text("SELECT version_num FROM alembic_version")).scalars())
             if versions != {"20261015_02"}:
@@ -301,6 +301,34 @@ class ResearchRepository:
     def list_symbols(self):
         with self.session_factory() as session:
             return list(session.scalars(select(Company.symbol).join(WatchlistItem).distinct().order_by(Company.symbol)))
+
+    def list_company_summaries(self):
+        """Small relational projections only: no snapshot JSON or provider requests."""
+        with self.session_factory() as session:
+            companies = session.execute(select(Company.id, Company.symbol, Company.name).join(
+                WatchlistItem, WatchlistItem.company_id == Company.id).distinct().order_by(Company.symbol)).all()
+            news = {row[0]: row[1:] for row in session.execute(select(
+                ArticleCompany.company_id, func.count(Article.id), func.max(Article.published_at),
+            ).join(Article, Article.id == ArticleCompany.article_id).group_by(ArticleCompany.company_id))}
+            filings = {row[0]: row[1:] for row in session.execute(select(
+                FilingCompany.company_id, func.count(Filing.id), func.max(Filing.filing_date),
+            ).join(Filing, Filing.id == FilingCompany.filing_id).group_by(FilingCompany.company_id))}
+            checked = dict(session.execute(select(CurrentSnapshot.company_id, func.max(CurrentSnapshot.updated_at))
+                                           .group_by(CurrentSnapshot.company_id)).all())
+            result = []
+            for company_id, symbol, name in companies:
+                article_count, article_date = news.get(company_id, (0, None))
+                filing_count, filing_date = filings.get(company_id, (0, None))
+                dates = [timestamp(value) for value in (article_date, filing_date) if value]
+                latest = max(dates) if dates else None
+                result.append({"symbol": symbol, "companyName": name or symbol,
+                               "total_posts": article_count + filing_count, "avg_sentiment": None,
+                               "last_updated": latest, "last_checked": timestamp(checked.get(company_id)),
+                               "freshness": "unknown" if latest is None else "fresh" if (utcnow() - latest).days < 7 else "stale",
+                               "sources": (["news"] if article_count else []) + (["sec"] if filing_count else []),
+                               "currentPrice": None, "priceChange": None, "priceChangePercent": None,
+                               "price_as_of": None})
+            return result
 
     def delete_symbol_research(self, symbol):
         symbol = symbol_key(symbol)

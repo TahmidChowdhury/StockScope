@@ -1,6 +1,7 @@
 # scraping/reddit_scraper.py
 
 import os
+from backend.core.resources import guarded_get
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timezone, timedelta
@@ -50,7 +51,7 @@ def fetch_reddit_posts(ticker, limit=50, days_back=90):
         
         try:
             print(f"[PROGRESS] Searching Reddit globally for {ticker}...")
-            response = session.get(global_search_url, timeout=10)
+            response = guarded_get(global_search_url, session=session, timeout=10)
             
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
@@ -74,7 +75,7 @@ def fetch_reddit_posts(ticker, limit=50, days_back=90):
                 # Search within specific subreddit, sorted by top of week
                 search_url = f"https://old.reddit.com/r/{subreddit}/search?q={ticker}&sort=top&restrict_sr=on&t=week"
                 
-                response = session.get(search_url, timeout=10)
+                response = guarded_get(search_url, session=session, timeout=10)
                 
                 if response.status_code == 200:
                     soup = BeautifulSoup(response.content, 'html.parser')

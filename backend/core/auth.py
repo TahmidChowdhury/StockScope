@@ -1,4 +1,4 @@
-"""Shared-password login and signed, expiring bearer sessions."""
+"""Account-aware bearer sessions with legacy bootstrap access."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from jose import JWTError, jwt
 
 ALGORITHM = "HS256"
 DEFAULT_ACCESS_TOKEN_EXPIRE_MINUTES = 480
-VALID_ROLES = frozenset({"admin", "demo", "guest"})
+VALID_ROLES = frozenset({"admin", "demo", "guest", "member", "viewer"})
 
 
 def _read_passwords() -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
@@ -65,7 +65,7 @@ async def authenticate_user(password: str) -> tuple[bool, Optional[str]]:
     return role is not None, role
 
 
-def create_access_token(subject: str, role: str, expires_minutes: Optional[int] = None) -> str:
+def create_access_token(subject: str, role: str, expires_minutes: Optional[int] = None, session_version: Optional[int] = None) -> str:
     if not subject.strip() or role not in VALID_ROLES:
         raise ValueError("A nonempty subject and a known role are required")
     minutes = expires_minutes if expires_minutes is not None else get_access_token_expire_minutes()
@@ -77,6 +77,8 @@ def create_access_token(subject: str, role: str, expires_minutes: Optional[int] 
         "iat": now,
         "type": "access",
     }
+    if session_version is not None:
+        payload["version"] = session_version
     return jwt.encode(payload, _jwt_secret(), algorithm=ALGORITHM)
 
 
@@ -112,13 +114,43 @@ def _decode_access_token(token: str) -> dict:
     return payload
 
 
-async def verify_password_with_role(
-    authorization: Optional[str] = Header(None, alias="Authorization"),
-) -> str:
-    """Authenticate a bearer session. Passwords are accepted only by POST login."""
+def authenticate_token(authorization):
     if not authorization:
         raise _unauthorized("Sign in to obtain an Authorization Bearer token")
     parts = authorization.split(" ", 1)
     if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1].strip():
         raise _unauthorized("Invalid Authorization header format")
-    return str(_decode_access_token(parts[1].strip())["role"])
+    payload = _decode_access_token(parts[1].strip())
+    if payload["sub"].startswith("user:"):
+        from backend.services.accounts import account_repository
+        from backend.db.models import WorkspaceUser
+        with account_repository().session_factory() as session:
+            user = session.get(WorkspaceUser, payload["sub"][5:])
+            if not user or not user.active or user.session_version != payload.get("version"):
+                raise _unauthorized("Your access has ended. Sign in again or contact the owner.")
+            return user
+    from backend.services.research import repository
+    if repository() is None:
+        if os.getenv("ALLOW_LEGACY_FILE_AUTH", "false").lower() != "true":
+            raise _unauthorized("Private accounts require the workspace database.")
+    else:
+        # Shared sessions cease to work once the owner creates their account.
+        from backend.services.accounts import has_users
+        if payload["role"] != "admin" or has_users():
+            raise _unauthorized("Use your invited account to sign in.")
+    return payload["role"]
+
+
+async def verify_password_with_role(
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+) -> str:
+    import asyncio
+    user = await asyncio.to_thread(authenticate_token, authorization)
+    return user if isinstance(user, str) else user.role
+
+
+def current_account(authorization: Optional[str] = Header(None, alias="Authorization")):
+    user = authenticate_token(authorization)
+    if isinstance(user, str):
+        raise HTTPException(403, "Set up your individual owner account first.")
+    return user

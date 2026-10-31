@@ -56,17 +56,8 @@ export default function StockSearch({
     setValidating(true)
     setError('')
     try {
-      const response = await apiFetch(
-        `/api/stocks/validate/${encodeURIComponent(symbol)}`,
-      )
-      if (!response.ok)
-        throw new Error('Could not validate this company. Please try again.')
-      const result = await response.json()
-      if (!result.valid)
-        throw new Error(
-          result.message ||
-            'Company not found. Check the ticker and try again.',
-        )
+      if (!/^[A-Z][A-Z0-9.-]{0,9}$/.test(symbol))
+        throw new Error('Enter a valid ticker, such as AAPL.')
       setQuery('')
       setSuggestions([])
       inputRef.current?.blur()

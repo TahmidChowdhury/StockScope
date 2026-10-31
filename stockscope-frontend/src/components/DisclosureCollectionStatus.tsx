@@ -85,9 +85,7 @@ export default function DisclosureCollectionStatus({ onCollected }: { onCollecte
           <div className="flex flex-wrap items-center gap-2.5"><h2 className="text-sm font-semibold text-slate-200">Automatic collection</h2><span role="status" className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium ${failed || outdated ? 'bg-amber-300/10 text-amber-200' : data.enabled ? 'bg-emerald-300/10 text-emerald-300' : 'bg-white/5 text-slate-400'}`}>
             {running ? <RefreshCw className="h-3 w-3 animate-spin" /> : data.enabled && data.last_success && !failed && !outdated ? <CheckCircle2 className="h-3 w-3" /> : <Clock3 className="h-3 w-3" />}{label}
           </span></div>
-          <p className="mt-1.5 max-w-2xl text-xs leading-5 text-slate-400">{data.enabled ? `Checks a public House and Senate dataset every ${data.interval_hours || 6} hours. New disclosures appear here automatically.` : 'Scheduled collection is paused. Previously collected records and CSV imports remain available.'}</p>
-          <p className="mt-1 text-[11px] leading-5 text-slate-500">Filing dates estimate availability. “First observed” is when StockScope found a transaction.</p>
-          {source?.coverage_end && <p className="mt-1 text-[11px] leading-5 text-slate-400">Latest available filing date {source.coverage_end}{source.source_checked_at ? ` · Publisher checked ${timestamp(source.source_checked_at)}` : ''}</p>}
+          <p className="mt-1.5 text-xs leading-5 text-slate-400">{data.row_count.toLocaleString()} collected records · {data.enabled ? `Checks every ${data.interval_hours || 6} hours` : 'Saved activity is available'}</p>
         </div>
       </div>
       <div className="flex gap-2">
@@ -101,14 +99,18 @@ export default function DisclosureCollectionStatus({ onCollected }: { onCollecte
       {Boolean(data.row_count) && <span> Saved records remain available.</span>}
     </div>}
 
-    <dl className="grid grid-cols-2 gap-x-5 gap-y-3 border-t border-white/[0.06] px-4 py-3 text-xs sm:grid-cols-3 sm:px-5">
+
+
+    <AnimatedAccordion className="border-t border-white/[0.06] px-4 py-3 text-xs sm:px-5" triggerClassName="text-slate-400 hover:text-violet-200" title="Collection details & sources">
+      <div className="mt-3 space-y-2 leading-5 text-slate-500">
+          <p className="mt-1.5 max-w-2xl text-xs leading-5 text-slate-400">{data.enabled ? `Checks a public House and Senate dataset every ${data.interval_hours || 6} hours. New disclosures appear here automatically.` : 'Scheduled collection is paused. Previously collected records and CSV imports remain available.'}</p>
+          <p className="mt-1 text-[11px] leading-5 text-slate-500">Filing dates estimate availability. “First observed” is when StockScope found a transaction.</p>
+          {source?.coverage_end && <p className="mt-1 text-[11px] leading-5 text-slate-400">Latest available filing date {source.coverage_end}{source.source_checked_at ? ` · Publisher checked ${timestamp(source.source_checked_at)}` : ''}</p>}
+    <dl className="grid grid-cols-2 gap-x-5 gap-y-3 py-3 text-xs sm:grid-cols-3">
       <div><dt className="text-[10px] text-slate-500">Last successful check</dt><dd className="mt-1 text-slate-300">{timestamp(data.last_success)}</dd></div>
       <div><dt className="text-[10px] text-slate-500">Next check</dt><dd className="mt-1 text-slate-300">{running ? 'In progress' : data.enabled ? data.next_run ? timestamp(data.next_run) : 'Starting shortly' : 'Paused'}</dd></div>
       <div><dt className="text-[10px] text-slate-500">Collected records, including revisions</dt><dd className="mt-1 text-slate-300">{data.row_count.toLocaleString()}</dd></div>
     </dl>
-
-    <AnimatedAccordion className="border-t border-white/[0.06] px-4 py-3 text-xs sm:px-5" triggerClassName="text-slate-400 hover:text-violet-200" title="Source, coverage & timing">
-      <div className="mt-3 space-y-2 leading-5 text-slate-500">
         <p>Third-party normalized filing data can contain extraction errors. Confirm transactions in the original linked filing. Reported amount ranges do not show exact allocations or current holdings.</p>
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-slate-400">
           {source?.years?.length ? <span>Collection years {source.years.join(', ')}</span> : null}

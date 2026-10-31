@@ -137,13 +137,13 @@ def test_jobs_report_partial_and_scraping_does_not_block_event_loop(api, monkeyp
 def test_pending_jobs_deduplicate_and_active_jobs_are_bounded(api):
     async def exercise():
         tasks = BackgroundTasks()
-        await api.analyze_stock(api.StockRequest(symbol="AAPL"), tasks, "demo")
-        await api.analyze_stock(api.StockRequest(symbol="AAPL"), tasks, "demo")
+        await api.analyze_stock(api.StockRequest(symbol="AAPL"), tasks, "member")
+        await api.analyze_stock(api.StockRequest(symbol="AAPL"), tasks, "member")
         assert len(tasks.tasks) == 1
         for ticker in ("MSFT", "META", "NVDA"):
-            await api.analyze_stock(api.StockRequest(symbol=ticker), tasks, "demo")
+            await api.analyze_stock(api.StockRequest(symbol=ticker), tasks, "member")
         with pytest.raises(HTTPException) as error:
-            await api.analyze_stock(api.StockRequest(symbol="TSLA"), tasks, "demo")
+            await api.analyze_stock(api.StockRequest(symbol="TSLA"), tasks, "member")
         assert error.value.status_code == 429
     asyncio.run(exercise())
 
@@ -167,6 +167,8 @@ def test_cache_honors_each_ttl_and_requires_admin_to_clear(api, monkeypatch):
 def test_sec_collector_emits_linked_events_without_template_scores(api, monkeypatch):
     from scraping import sec_scraper
     class Response:
+        status_code = 200
+        headers = {}
         status_code = 200
         def json(self):
             return {"filings": {"recent": {"form": ["4", "25-NSE"], "filingDate": ["2024-01-02", "2024-01-03"], "accessionNumber": ["0001-24-000001", "0001-24-000002"], "primaryDocument": ["a.xml", "b.htm"]}}}
@@ -215,6 +217,8 @@ def test_rss_unknown_publication_date_stays_unknown_and_requests_are_bounded(api
     from scraping.enhanced_news_scraper import EnhancedNewsScraper
     scraper = EnhancedNewsScraper()
     class Response:
+        status_code = 200
+        headers = {}
         content = b'<rss><channel><item><title>AAPL earnings report</title><link>https://example.org/news</link></item></channel></rss>'
         def raise_for_status(self):
             pass
@@ -302,7 +306,7 @@ def test_cache_concurrent_updates_reads_and_invalidation_keep_entries_consistent
 @pytest.mark.parametrize("symbol", ["BRK-B", "bf-b", " BRK-B "])
 def test_symbol_validation_accepts_share_classes_without_network(api, monkeypatch, symbol):
     import pandas as pd
-    import yfinance
+    import backend.core.market_provider as yfinance
     seen = []
     class Ticker:
         def __init__(self, ticker):
@@ -330,6 +334,8 @@ def test_yahoo_and_rss_publication_times_keep_explicit_utc_offset(api, monkeypat
     monkeypatch.setattr(enhanced_news_scraper.yf, "Ticker", lambda ticker: Ticker())
     scraper = enhanced_news_scraper.EnhancedNewsScraper()
     class Response:
+        status_code = 200
+        headers = {}
         content = b'<rss><channel><item><title>AAPL report</title><link>https://example.org/rss</link><pubDate>Wed, 14 Oct 2026 09:00:00 GMT</pubDate></item></channel></rss>'
         def raise_for_status(self):
             pass
@@ -347,6 +353,8 @@ def test_global_rss_matches_company_aliases_without_substring_matches(api, monke
     scraper = enhanced_news_scraper.EnhancedNewsScraper()
     monkeypatch.setattr(enhanced_news_scraper, 'RSS_FEEDS', {'NPR Business': 'https://feeds.npr.org/1006/rss.xml'})
     class Response:
+        status_code = 200
+        headers = {}
         content = b'<rss><channel><item><title>Microsoft announces earnings</title><link>https://example.org/microsoft</link></item><item><title>MSFTish unrelated story</title><link>https://example.org/other</link></item></channel></rss>'
         def raise_for_status(self):
             pass
@@ -360,6 +368,8 @@ def test_google_news_summary_is_plain_text(api, monkeypatch):
     from scraping.enhanced_news_scraper import EnhancedNewsScraper
     scraper = EnhancedNewsScraper()
     class Response:
+        status_code = 200
+        headers = {}
         content = b'<rss><channel><item><title>Apple earnings</title><link>https://example.org/article</link><description>&lt;a href="https://example.org/article"&gt;Apple earnings&lt;/a&gt;&amp;nbsp;&lt;font&gt;Publisher&lt;/font&gt;</description></item></channel></rss>'
         def raise_for_status(self):
             pass
@@ -381,7 +391,7 @@ def test_article_candidates_reject_listing_and_quote_pages():
 
 def _stub_prices(monkeypatch, closes, quote, volumes=None):
     import pandas as pd
-    import yfinance
+    import backend.core.market_provider as yfinance
     history = pd.DataFrame(
         {"Open": closes, "High": closes, "Low": closes, "Close": closes, "Volume": volumes if volumes is not None else [100] * len(closes)},
         index=pd.date_range("2024-01-02", periods=len(closes), tz="America/New_York"),
@@ -444,49 +454,15 @@ def test_price_history_missing_volume_keeps_prices_and_observed_zero(api, monkey
     json.dumps(result, allow_nan=False)
 
 
-@pytest.mark.parametrize("closes, expected", [
-    ([12], (12, None, None)),
-    ([0, 12], (12, None, None)),
-    ([float("nan"), 12], (12, None, None)),
-    ([12, float("inf")], (12, None, None)),
-    ([float("nan"), float("inf")], (None, None, None)),
-    ([10, float("nan"), 12], (12, None, None)),
-    ([12, 12], (12, 0, 0)),
-    ([12, 0], (0, -12, -100)),
-])
-def test_watchlist_does_not_invent_change_without_comparable_closes(api, monkeypatch, closes, expected):
-    _stub_prices(monkeypatch, closes, {"longName": "Fixture"})
-    monkeypatch.setattr(api, "get_available_tickers", lambda: ["AAPL"])
-    result = api.get_available_stocks("demo")["stocks"][0]
-    assert (result["currentPrice"], result["priceChange"], result["priceChangePercent"]) == expected
-    assert result["price_basis"] == "latest_daily_close"
-    if expected[0] is None:
-        assert result["price_as_of"] is None
-    else:
-        assert result["price_as_of"].startswith("2024-01-")
-    json.dumps(result, allow_nan=False)
-
-
-def test_watchlist_incomplete_latest_bar_keeps_observed_close_change_and_date(api, monkeypatch):
-    import pandas as pd
-    import yfinance
-
-    history = pd.DataFrame({"Close": [10, 12, float("nan")]},
-                           index=pd.date_range("2024-01-02", periods=3, tz="America/New_York"))
-    class Ticker:
-        info = {"longName": "Fixture"}
-
-        def history(self, **kwargs):
-            # A supported multi-session window also covers weekends/holidays.
-            assert kwargs == {"period": "5d", "timeout": 10}
-            return history
-
-    monkeypatch.setattr(yfinance, "Ticker", lambda symbol: Ticker())
-    monkeypatch.setattr(api, "get_available_tickers", lambda: ["AAPL"])
-    result = api.get_available_stocks("demo")["stocks"][0]
-    assert (result["currentPrice"], result["priceChange"], result["priceChangePercent"]) == (12, 2, 20)
-    assert result["price_as_of"] == "2024-01-03T05:00:00+00:00"
-    assert result["price_basis"] == "latest_daily_close"
+def test_watchlist_is_saved_only_and_does_not_contact_market_provider(api, monkeypatch):
+    monkeypatch.setattr("backend.core.market_provider.Ticker", lambda *args, **kwargs: pytest.fail("Watchlist must not fetch market data"))
+    save_records("AAPL", "news_sentiment", [{"title": "Saved article"}])
+    result = api.get_available_stocks("member")
+    assert result["price_mode"] == "on_demand"
+    row = result["stocks"][0]
+    assert row["symbol"] == "AAPL" and row["total_posts"] == 1
+    assert row["currentPrice"] is None and row["price_as_of"] is None
+    json.dumps(result, allow_nan=False, default=str)
 
 
 def test_saved_news_excludes_legacy_social_posts_but_keeps_company_releases(api):

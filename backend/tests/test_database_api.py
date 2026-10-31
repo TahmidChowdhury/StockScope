@@ -30,6 +30,9 @@ def context(monkeypatch, tmp_path):
     with engine.begin() as connection:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
+        workspace_config = Config(str(Path(__file__).resolve().parents[2] / 'alembic.ini'), ini_section='workspace')
+        workspace_config.attributes['connection'] = connection
+        command.upgrade(workspace_config, 'head')
     repo = ResearchRepository(engine)
     import backend.db
     monkeypatch.setattr(backend.db, "get_repository", lambda: repo)
@@ -74,8 +77,8 @@ def test_persisted_jobs_survive_memory_reset_and_keep_provider_failures(context,
     })
     async def exercise():
         tasks = BackgroundTasks()
-        await api.analyze_stock(api.StockRequest(symbol="AAPL", sources=["news"]), tasks, "demo")
-        await api.analyze_stock(api.StockRequest(symbol="AAPL", sources=["news"]), tasks, "demo")
+        await api.analyze_stock(api.StockRequest(symbol="AAPL", sources=["news"]), tasks, "member")
+        await api.analyze_stock(api.StockRequest(symbol="AAPL", sources=["news"]), tasks, "member")
         assert len(tasks.tasks) == 1
         await tasks()
         api.analysis_status.clear()
@@ -93,7 +96,7 @@ def test_concurrent_admission_respects_four_job_limit(context):
     async def exercise():
         tasks = BackgroundTasks()
         responses = await asyncio.gather(*[
-            api.analyze_stock(api.StockRequest(symbol=symbol, sources=["news"]), tasks, "demo")
+            api.analyze_stock(api.StockRequest(symbol=symbol, sources=["news"]), tasks, "member")
             for symbol in ["AAPL", "MSFT", "NVDA", "META", "TSLA", "GOOG"]
         ], return_exceptions=True)
         assert len(tasks.tasks) == 4
@@ -149,9 +152,10 @@ def test_storage_failure_never_falls_back_to_local_files(context, monkeypatch):
         raise OperationalError("fixture", {}, RuntimeError("offline"))
     monkeypatch.setattr(repo, "list_symbols", lambda: ["AAPL"])
     monkeypatch.setattr(repo, "load_snapshots", fail)
+    monkeypatch.setattr(repo, "list_company_summaries", fail)
     monkeypatch.setattr(repo, "check_ready", fail)
     from backend.core.auth import create_access_token
-    headers = {"Authorization": f"Bearer {create_access_token('fixture', 'demo')}"}
+    headers = {"Authorization": f"Bearer {create_access_token('fixture', 'admin')}"}
     async def exercise():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api.app), base_url="http://fixture") as client:
             response = await client.get("/api/stocks/AAPL/news", headers=headers)
@@ -180,7 +184,7 @@ def test_sec_collection_saves_facts_and_failure_preserves_snapshot(context, monk
     monkeypatch.setattr(sec_facts, "collect_sec_facts", lambda symbol: {"status": "not_configured", "facts": [], "filings": []})
     async def exercise():
         tasks = BackgroundTasks()
-        await api.analyze_stock(api.StockRequest(symbol="AAPL", sources=["sec_facts"]), tasks, "demo")
+        await api.analyze_stock(api.StockRequest(symbol="AAPL", sources=["sec_facts"]), tasks, "member")
         await tasks()
         job = await api.get_analysis_status("AAPL", "demo")
         assert job.status == "failed"
@@ -196,7 +200,7 @@ def test_status_recovers_terminal_write_after_database_outage(context, monkeypat
         raise OperationalError("fixture", {}, RuntimeError("offline"))
     async def exercise():
         tasks = BackgroundTasks()
-        await api.analyze_stock(api.StockRequest(symbol="AAPL", sources=["news"]), tasks, "demo")
+        await api.analyze_stock(api.StockRequest(symbol="AAPL", sources=["news"]), tasks, "member")
         run_id = api.analysis_status["AAPL"].run_id
         monkeypatch.setattr(repo, "update_run", offline)
         await tasks()
@@ -204,8 +208,11 @@ def test_status_recovers_terminal_write_after_database_outage(context, monkeypat
         assert repo.get_run(run_id)["status"] == "pending"
         monkeypatch.setattr(repo, "update_run", original_update)
         assert (await api.get_analysis_status("AAPL", "demo")).status == "failed"
+        from backend.core.resources import state
+        with state('provider:refresh') as usage:
+            usage['symbols'] = {}  # Simulate the cooldown elapsing before the retry.
         next_tasks = BackgroundTasks()
-        await api.analyze_stock(api.StockRequest(symbol="AAPL", sources=["news"]), next_tasks, "demo")
+        await api.analyze_stock(api.StockRequest(symbol="AAPL", sources=["news"]), next_tasks, "member")
         assert len(next_tasks.tasks) == 1
         assert api.analysis_status["AAPL"].run_id != run_id
     asyncio.run(exercise())

@@ -3,11 +3,12 @@ import type { SimpleAuthResponse } from '@/types'
 export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '')
 export const AUTH_CHANGED_EVENT = 'stockscope:auth-changed'
 const SESSION_KEY = 'stockscope_session'
-const ROLES = ['admin', 'demo', 'guest'] as const
+const ROLES = ['admin', 'demo', 'guest', 'member', 'viewer'] as const
 
 export interface AuthSession {
+  user?: { id: string; name: string; email: string; role: string }
   accessToken: string
-  role: 'admin' | 'demo' | 'guest'
+  role: 'admin' | 'demo' | 'guest' | 'member' | 'viewer'
   expiresAt: number
 }
 
@@ -59,6 +60,7 @@ export function saveAuthSession(response: SimpleAuthResponse): void {
     response.expires_in_seconds <= 0
   ) throw new Error('The server did not return a valid session. Please sign in again.')
   const session: AuthSession = {
+    user: response.user,
     accessToken: response.access_token,
     role: response.role,
     expiresAt: Date.now() + response.expires_in_seconds * 1000,

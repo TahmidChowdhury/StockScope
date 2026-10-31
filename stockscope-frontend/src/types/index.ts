@@ -8,7 +8,8 @@ export interface LoginRequest {
 export interface SimpleAuthResponse {
   success: boolean
   message: string
-  role: 'admin' | 'demo' | 'guest'
+  role: 'admin' | 'demo' | 'guest' | 'member' | 'viewer'
+  user?: { id: string; name: string; email: string; role: string }
   access_token: string
   token_type: 'bearer'
   expires_in_seconds: number

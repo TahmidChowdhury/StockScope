@@ -64,7 +64,7 @@ export function useWorkspaceDraft<T>(
   useEffect(() => {
     const session = getAuthSession()
     if (!session) return
-    const storageKey = workspaceDraftKey(API_BASE_URL, session.role, key)
+    const storageKey = workspaceDraftKey(API_BASE_URL, session.user ? `user-${session.user.id}` : session.role, key)
     let store = stores.get(storageKey) as WorkspaceDraftStore<T> | undefined
     if (!store) {
       // Access to the localStorage property itself may be disabled by the browser.

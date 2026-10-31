@@ -12,7 +12,7 @@ StockScope is a personal stock-research workspace for a long-term investing core
 - **Refresh:** company research refreshes explicitly, with completion, partial-result, and failure status. Disclosure collection runs on its own schedule. Merely opening saved research does not imply it was refreshed.
 - **Shared watchlist:** saved analyzed symbols are shared across authenticated roles. This is not a holdings ledger or a measure of actual portfolio returns. Dashboard evidence counts include news and filing records, not just distinct articles.
 - **Workspace navigation:** dashboard, company research, financials, comparison, screening, and paper experiments share a responsive shell and watchlist. Saved backtests and paper portfolios have direct URLs. Screener selections carry into Compare; missing data and coverage remain visible.
-- **Browser drafts:** screening inputs/results/selections, comparison inputs/results, trading forms, per-portfolio order drafts, company valuation assumptions, and tone annotations/completed reports restore after refresh or return visits. Drafts use local browser storage separated by API connection and access role, not individual accounts or cross-device sync. Credentials remain in session storage. Saved snapshots retain their collection dates and do not trigger fresh screening, model inference, or trading actions. Clear controls affect only their local workspace; blocked or full browser storage displays an unsaved warning.
+- **Browser drafts:** screening inputs/results/selections, comparison inputs/results, trading forms, per-portfolio order drafts, company valuation assumptions, and tone annotations/completed reports restore after refresh or return visits. Drafts use local browser storage separated by API connection and individual account (or legacy access role before owner setup), without cross-device sync. Credentials remain in session storage. Saved snapshots retain their collection dates and do not trigger fresh screening, model inference, or trading actions. Clear controls affect only their local workspace; blocked or full browser storage displays an unsaved warning.
 - **Authentication:** a shared password for each role is exchanged for an expiring bearer token. The browser keeps tokens in sessionStorage, removes old stored passwords, and clears client data on logout/expiry. API credentials are no longer accepted in URL query parameters.
 
 Users sign in on the website with one of the app passwords configured on the backend. `ADMIN_PASSWORD` grants administrative deletion/cache access; `DEMO_PASSWORD` and `GUEST_PASSWORD` currently both allow research reads and refreshes. Everyone sees the same watchlist and saved research. There is no email signup, user-owned portfolio, or account password-reset flow yet. Supabase stores research; Supabase Auth is not connected to this login. The legacy `STOCKSCOPE_PASSWORD` also grants admin if set; remove that variable when deploying the three role passwords. Sessions last eight hours by default and are stored per browser tab; existing sessions must sign in again after the authentication migration.
@@ -436,3 +436,76 @@ New read-only routes: `GET /api/valuation/{symbol}`, `GET /api/sentiment-lab/{sy
 2. Add long-term research notes, account-based draft sync, actual holdings/contributions, and further benchmark-relative performance views.
 3. Extend the paper journal with precommitted risk plans and independently verified exchange-session coverage.
 4. Validate strategies on unseen periods and licensed point-in-time data; add a paid Congress feed only after verifying its coverage and access terms.
+
+### Private friends workspace and conservative refreshes
+
+Run `python -m alembic upgrade head` and `python -m alembic -n workspace upgrade head`
+with the backend environment before starting this version. The workspace migration
+is additive and uses its own version table: it does not change the research schema
+version expected by the currently deployed API. PostgreSQL RLS is enabled and access
+is revoked from public, anon, and authenticated roles on the new tables. Only the
+trusted backend database connection accesses them.
+
+Open **Your account** (or the login screen on a fresh browser) and create the owner
+account using an email, a new passphrase of at least 12 characters, and the existing
+`ADMIN_PASSWORD`. There is no public signup. Once setup completes, shared passwords
+and previously issued shared-role tokens no longer grant access in this API version.
+Migrate every running backend to this version before inviting friends: an old API
+process still implements the old shared-password policy.
+
+**Access & resources** lets an administrator create a three-day single-use invitation
+for a specific email, change roles, suspend/restore accounts, revoke pending links,
+and create password-reset links. Share links privately yourself; the application does
+not send mail or require an email service. Link possession plus the addressed email
+allows acceptance, so do not post links publicly. Invite tokens are stored only as
+SHA-256 hashes. Passwords use salted scrypt (N=2^17, r=8, p=1). Sessions expire after
+8 hours by default; each protected request checks the user's current status, role,
+and session version. Signing out, resetting a password, and access changes invalidate
+existing sessions. Sessions remain in tab sessionStorage; production must use HTTPS.
+A database is required. `ALLOW_LEGACY_FILE_AUTH=true` is an explicit offline development
+escape hatch and must remain false for the friends workspace.
+
+Personal lists are scoped to their owner on every API operation. A user can keep
+20 lists of 250 symbols; the workspace is capped at 25 accounts/pending invitations.
+Unfollowing a symbol or deleting a list does not delete shared research. Home shows
+six companies, pins first; the sidebar shows at most five pins. The library pages
+25 rows at a time. Browser research drafts are keyed by account as well as workspace.
+
+Opening the watchlist uses compact relational summaries, with no remote market-data
+calls or large snapshot downloads. The browser rechecks this saved list every five
+minutes while visible. Company fundamentals use a shared six-hour cache with durable
+last-good results and coalesced requests. Screens read this cache only; opening an
+individual company's Financials view populates it. Screens expose partial coverage;
+they do not imply all companies were freshly fetched. Watchlist summaries do not
+pretend to be live quotes. Original source and retrieval dates remain visible.
+
+All active requests through the SEC/news/disclosure collectors and yfinance transport
+use persistent shared UTC daily budgets. Defaults: Yahoo 100 actual HTTP attempts,
+SEC 200, Google/Finviz/other feeds 30 each, disclosures 10, research jobs 12. Manual
+research collection has a six-hour per-symbol cooldown, including failed jobs. Budgets
+can be lowered via `.env`; raising the hard ceilings requires an intentional code
+change. NewsAPI is disabled even if a key is present. HTTP 429/403/503 responses start
+a cooldown of at least one hour and honor longer Retry-After values. HTTP redirects
+are not followed implicitly; the disclosure downloader validates and budgets each hop.
+The supported deployment remains **one API process**. Separate old deployments or
+external uses of the same provider credentials are outside these counters.
+
+These ceilings are an application safeguard, not a guarantee of upstream availability
+or a provider's unpublished limits. The app never upgrades a plan or automatically
+buys quota. When requests are blocked, saved research remains available. Disclosure
+collection retains its existing six-hour schedule and shared database lease; no
+additional automatic market-wide crawler has been enabled. Local verification starts
+the API with `DISCLOSURE_COLLECTION_ENABLED=false` to avoid duplicating the hosted
+scheduler. Check **Access & resources** to inspect actual usage.
+
+The disclosure browser also filters and paginates the saved PostgreSQL JSON on the
+server, returning only the requested page plus compact summaries. It preserves the
+same latest-amendment selection and manual/automatic duplicate suppression as the
+Python reference. `backend/tests/test_disclosure_projection.py` checks parity using
+a temporary table when `STOCKSCOPE_TEST_DATABASE_URL` is provided; it does not replace
+or modify saved disclosure data.
+
+Mobile disclosure rows show the ticker, activity, reported range, and trade date first.
+Animate UI details reveal the owner, filing/public date, observation date, and original
+evidence; desktop keeps this evidence visible. Filters stack at phone widths and active
+filters can be removed individually. Company previews use the same record layout.

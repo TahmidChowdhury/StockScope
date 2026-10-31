@@ -7,6 +7,7 @@ duration is one discrete quarter. Preserve the original periods and filings.
 
 from __future__ import annotations
 
+from backend.core.resources import guarded_get
 import hashlib
 import json
 import math
@@ -149,7 +150,7 @@ def _request_json(url: str, user_agent: str, ttl: int = 900) -> dict:
         result = {"status": "failed", "url": url, "retrieved_at": None, "from_cache": False, "error": None, "data": None}
         cache_seconds, size = 60, 0
         try:
-            with requests.get(url, headers={"User-Agent": user_agent, "Accept": "application/json"},
+            with guarded_get(url, headers={"User-Agent": user_agent, "Accept": "application/json"},
                               timeout=REQUEST_TIMEOUT, stream=True, allow_redirects=False) as response:
                 result["http_status"] = response.status_code
                 if response.status_code != 200:

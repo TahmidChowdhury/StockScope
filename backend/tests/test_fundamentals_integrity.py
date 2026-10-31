@@ -160,10 +160,8 @@ def test_aggregate_cash_is_not_double_counted_with_short_term_investments():
 
 
 def screen(request, rows):
-    async def fetch(ticker, loop):
-        return rows[ticker]
-    with patch("backend.routers.fundamentals._fetch_ticker_screener", side_effect=fetch):
-        return asyncio.run(screen_fundamentals(request, current_user="user"))
+    with patch("backend.routers.fundamentals.peek_many", return_value={symbol: {"ttm": row} for symbol, row in rows.items() if row is not None}):
+        return asyncio.run(screen_fundamentals(request, current_user="member"))
 
 
 def test_screener_counts_all_matches_before_limit_and_reports_partial_coverage():

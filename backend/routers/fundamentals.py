@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from backend.core.cache import cached
+from backend.core.cache import cached, peek_many
 from backend.core.auth import verify_password_with_role
 from backend.services.fundamentals import compute_ttm_metrics, compute_quarterly_series, compact
 from backend.models.fundamentals import (
@@ -57,22 +57,14 @@ async def get_saved_sec_facts(
             "offset": offset, "limit": limit, "has_more": offset + limit < len(filtered), "concepts": options}
 
 
-@cached
 def _compute_ttm_cached(ticker: str) -> dict:
     """Cached TTM computation."""
-    ttm_data = compute_ttm_metrics(ticker)
-    # Convert to dict and compact (exclude None values)
-    ttm_dict = ttm_data.model_dump(exclude_none=True) if hasattr(ttm_data, 'model_dump') else ttm_data.__dict__
-    return compact(ttm_dict)
+    return _compute_full_cached(ticker)["ttm"]
 
 
-@cached
 def _compute_series_cached(ticker: str) -> dict:
     """Cached series computation."""
-    series_data = compute_quarterly_series(ticker)
-    # Convert to dict and compact (exclude None/empty values)
-    series_dict = series_data.model_dump(exclude_none=True) if hasattr(series_data, 'model_dump') else series_data.__dict__
-    return compact(series_dict)
+    return _compute_full_cached(ticker)["series"]
 
 
 @cached
@@ -87,7 +79,7 @@ def _compute_full_cached(ticker: str) -> dict:
 async def get_ttm_fundamentals(ticker: str, current_user: str = Depends(verify_password_with_role)):
     """Get TTM fundamentals data for a single ticker - returns only available fields."""
     try:
-        result = _compute_ttm_cached(ticker.upper())
+        result = await asyncio.to_thread(_compute_ttm_cached, ticker.upper())
         return result
         
     except Exception as e:
@@ -98,7 +90,7 @@ async def get_ttm_fundamentals(ticker: str, current_user: str = Depends(verify_p
 async def get_series_fundamentals(ticker: str, current_user: str = Depends(verify_password_with_role)):
     """Get series fundamentals data for a single ticker - returns only available series."""
     try:
-        result = _compute_series_cached(ticker.upper())
+        result = await asyncio.to_thread(_compute_series_cached, ticker.upper())
         return result
         
     except Exception as e:
@@ -109,7 +101,7 @@ async def get_series_fundamentals(ticker: str, current_user: str = Depends(verif
 async def get_fundamentals(ticker: str, current_user: str = Depends(verify_password_with_role)):
     """Get fundamentals data (TTM and series) for a single ticker - compact format."""
     try:
-        result = _compute_full_cached(ticker.upper())
+        result = await asyncio.to_thread(_compute_full_cached, ticker.upper())
         return result
         
     except Exception as e:
@@ -157,7 +149,7 @@ async def compare_fundamentals(request: CompareRequest, current_user: str = Depe
 
 
 # Semaphore to cap concurrent yfinance calls (avoids hammering the API)
-_SCREENER_CONCURRENCY = 15
+_SCREENER_CONCURRENCY = 2
 _screener_semaphore = asyncio.Semaphore(_SCREENER_CONCURRENCY)
 
 
@@ -192,13 +184,15 @@ async def screen_fundamentals(request: ScreenerRequest, current_user: str = Depe
                 detail="Universe too large (max 500 tickers)"
             )
         
-        loop = asyncio.get_event_loop()
         tickers = [t.upper() for t in universe]
 
-        # Fetch all tickers concurrently (bounded by semaphore)
-        raw_results = await asyncio.gather(
-            *[_fetch_ticker_screener(ticker, loop) for ticker in tickers]
-        )
+        # A screen never fans out into hundreds of paid/rate-limited requests.
+        # Individual company views populate the shared six-hour cache.
+        def saved_rows():
+            saved = peek_many('_compute_full_cached', tickers)
+            return [saved.get(ticker, {}).get('ttm') for ticker in tickers]
+
+        raw_results = await asyncio.to_thread(saved_rows)
 
         results = []
         total_screened = 0

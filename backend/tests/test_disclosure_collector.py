@@ -40,6 +40,9 @@ def context(request, monkeypatch, tmp_path):
         with engine.begin() as connection:
             config.attributes["connection"] = connection
             command.upgrade(config, "head")
+            workspace_config = Config(str(Path(__file__).resolve().parents[2] / 'alembic.ini'), ini_section='workspace')
+            workspace_config.attributes['connection'] = connection
+            command.upgrade(workspace_config, 'head')
         repo = ResearchRepository(engine)
     monkeypatch.setattr(research, "repository", lambda: repo)
     current = [datetime(2026, 10, 22, 14, tzinfo=timezone.utc)]

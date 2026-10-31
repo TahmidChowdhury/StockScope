@@ -6,6 +6,7 @@ the caller can distinguish current research from information known in the past.
 """
 from __future__ import annotations
 
+from backend.core.resources import guarded_get
 import hashlib
 import io
 import json
@@ -60,7 +61,7 @@ def _download(url, maximum):
             raise DisclosureSourceError("Disclosure download exceeded its time limit")
         _trusted_download_url(url)
         try:
-            with requests.get(url, stream=True, allow_redirects=False, timeout=(min(10, remaining), min(45, remaining)),
+            with guarded_get(url, stream=True, allow_redirects=False, timeout=(min(10, remaining), min(45, remaining)),
                               headers={"User-Agent": "StockScope/1.0 public-disclosure-research"}) as response:
                 if response.status_code in (301, 302, 303, 307, 308):
                     location = response.headers.get("Location")

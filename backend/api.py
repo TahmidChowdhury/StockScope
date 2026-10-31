@@ -2,7 +2,7 @@
 Optimized FastAPI backend for StockScope with caching, proper error handling, efficient data access, and simple authentication
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Query, status
+from fastapi import Request, FastAPI, HTTPException, BackgroundTasks, Depends, Query, status
 from contextlib import asynccontextmanager
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi.middleware.cors import CORSMiddleware
@@ -98,7 +98,7 @@ def validate_stock_symbol(symbol: str) -> tuple[bool, str]:
     except ValueError as exc:
         return False, str(exc)
     try:
-        import yfinance as yf
+        import backend.core.market_provider as yf
         
         # Check with yfinance
         ticker = yf.Ticker(symbol)
@@ -129,7 +129,7 @@ def load_dataframes(ticker):
 def get_company_info(symbol: str) -> tuple[bool, dict]:
     """Return observed provider metrics without inventing values or quote dates."""
     try:
-        import yfinance as yf
+        import backend.core.market_provider as yf
 
         symbol = symbol.upper().strip()
         ticker = yf.Ticker(symbol)
@@ -366,6 +366,9 @@ async def database_unavailable(request, exc):
 
 
 # Include fundamentals router with correct path prefix
+from backend.routers.workspace import router as workspace_router
+app.include_router(workspace_router, prefix="/api", tags=["Private workspace"])
+
 app.include_router(fundamentals_router, prefix="/api/fundamentals", tags=["Fundamentals"])
 app.include_router(trading_router, prefix="/api/trading", tags=["Paper trading"])
 app.include_router(sentiment_lab_router, prefix="/api/sentiment-lab", tags=["Tone research"])
@@ -572,7 +575,7 @@ async def root():
 # Authentication Endpoints
 
 @app.post("/api/auth/login", response_model=SimpleAuthResponse, tags=["Authentication"])
-async def login(login_request: LoginRequest):
+async def login(login_request: LoginRequest, request: Request = None):
     """Authenticate with password and return bearer token."""
     try:
         
@@ -584,7 +587,13 @@ async def login(login_request: LoginRequest):
                 detail="Password cannot be empty"
             )
         
+        from backend.services import accounts
+        accounts.throttle("legacy:" + (request.client.host if request and request.client else "unknown"))
+        if repository() is None and os.getenv("ALLOW_LEGACY_FILE_AUTH", "false").lower() != "true":
+            raise HTTPException(503, "Private accounts require the workspace database.")
         is_valid, role = await authenticate_user(login_request.password)
+        if repository() is not None and (role != "admin" or await asyncio.to_thread(accounts.has_users)):
+            raise HTTPException(401, "Use your individual invited account.")
         if not is_valid:
             logger.warning("Authentication failed for provided password")
             raise HTTPException(
@@ -673,88 +682,26 @@ async def get_stock_suggestions(
 @app.get("/api/stocks", tags=["Portfolio"])
 def get_available_stocks(current_user: str = Depends(verify_password_with_role)):
     """Get list of analyzed stocks with metadata including current prices"""
-    import yfinance as yf
-    import pandas as pd
-    
-    cache_key = "available_stocks"
-    cached_result = cache.get(cache_key)
-    if cached_result:
+    cached_result = cache.get("available_stocks")
+    if cached_result is not None:
         return cached_result
-    
-    try:
-        tickers = get_available_tickers()
-        
-        # Enhanced response with metadata and price data
-        stocks_with_metadata = []
-        for ticker in tickers:
-            try:
-                # Quick metadata without full dataframe load
-                df = load_dataframes(ticker)
-                stock_info = {
-                    "symbol": ticker,
-                    "currentPrice": None,
-                    "priceChange": None,
-                    "priceChangePercent": None,
-                    "price_as_of": None,
-                    "companyName": ticker,
-                    "total_posts": 0,
-                    "avg_sentiment": None,
-                    "last_updated": None,
-                    "freshness": "unknown",
-                    "sources": []
-                }
-                
-                if not df.empty:
-                    as_of = latest_timestamp(df)
-                    stock_info.update({
-                        "total_posts": len(df), "avg_sentiment": sentiment_metrics(df)["avg_sentiment"],
-                        "last_updated": as_of, "freshness": evidence_freshness(df),
-                        "sources": list(df['source'].unique()),
-                    })
-
-                # Fetch current price data
-                try:
-                    stock = yf.Ticker(ticker)
-                    info = stock.info
-                    hist = stock.history(period="5d", timeout=10)
-                    
-                    if not hist.empty and len(hist) >= 1:
-                        current_price, prev_price, price_as_of = latest_daily_close(hist)
-                        price_change = price_change_percent = None
-                        if current_price is not None and prev_price not in (None, 0):
-                            price_change = finite_number(current_price - prev_price)
-                            price_change_percent = finite_number((current_price / prev_price - 1) * 100)
-                        
-                        stock_info.update({
-                            "currentPrice": round(current_price, 2) if current_price is not None else None,
-                            "priceChange": round(price_change, 2) if price_change is not None else None,
-                            "priceChangePercent": round(price_change_percent, 2) if price_change_percent is not None else None,
-                            "companyName": info.get('longName', info.get('shortName', ticker)),
-                            "price_as_of": price_as_of.isoformat() if price_as_of else None,
-                            "price_basis": "latest_daily_close",
-                        })
-                    
-                except Exception as price_error:
-                    logger.debug(f"Failed to get price data for {ticker}: {price_error}")
-                    # Keep default values if price fetch fails
-                
-                stocks_with_metadata.append(stock_info)
-                
-            except SQLAlchemyError:
-                raise
-            except Exception as e:
-                logger.warning(f"Failed to get metadata for {ticker}: {e}")
-                stocks_with_metadata.append({"symbol": ticker})
-        
-        result = {"stocks": stocks_with_metadata, "count": len(stocks_with_metadata)}
-        cache.set(cache_key, result, ttl=300)  # 5 minute cache
-        return result
-        
-    except SQLAlchemyError:
-        raise
-    except Exception:
-        logger.error("Error getting available stocks")
-        raise HTTPException(status_code=500, detail="Failed to fetch stock portfolio")
+    repo = repository()
+    if repo is not None:
+        stocks = repo.list_company_summaries()
+    else:
+        stocks = []
+        for symbol in get_available_tickers():
+            df = load_dataframes(symbol)
+            stocks.append({"symbol": symbol, "companyName": symbol, "total_posts": len(df),
+                           "avg_sentiment": sentiment_metrics(df)["avg_sentiment"],
+                           "last_updated": latest_timestamp(df), "freshness": evidence_freshness(df),
+                           "sources": list(df["source"].unique()) if not df.empty else [],
+                           "currentPrice": None, "priceChange": None, "priceChangePercent": None,
+                           "price_as_of": None})
+    result = {"stocks": stocks, "count": len(stocks), "price_mode": "on_demand",
+              "checked_at": datetime.now(timezone.utc).isoformat()}
+    cache.set("available_stocks", result, ttl=300)
+    return result
 
 @app.get("/api/stocks/{symbol}", response_model=EnhancedAnalysisResult, tags=["Analysis"])
 async def get_stock_analysis(symbol: str, current_user: str = Depends(verify_password_with_role)) -> EnhancedAnalysisResult:
@@ -785,6 +732,8 @@ async def reconcile_finished_job(symbol, repo):
 
 @app.post("/api/stocks/analyze", status_code=202, tags=["Analysis"])
 async def analyze_stock(request: StockRequest, background_tasks: BackgroundTasks, current_user: str = Depends(verify_password_with_role)):
+    if current_user in {"guest", "demo", "viewer"}:
+        raise HTTPException(403, "Member access is required to refresh shared research.")
     async with research_mutation_lock():
         symbol = normalized_symbol(request.symbol)
         existing = analysis_status.get(symbol)
@@ -801,6 +750,11 @@ async def analyze_stock(request: StockRequest, background_tasks: BackgroundTasks
                 # Never evict the only terminal result before its durable write succeeds.
                 await reconcile_finished_job(finished[0], repo)
                 del analysis_status[finished[0]]
+        from backend.core.resources import admit_refresh, BudgetExceeded
+        try:
+            await asyncio.to_thread(admit_refresh, symbol)
+        except BudgetExceeded as exc:
+            raise HTTPException(429, str(exc), headers={"Retry-After": "21600"}) from exc
         if repo is not None:
             persisted = await asyncio.to_thread(repo.create_run, symbol, request.sources)
             job = AnalysisStatus.model_validate(persisted)
@@ -897,7 +851,7 @@ def get_price_history(
         return cached_result
     
     try:
-        import yfinance as yf
+        import backend.core.market_provider as yf
         
         # Create ticker object
         ticker = yf.Ticker(symbol)
@@ -953,7 +907,7 @@ def get_price_history(
         }
         
         # Cache for 5 minutes (price data changes frequently)
-        cache.set(cache_key, result, ttl=300)
+        cache.set(cache_key, result, ttl=3600)
         return result
         
     except HTTPException:

@@ -27,6 +27,9 @@ def migrate(engine, revision="head"):
     with engine.begin() as connection:
         config.attributes["connection"] = connection
         command.upgrade(config, revision)
+        workspace_config = Config(str(Path(__file__).resolve().parents[2] / 'alembic.ini'), ini_section='workspace')
+        workspace_config.attributes['connection'] = connection
+        command.upgrade(workspace_config, 'head')
 
 
 @pytest.fixture

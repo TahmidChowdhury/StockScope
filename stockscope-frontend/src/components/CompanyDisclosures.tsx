@@ -3,28 +3,12 @@
 import { useId } from 'react'
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUpRight, ExternalLink, Landmark, RefreshCw } from 'lucide-react'
-import { disclosureChamberLabel, disclosureOwnerLabel, tradingDate, tradingRequest, type DisclosureResearch } from '@/lib/trading'
+import { ArrowUpRight, Landmark, RefreshCw } from 'lucide-react'
+import { tradingRequest, type DisclosureResearch } from '@/lib/trading'
+
+import DisclosureRecord from './DisclosureRecord'
 
 const API_UPDATE_MESSAGE = 'Company disclosures are waiting for a compatible server update. Try again shortly.'
-
-function disclosureDate(value: string) {
-  const date = new Date(`${value}T00:00:00Z`)
-  return Number.isNaN(date.getTime())
-    ? 'Unknown'
-    : date.toLocaleDateString('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
-      })
-}
-
-function sourceHref(value: string) {
-  try {
-    const url = new URL(value)
-    return url.protocol === 'https:' ? url.href : undefined
-  } catch {
-    return undefined
-  }
-}
 
 export default function CompanyDisclosures({ symbol }: { symbol: string }) {
   const headingId = useId()
@@ -112,41 +96,7 @@ export default function CompanyDisclosures({ symbol }: { symbol: string }) {
       ) : records.length > 0 ? (
         <>
           <ul className="divide-y divide-white/[0.06] border-y border-white/[0.07]">
-            {records.map((record) => {
-              const href = sourceHref(record.source_url)
-              const purchase = record.side === 'buy'
-              return (
-                <li key={record.disclosure_id} className="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_auto] sm:items-center sm:px-6">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-medium text-slate-200">{record.member}</p>
-                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${purchase ? 'bg-emerald-400/10 text-emerald-300' : 'bg-rose-400/10 text-rose-300'}`}>
-                        {purchase ? 'Purchase' : record.partial_sale ? 'Partial sale' : 'Sale'}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">
-                      Owner: {disclosureOwnerLabel(record.owner)} <span aria-hidden="true">·</span> {record.asset_type}
-                      {record.chamber && <> <span aria-hidden="true">·</span> {disclosureChamberLabel(record.chamber)}</>}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-300">{record.amount_range}</p>
-                  </div>
-                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs leading-5 sm:grid-cols-1">
-                    <div><dt className="inline text-slate-500">Traded </dt><dd className="inline text-slate-300">{disclosureDate(record.transaction_date)}</dd></div>
-                    <div><dt className="inline text-slate-500">{record.availability_basis === 'filing_day_estimate' ? 'Filed (estimate) ' : 'Public (imported) '}</dt><dd className="inline text-slate-300">{disclosureDate(record.filed_date || record.available_date)}</dd></div>
-                    {record.first_seen_at && <div><dt className="inline text-slate-500">First observed </dt><dd className="inline text-slate-300">{tradingDate(record.first_seen_at)}</dd></div>}
-                    <div className="col-span-2 text-[10px] text-slate-500 sm:col-span-1">
-                      <dt className="sr-only">Disclosure delay</dt>
-                      <dd>{record.lag_days} day{record.lag_days === 1 ? '' : 's'} after trade</dd>
-                    </div>
-                  </dl>
-                  {href ? (
-                    <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg py-1 text-xs text-violet-300 hover:text-violet-200" aria-label={`Read source for ${record.member}'s ${symbol} transaction on ${record.transaction_date}`}>
-                      Source <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                    </a>
-                  ) : <span className="text-xs text-slate-500">Source unavailable</span>}
-                </li>
-              )
-            })}
+            {records.map(record => <li key={record.disclosure_id}><DisclosureRecord record={record} showSymbol={false} /></li>)}
           </ul>
           <div className="flex flex-wrap justify-between gap-2 px-5 py-3 text-[10px] leading-5 text-slate-500 sm:px-6">
             <p>Filing dates estimate availability; CSV dates are importer supplied. Review the original source.</p>

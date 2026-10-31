@@ -16,12 +16,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
         refetchOnWindowFocus: true,
         staleTime: 5 * 60 * 1000,
         gcTime: 10 * 60 * 1000,
-        retry: (count, error) => !(error instanceof ApiError && error.status === 401) && count < 2,
+        retry: (count, error) => !(error instanceof ApiError && [401, 403, 429].includes(error.status)) && count < 2,
       },
       mutations: { retry: false },
     },
   }))
   const [session, setSession] = useState<AuthSession | null>(null)
+  const [invitation, setInvitation] = useState(false)
   const [ready, setReady] = useState(false)
   const [sessionVersion, setSessionVersion] = useState(0)
 
@@ -36,6 +37,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       if (event) window.scrollTo(0, 0)
     }
     window.addEventListener(AUTH_CHANGED_EVENT, syncSession)
+    setInvitation(new URLSearchParams(window.location.hash.slice(1)).has('invite'))
     syncSession()
     setReady(true)
     return () => window.removeEventListener(AUTH_CHANGED_EVENT, syncSession)
@@ -51,11 +53,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {!ready ? <div className="min-h-screen bg-slate-900" /> : session ? (
+      {!ready ? <div className="min-h-screen bg-slate-900" /> : session && !invitation ? (
         <div key={sessionVersion}>
           <MobileScrollProvider>{children}</MobileScrollProvider>
         </div>
-      ) : <LoginForm onLoginSuccess={() => {}} />}
+      ) : <LoginForm onLoginSuccess={() => setInvitation(false)} />}
       {process.env.NODE_ENV === 'development' && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
   )

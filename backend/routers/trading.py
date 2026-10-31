@@ -136,8 +136,8 @@ def disclosures(member: str = Query(default="", max_length=150), offset: int = Q
                 limit: int = Query(default=100, ge=1, le=200), symbol: str = Query(default="", max_length=10),
                 side: Literal["", "buy", "sell"] = "", q: str = Query(default="", max_length=120),
                 role=Depends(verify_password_with_role)):
-    document = call(congress.research_document)
-    return call(congress.browse, document, member, symbol, side, q, offset, limit)
+    from backend.trading import disclosure_browser
+    return call(disclosure_browser.browse, member, symbol, side, q, offset, limit)
 
 
 @router.get("/congress/collection")

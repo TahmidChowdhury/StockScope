@@ -19,7 +19,7 @@ def fetch_bars(symbols, start: date, end: date):
     Yahoo dividends are expressed on the same split-adjusted share basis.
     Corporate-action observations remain provider data, not audited records.
     """
-    import yfinance as yf
+    import backend.core.market_provider as yf
     output = {}
     for symbol in sorted(set(symbols)):
         try:

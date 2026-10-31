@@ -189,7 +189,7 @@ function ScreenForm() {
     <AppShell>
       <header className="mb-7">
         <p className="eyebrow mb-2">Discover with a clear set of criteria</p>
-        <h1 className="page-title">Stock screener</h1>
+        <h1 className="page-title">Stock screener</h1><p className="mt-3 text-xs leading-6 text-slate-400">Screens use saved fundamentals to conserve the shared data budget. Open a company’s Financials view to load its data; coverage and original retrieval dates remain visible.</p>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
           Narrow the field by growth, cash generation, and balance sheet
           strength. Coverage is shown alongside every result.
@@ -384,7 +384,7 @@ function ScreenForm() {
               ['Evaluated', data.total_evaluated],
               ['Matches', data.total_matches],
               [
-                'Failed / insufficient',
+                'Not cached / insufficient',
                 `${data.total_failed} / ${data.total_insufficient}`,
               ],
             ].map(([label, value]) => (
@@ -506,11 +506,10 @@ function ScreenForm() {
           ) : (
             <div className="surface p-10 text-center">
               <h3 className="text-sm font-medium">
-                No companies matched this screen
+                {data.total_evaluated === 0 ? 'No saved fundamentals in this view' : 'No companies matched this screen'}
               </h3>
               <p className="mt-2 text-xs leading-6 text-slate-400">
-                Review coverage above, loosen the filters, or try a different
-                universe.
+                {data.total_evaluated === 0 ? 'Open a company’s Financials view to load its data, then run this screen again. No provider calls were made by this screen.' : 'Review coverage above, loosen the filters, or try a different universe.'}
               </p>
             </div>
           )}

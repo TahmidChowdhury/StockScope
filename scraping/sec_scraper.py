@@ -1,3 +1,4 @@
+from backend.core.resources import guarded_get
 import os
 import requests
 import json
@@ -34,7 +35,7 @@ def get_company_cik(ticker):
     # Fallback: Search for CIK using SEC company tickers API
     try:
         url = "https://www.sec.gov/files/company_tickers.json"
-        response = requests.get(url, headers=get_sec_headers(), timeout=(5, 10))
+        response = guarded_get(url, headers=get_sec_headers(), timeout=(5, 10))
 
         if response.status_code == 200:
             companies = response.json()
@@ -58,7 +59,7 @@ def fetch_sec_filings(ticker, limit=10):
     url = f"https://data.sec.gov/submissions/CIK{cik}.json"
 
     try:
-        response = requests.get(url, headers=get_sec_headers(), timeout=(5, 10))
+        response = guarded_get(url, headers=get_sec_headers(), timeout=(5, 10))
 
         if response.status_code != 200:
             print(f"❌ SEC API error: {response.status_code}")

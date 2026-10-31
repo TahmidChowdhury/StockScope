@@ -1,3 +1,4 @@
+from backend.core.resources import guarded_get
 import os
 import requests
 import json
@@ -7,7 +8,7 @@ from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
-import yfinance as yf
+import backend.core.market_provider as yf
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from bs4 import BeautifulSoup
 import time
@@ -232,7 +233,7 @@ class EnhancedNewsScraper:
                     "domains": "reuters.com,bloomberg.com,marketwatch.com,yahoo.com,cnbc.com,fool.com,seekingalpha.com,investorplace.com,benzinga.com"
                 }
                 
-                response = requests.get("https://newsapi.org/v2/everything", params=params, timeout=(3, 5))
+                response = guarded_get("https://newsapi.org/v2/everything", params=params, timeout=(3, 5))
                 if response.status_code == 200:
                     articles = response.json().get("articles", [])
                     
@@ -277,7 +278,7 @@ class EnhancedNewsScraper:
             # Fetch bytes ourselves: GNews/feedparser URL loading has no finite timeout.
 
             query = f"{ticker} stock" if not company_name else f"{company_name} {ticker}"
-            response = self.session.get("https://news.google.com/rss/search", params={"q": query + " when:7d", "hl": "en-US", "gl": "US", "ceid": "US:en"}, timeout=self._request_timeout())
+            response = guarded_get(session=self.session, url="https://news.google.com/rss/search", params={"q": query + " when:7d", "hl": "en-US", "gl": "US", "ceid": "US:en"}, timeout=self._request_timeout())
             response.raise_for_status()
             feed = feedparser.parse(response.content)
             results = [{"title": entry.get("title", ""), "url": entry.get("link", ""), "description": entry.get("summary", ""), "publisher": {"title": entry.get("source", {}).get("title", "Google News")}, "published date": entry.get("published", "")} for entry in feed.entries[:10]]
@@ -342,7 +343,7 @@ class EnhancedNewsScraper:
                 break
             try:
                 print(f"🔍 Fetching {source_name} RSS for {ticker}...")
-                response = self.session.get(feed_url, timeout=self._request_timeout())
+                response = guarded_get(session=self.session, url=feed_url, timeout=self._request_timeout())
                 response.raise_for_status()
                 feed = feedparser.parse(response.content)
                 count = 0
@@ -437,7 +438,7 @@ class EnhancedNewsScraper:
             # Use the public Stocktwits API endpoint
             url = f"https://api.stocktwits.com/api/2/streams/symbol/{ticker}.json"
             
-            response = self.session.get(url, timeout=self._request_timeout())
+            response = guarded_get(session=self.session, url=url, timeout=self._request_timeout())
             response.raise_for_status()
             
             data = response.json()

@@ -484,3 +484,30 @@ button, a, select { touch-action: manipulation; }
 
 /* Keep shared field styles while laying out the custom select's value and icon. */
 .field-input.animated-select { display: flex; }
+
+/* StockScope research index: quiet chrome, clear hierarchy, compact company rows. */
+.shell-sidebar { background: #111613; }
+.scope-brand { display: flex; align-items: center; gap: 12px; padding: 32px 24px 30px; }
+.scope-mark { width: 32px; height: 32px; flex-shrink: 0; color: #b6c8ab; }
+.scope-wordmark { display: block; font-family: Georgia, 'Times New Roman', serif; font-size: 24px; letter-spacing: -1px; color: #f0eee6; }
+.scope-caption { display: block; margin-top: 5px; font-size: 10px; letter-spacing: .06em; color: #88938c; }
+.scope-navigation { padding: 8px 16px 0; }
+.scope-section-label { margin-bottom: 12px; padding: 0 12px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .16em; color: #8a968e; }
+.scope-nav-link { position: relative; display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 10px 12px; border-radius: 4px; color: #9fa9a2; font-size: 13px; transition: background-color 180ms ease, color 180ms ease; }
+.scope-nav-number { font: 10px ui-monospace, monospace; color: #69756d; }
+.scope-nav-arrow { opacity: 0; }
+.scope-nav-link[aria-current=page] { background: #b6c8ab0e; color: #e5eddf; }
+.scope-nav-link[aria-current=page]::before { content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 2px; background: #b6c8ab; }
+.scope-nav-link[aria-current=page] .scope-nav-number { color: #b6c8ab; }
+.scope-nav-link[aria-current=page] .scope-nav-arrow { opacity: 1; }
+.scope-watchlist { margin: 28px 16px 0; border-top: 1px solid #ffffff0c; padding-top: 22px; }
+.scope-nav-footer { margin-top: auto; padding: 24px; }
+.scope-nav-footer > div { border-top: 1px solid #ffffff0c; padding-top: 18px; }
+.scope-mobile-active { position: relative; background: #b6c8ab08; }
+.scope-mobile-active::before { content: ''; position: absolute; top: 0; height: 2px; width: 20px; border-radius: 2px; background: #b6c8ab; }
+.shell-mobile-nav a, .shell-mobile-nav button { -webkit-tap-highlight-color: transparent; transition: color 180ms ease, background-color 180ms ease; }
+.shell-drawer .scope-brand { padding-top: 56px; }
+@media (hover: hover) {
+  .scope-nav-link:hover { background: #ffffff05; color: #f0eee6; }
+  .scope-nav-link:hover .scope-nav-arrow { opacity: 1; }
+}

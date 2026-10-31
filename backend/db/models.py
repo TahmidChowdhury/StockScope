@@ -231,3 +231,53 @@ class TradingDocument(Base):
     kind = Column(String(20), nullable=False, index=True)
     payload = Column(JSON, nullable=False)
     summary = Column(JSON, nullable=False)
+
+
+class WorkspaceUser(Base):
+    __tablename__ = "workspace_users"
+    id = Column(String(36), primary_key=True, default=identifier)
+    email = Column(String(254), nullable=False, unique=True)
+    name = Column(String(80), nullable=False)
+    password_hash = Column(Text, nullable=False)
+    role = Column(String(16), nullable=False, default="member")
+    active = Column(Boolean, nullable=False, default=True)
+    session_version = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    __table_args__ = (CheckConstraint("role IN ('admin', 'member', 'viewer')", name="user_role"),)
+
+
+class WorkspaceInvite(Base):
+    __tablename__ = "workspace_invites"
+    id = Column(String(36), primary_key=True, default=identifier)
+    email = Column(String(254), nullable=False)
+    role = Column(String(16), nullable=False)
+    token_hash = Column(String(64), nullable=False, unique=True)
+    created_by = Column(String(36), ForeignKey("workspace_users.id"), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    revoked = Column(Boolean, nullable=False, default=False)
+    __table_args__ = (CheckConstraint("role IN ('admin', 'member', 'viewer')", name="invite_role"),)
+
+
+class PersonalList(Base):
+    __tablename__ = "personal_lists"
+    id = Column(String(36), primary_key=True, default=identifier)
+    owner_id = Column(String(36), ForeignKey("workspace_users.id"), nullable=False, index=True)
+    name = Column(String(80), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_personal_list_name"),)
+
+
+class PersonalListItem(Base):
+    __tablename__ = "personal_list_items"
+    list_id = Column(String(36), ForeignKey("personal_lists.id", ondelete="CASCADE"), primary_key=True)
+    symbol = Column(String(10), primary_key=True)
+    pinned = Column(Boolean, nullable=False, default=False)
+    added_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class ResourceState(Base):
+    """Small persistent quota/lock records; never stores provider credentials."""
+    __tablename__ = "resource_state"
+    key = Column(String(120), primary_key=True)
+    payload = Column(JSON, nullable=False, default=dict)

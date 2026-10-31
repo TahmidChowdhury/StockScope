@@ -35,6 +35,9 @@ def context(request, monkeypatch, tmp_path):
         with engine.begin() as connection:
             config.attributes["connection"] = connection
             command.upgrade(config, "head")
+            workspace_config = Config(str(Path(__file__).resolve().parents[2] / 'alembic.ini'), ini_section='workspace')
+            workspace_config.attributes['connection'] = connection
+            command.upgrade(workspace_config, 'head')
         repo = ResearchRepository(engine)
         assert repo.check_ready()
     monkeypatch.setattr(research, "repository", lambda: repo)
@@ -55,8 +58,16 @@ def context(request, monkeypatch, tmp_path):
             day += timedelta(days=1)
         return {s: copy.deepcopy(rows) for s in set(symbols)}
     monkeypatch.setattr(market, "fetch_bars", prices)
+    headers = {role: {"Authorization": f"Bearer {create_access_token('fixture', role)}"} for role in ["admin", "guest", "demo"]}
+    if repo:
+        from backend.db.models import WorkspaceUser
+        with repo.session_factory.begin() as session:
+            for legacy, role in [('admin', 'admin'), ('guest', 'viewer'), ('demo', 'member')]:
+                user = WorkspaceUser(email=role + '@example.test', name=role, role=role, password_hash='fixture-no-login')
+                session.add(user)
+                session.flush()
+                headers[legacy] = {'Authorization': 'Bearer ' + create_access_token('user:' + user.id, role, session_version=user.session_version)}
     with TestClient(app) as client:
-        headers = {role: {"Authorization": f"Bearer {create_access_token('fixture', role)}"} for role in ["admin", "guest", "demo"]}
         yield client, headers, prices, tmp_path, repo
     if engine:
         engine.dispose()

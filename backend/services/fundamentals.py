@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 from datetime import datetime, timezone
 import math
 import pandas as pd
-import yfinance as yf
+import backend.core.market_provider as yf
 import os
 import logging
 

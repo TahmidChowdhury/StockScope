@@ -1,50 +1,72 @@
-"""Simple TTL cache utilities for fundamentals data."""
-
+"""Shared fundamentals cache: coalesced fetches, durable last-good data, no polling."""
 from cachetools import TTLCache
 from functools import wraps
+from threading import RLock
+from time import time
 import hashlib
 import json
 from typing import Any, Callable, TypeVar
 
-# Global cache instance - 6 hour TTL for fundamentals data
+_cache_lock = RLock()
+_key_locks = [RLock() for _ in range(64)]
 _fundamentals_cache = TTLCache(maxsize=600, ttl=6 * 3600)
-
 F = TypeVar('F', bound=Callable[..., Any])
 
-def cache_key(*args, **kwargs) -> str:
-    """Generate cache key from function arguments."""
-    key_data = {
-        'args': args,
-        'kwargs': sorted(kwargs.items()) if kwargs else {}
-    }
-    key_str = json.dumps(key_data, sort_keys=True, default=str)
-    return hashlib.md5(key_str.encode()).hexdigest()
+
+def cache_key(*args, **kwargs):
+    return hashlib.sha256(json.dumps({'args': args, 'kwargs': kwargs}, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _key(name, args, kwargs):
+    return f'cache:{name}:{cache_key(*args, **kwargs)}'
+
+
+def peek_many(name, symbols):
+    """One compact DB query; a screen never creates cache rows or calls providers."""
+    from backend.core.resources import read_states
+    keys = {_key(name, (symbol,), {}): symbol for symbol in symbols}
+    stored = read_states(list(keys))
+    result = {keys[key]: value['result'] for key, value in stored.items() if value.get('result') is not None}
+    with _cache_lock:
+        result.update({symbol: _fundamentals_cache[key] for key, symbol in keys.items() if key in _fundamentals_cache})
+    return result
+
 
 def cached(func: F) -> F:
-    """Decorator to cache function results with TTL."""
     @wraps(func)
     def wrapper(*args, **kwargs):
-        key = f"{func.__name__}:{cache_key(*args, **kwargs)}"
-        
-        if key in _fundamentals_cache:
-            return _fundamentals_cache[key]
-        
-        result = func(*args, **kwargs)
-        _fundamentals_cache[key] = result
-        return result
-    
+        from backend.core.resources import state, read_states
+        key = _key(func.__name__, args, kwargs)
+        with _key_locks[int(hashlib.sha256(key.encode()).hexdigest(), 16) % len(_key_locks)]:
+            with _cache_lock:
+                if key in _fundamentals_cache:
+                    return _fundamentals_cache[key]
+            stored = read_states([key]).get(key, {})
+            previous, expires = stored.get('result'), stored.get('expires_at', 0)
+            if previous is not None and expires > time():
+                return previous
+            result = func(*args, **kwargs)
+            insufficient = result.get('insufficient_data', result.get('metadata', {}).get('insufficient_data', False)) if isinstance(result, dict) else False
+            if insufficient and previous is not None:
+                # Original observation/retrieval dates remain intact.
+                with _cache_lock:
+                    _fundamentals_cache[key] = previous
+                return previous
+            serializable = json.loads(json.dumps(result, default=lambda value: value.isoformat(), allow_nan=False))
+            with _cache_lock:
+                _fundamentals_cache[key] = serializable
+            if not insufficient:
+                with state(key) as stored:
+                    stored.update(result=serializable, expires_at=time() + 6 * 3600)
+            return serializable
     return wrapper
 
-def clear_cache():
-    """Clear all cached data."""
-    _fundamentals_cache.clear()
 
-def cache_stats() -> dict:
-    """Get cache statistics."""
-    return {
-        'size': len(_fundamentals_cache),
-        'maxsize': _fundamentals_cache.maxsize,
-        'ttl': _fundamentals_cache.ttl,
-        'hits': getattr(_fundamentals_cache, 'hits', 0),
-        'misses': getattr(_fundamentals_cache, 'misses', 0)
-    }
+def clear_cache():
+    with _cache_lock:
+        _fundamentals_cache.clear()
+
+
+def cache_stats():
+    with _cache_lock:
+        return {'size': len(_fundamentals_cache), 'maxsize': _fundamentals_cache.maxsize, 'ttl': _fundamentals_cache.ttl}

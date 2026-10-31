@@ -147,3 +147,11 @@ test('malformed, wrong-version, and invalid-shape drafts never become applicatio
     assert.equal(local.getItem('key'), null)
   }
 })
+
+test('individual accounts do not reuse another member’s saved research drafts', () => {
+  const first = api.workspaceDraftKey('https://api.example.test', 'user-friend-1', 'screener')
+  const second = api.workspaceDraftKey('https://api.example.test', 'user-friend-2', 'screener')
+  const legacy = api.workspaceDraftKey('https://api.example.test', 'member', 'screener')
+  assert.notEqual(first, second)
+  assert.notEqual(first, legacy)
+})

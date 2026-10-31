@@ -3,7 +3,7 @@
 import logging
 from typing import List, Optional
 from datetime import datetime, timedelta
-import yfinance as yf
+import backend.core.market_provider as yf
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 from . import SentimentData, SentimentSource

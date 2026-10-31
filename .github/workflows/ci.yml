@@ -55,6 +55,7 @@ jobs:
           engine.dispose()
           PYTHON
           venv/bin/alembic upgrade head
+          venv/bin/alembic -n workspace upgrade head
       - name: Run backend and PostgreSQL integration tests
         env:
           STOCKSCOPE_TEST_DATABASE_URL: postgresql+psycopg://stockscope_ci:disposable-ci-password@localhost:5432/stockscope_test

@@ -88,7 +88,7 @@ def test_fundamentals_service_initialization():
     assert service is not None
 
 
-@patch("yfinance.Ticker")
+@patch("backend.core.market_provider.Ticker")
 def test_compute_ttm_metrics_with_mock_data(mock_ticker):
     _mock_ticker_with_financials(mock_ticker)
 
@@ -102,7 +102,7 @@ def test_compute_ttm_metrics_with_mock_data(mock_ticker):
     assert result.fcf_ttm is not None
 
 
-@patch("yfinance.Ticker")
+@patch("backend.core.market_provider.Ticker")
 def test_compute_quarterly_series_with_mock_data(mock_ticker):
     _mock_ticker_with_financials(mock_ticker)
 
@@ -115,7 +115,7 @@ def test_compute_quarterly_series_with_mock_data(mock_ticker):
     assert result.fcf_q is not None
 
 
-@patch("yfinance.Ticker")
+@patch("backend.core.market_provider.Ticker")
 def test_fundamentals_service_wrapper_response(mock_ticker):
     _mock_ticker_with_financials(mock_ticker)
 

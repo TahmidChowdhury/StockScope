@@ -1,3 +1,4 @@
+from backend.core.resources import guarded_get
 import os
 import requests
 import json
@@ -135,7 +136,7 @@ def fetch_news_sentiment(ticker, limit=20):
 
     if not NEWS_API_KEY:
         return None
-    response = requests.get(BASE_URL, params=params, timeout=(3, 5))
+    response = guarded_get(BASE_URL, params=params, timeout=(3, 5))
     if response.status_code != 200:
         raise RuntimeError(f"NewsAPI request failed ({response.status_code})")
 

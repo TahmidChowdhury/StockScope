@@ -4,6 +4,7 @@ Only repository configuration controls request destinations. Article URLs are
 returned as links and are never fetched. Discovery time is not publication time.
 """
 
+from backend.core.resources import guarded_get
 import ipaddress
 import json
 import os
@@ -124,7 +125,7 @@ class ResearchNewsSources:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("Provider collection budget exhausted")
-        response = self.session.get(
+        response = guarded_get(session=self.session, url=
             url, params=params, stream=True, allow_redirects=False,
             timeout=Timeout(total=remaining, connect=min(3, remaining), read=min(7, remaining)),
             headers={"Accept": "application/json, application/rss+xml, application/xml, text/xml"},

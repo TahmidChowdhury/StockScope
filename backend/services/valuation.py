@@ -10,7 +10,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from cachetools import TTLCache
-import yfinance as yf
+import backend.core.market_provider as yf
 
 from backend.services.fundamentals import get_service
 

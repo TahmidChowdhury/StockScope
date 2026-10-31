@@ -101,7 +101,7 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbol, sources: ['news', 'sec_facts'] }),
       })
-      if (!response.ok) throw new Error('Could not start the source refresh.')
+      if (!response.ok) { const body = await response.json(); throw new Error(typeof body.detail === 'string' ? body.detail : 'Could not start the source refresh.') }
       const deadline = Date.now() + 240_000
       while (Date.now() < deadline) {
         await pause(1500, controller.signal)
@@ -188,7 +188,7 @@ export default function StockDashboard({ symbol, onBack, embedded = false }: Sto
             <h2 className="text-2xl font-semibold">{symbol} research</h2>
             <p className="mt-1 max-w-2xl text-sm text-slate-300">News tone and filing events provide context. They do not estimate investment returns or the probability of a profitable trade.</p>
           </div>
-          <button onClick={refreshSources} disabled={refreshing || loading} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-medium hover:bg-blue-500 disabled:opacity-50">
+          <button onClick={refreshSources} disabled={refreshing || loading || ['viewer', 'guest', 'demo'].includes(getAuthSession()?.role || '')} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-medium hover:bg-blue-500 disabled:opacity-50">
             <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? 'Refreshing sources…' : 'Refresh sources'}
           </button>

@@ -137,3 +137,12 @@ test('stalled reads time out and caller cancellation is preserved', async () => 
   controller.abort()
   await assert.rejects(cancelled, error => error.message === 'aborted' && error.status !== 504)
 })
+
+test('individual member sessions retain identity and clear it on sign-out', () => {
+  const { api } = harness()
+  api.saveAuthSession({ success: true, message: 'OK', access_token: 'member-token', token_type: 'bearer', expires_in_seconds: 3600, role: 'member', user: { id: 'friend-1', name: 'Friend', email: 'friend@example.test', role: 'member' } })
+  assert.equal(api.getAuthSession().user.id, 'friend-1')
+  assert.equal(api.getAuthSession().role, 'member')
+  api.clearAuthSession()
+  assert.equal(api.getAuthSession(), null)
+})

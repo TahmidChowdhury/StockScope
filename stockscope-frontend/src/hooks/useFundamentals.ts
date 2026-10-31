@@ -43,11 +43,7 @@ export const useCompare = () => {
         }
       )
       
-      if (!response.ok) {
-        throw new Error('Failed to compare fundamentals')
-      }
-      
-      return response.json()
+      return readApiJson<FundamentalsTTM[]>(response, 'Failed to compare fundamentals')
     }
   })
 }

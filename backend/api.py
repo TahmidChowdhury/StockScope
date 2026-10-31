@@ -108,6 +108,8 @@ def validate_stock_symbol(symbol: str) -> tuple[bool, str]:
         
         return True, f"Valid symbol: {info.get('longName', info.get('shortName', symbol))}"
         
+    except PersonalYahooLimit:
+        raise
     except Exception as e:
         return False, f"Error validating symbol: {str(e)}"
 
@@ -119,7 +121,7 @@ def load_dataframes(ticker):
     """Read stored evidence, retaining original dates and excluding SEC template scores."""
     return load_evidence(ticker)
 
-from backend.core.resources import BudgetExceeded, require_available
+from backend.core.resources import BudgetExceeded, PersonalYahooLimit, require_available
 from backend.core.provider_cache import ProviderUnavailable
 
 
@@ -361,6 +363,12 @@ app = FastAPI(
     version="2.0.0",
     description="Optimized API for stock sentiment analysis with caching and advanced features"
 )
+
+@app.exception_handler(PersonalYahooLimit)
+async def personal_limit_reached(request, exc):
+    return JSONResponse(status_code=429, content={"detail": str(exc)},
+                        headers={"Retry-After": str(exc.retry_after)})
+
 
 @app.exception_handler(SQLAlchemyError)
 async def database_unavailable(request, exc):
@@ -963,6 +971,8 @@ def validate_symbol(symbol: str, current_user: str = Depends(verify_password_wit
             "timestamp": datetime.now()
         }
         
+    except PersonalYahooLimit:
+        raise
     except Exception as e:
         logger.error(f"Error validating symbol {symbol}: {e}")
         raise HTTPException(status_code=500, detail="Symbol validation failed")

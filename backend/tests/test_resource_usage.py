@@ -32,7 +32,6 @@ def test_history_rollover_retention_and_cooldown(local_state):
 
 
 def test_request_response_and_denial_logs(local_state, monkeypatch, caplog):
-    monkeypatch.setenv('PROVIDER_YAHOO_DAILY_LIMIT', '1')
     caplog.set_level(logging.INFO, logger='stockscope.usage')
     with resources.provider_operation('history'):
         resources.reserve('yahoo', cooldown=0, category='chart')
@@ -57,3 +56,59 @@ def test_response_after_midnight_preserves_previous_day(local_state):
     assert summary['used'] == 0
     assert summary['responses'] == {'network_error': 1}
     assert summary['history'][0]['count'] == 1
+
+
+def test_operators_can_still_disable_yahoo_entirely(local_state, monkeypatch):
+    monkeypatch.setenv('PROVIDER_YAHOO_DAILY_LIMIT', '0')
+    with pytest.raises(resources.BudgetExceeded):
+        resources.require_available('yahoo')
+    with pytest.raises(resources.BudgetExceeded):
+        resources.reserve('yahoo', cooldown=0)
+
+
+@pytest.mark.parametrize('start,end,hours', [
+    ('2026-03-08T05:00:00+00:00', '2026-03-09T04:00:00+00:00', 23),
+    ('2026-11-01T04:00:00+00:00', '2026-11-02T05:00:00+00:00', 25),
+])
+def test_reset_at_new_york_midnight_across_dst(local_state, monkeypatch, start, end, hours):
+    now = datetime.fromisoformat(start).timestamp()
+    midnight = datetime.fromisoformat(end).timestamp()
+    monkeypatch.setattr(resources.time, 'time', lambda: now)
+    actor = resources.yahoo_principal.set('friend')
+    try:
+        for _ in range(50):
+            resources.reserve('yahoo', cooldown=0)
+        with pytest.raises(resources.PersonalYahooLimit) as denied:
+            resources.reserve('yahoo', cooldown=0)
+        assert denied.value.retry_after == hours * 3600
+        # The UTC day has already changed, but the local allowance has not.
+        now = midnight - 1
+        with pytest.raises(resources.PersonalYahooLimit) as denied:
+            resources.reserve('yahoo', cooldown=0)
+        assert denied.value.retry_after == 1
+        now = midnight
+        assert resources.personal_yahoo_usage('friend')['used'] == 0
+        resources.reserve('yahoo', cooldown=0)
+        assert resources.personal_yahoo_usage('friend')['used'] == 1
+    finally:
+        resources.yahoo_principal.reset(actor)
+
+
+def test_concurrent_requests_compete_for_last_personal_slot(local_state):
+    from concurrent.futures import ThreadPoolExecutor
+    import time
+    day, _ = resources._personal_window(time.time())
+    with resources.state('provider:yahoo') as usage:
+        usage.update(personal_day=day, personal_counts={'same-user': 49})
+    def attempt(_):
+        actor = resources.yahoo_principal.set('same-user')
+        try:
+            resources.reserve('yahoo', cooldown=0)
+            return True
+        except resources.PersonalYahooLimit:
+            return False
+        finally:
+            resources.yahoo_principal.reset(actor)
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        assert sum(pool.map(attempt, range(12))) == 1
+    assert resources.personal_yahoo_usage('same-user')['used'] == 50

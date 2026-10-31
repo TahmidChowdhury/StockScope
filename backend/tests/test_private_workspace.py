@@ -265,3 +265,64 @@ def test_remembered_device_is_opt_in_scoped_and_revocable(workspace):
     newer = client.post('/api/auth/sign-in', json={**creds, 'remember_device': True}).json()
     client.put('/api/access/users/' + friend.id, headers=auth(owner), json={'active': False, 'role': 'member'})
     assert client.post('/api/auth/resume', json={'token': newer['device_token']}).status_code == 401
+
+
+def test_personal_yahoo_quota_is_enforced_on_actual_requests_and_private_to_each_account(workspace, monkeypatch):
+    from backend.core import market_provider as market
+    from backend.services import valuation
+    from backend.routers import fundamentals
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    client, _, owner, auth = workspace
+    friend, _ = join(owner)
+    today = datetime.now(ZoneInfo('America/New_York')).date().isoformat()
+    with resources.state('provider:yahoo') as usage:
+        usage.update(personal_day=today, personal_counts={owner.id: 49}, count=113,
+                     day=datetime.now(timezone.utc).date().isoformat())
+    calls = []
+    class FakeTicker:
+        @property
+        def info(self):
+            # Mimic an SDK hitting the limit on an internal retry and returning partial data.
+            for i in range(2):
+                try:
+                    resources.reserve('yahoo', cooldown=0)
+                except resources.PersonalYahooLimit:
+                    break
+                calls.append(resources.yahoo_principal.get())
+            return {'symbol': 'IBM', 'currentPrice': 12}
+
+    monkeypatch.setattr(market, 'Ticker', lambda _: FakeTicker())
+    request = '/api/stocks/IBM/info'
+    # Caller-controlled identity hints cannot transfer the charge.
+    denied = client.get(request, headers={**auth(owner), 'X-User-Id': friend.id})
+    assert denied.status_code == 429 and int(denied.headers['retry-after']) > 0
+    assert 'midnight Eastern' in denied.json()['detail']
+    assert calls == [owner.id]
+    assert client.get(request, headers=auth(friend)).status_code == 200
+    assert calls == [owner.id, friend.id, friend.id]
+    assert client.get(request, headers=auth(owner)).status_code == 200  # free shared snapshot
+    assert client.get('/api/account/yahoo-usage', headers=auth(owner)).json()['used'] == 50
+    assert client.get('/api/account/yahoo-usage', headers=auth(friend)).json()['used'] == 2
+
+    # Raw executor jobs must carry the authenticated identity as well.
+    def compute(symbol):
+        resources.reserve('yahoo', cooldown=0)
+        return {'ticker': symbol}
+    monkeypatch.setattr(valuation, '_load', compute)
+    monkeypatch.setattr(fundamentals, '_compute_ttm_cached', compute)
+    assert client.get('/api/valuation/QUOTA', headers=auth(owner)).status_code == 429
+    assert client.get('/api/valuation/QUOTA', headers=auth(friend)).status_code == 200
+    assert client.post('/api/fundamentals/compare', headers=auth(owner), json={'tickers': ['IBM']}).status_code == 429
+    assert client.post('/api/fundamentals/compare', headers=auth(friend), json={'tickers': ['IBM']}).status_code == 200
+    assert client.get('/api/account/yahoo-usage', headers=auth(friend)).json()['used'] == 4
+
+    # User-initiated research still has the initiating identity in the background worker.
+    api = importlib.import_module('backend.api')
+    def collect_news(symbol):
+        resources.reserve('yahoo', cooldown=0, category='news')
+        return {}
+    monkeypatch.setattr(api, '_collect_news', collect_news)
+    assert client.post('/api/stocks/analyze', headers=auth(friend), json={'symbol': 'IBM', 'sources': ['news']}).status_code == 202
+    assert client.get('/api/account/yahoo-usage', headers=auth(friend)).json()['used'] == 5

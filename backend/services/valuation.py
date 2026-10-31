@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from contextvars import copy_context
+from backend.core.resources import PersonalYahooLimit, yahoo_principal
 import math
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -23,7 +25,7 @@ SUPPORTED_CURRENCIES = frozenset("USD EUR GBP JPY CNY HKD CAD AUD CHF NZD INR SG
 _pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="valuation")
 _lock = threading.Lock()
 _cache: TTLCache = TTLCache(maxsize=100, ttl=3600)
-_inflight: dict[str, Future] = {}
+_inflight: dict[tuple, Future] = {}
 
 
 class ValuationBusy(Exception):
@@ -188,6 +190,8 @@ def _load(symbol: str) -> dict:
         fundamentals = _compute_full_cached(symbol)
         if fundamentals.get('metadata', {}).get('stale'):
             issues.append("Using saved financial statements; the provider could not be refreshed.")
+    except PersonalYahooLimit:
+        raise
     except Exception:
         fundamentals = {}
         issues.append("Financial statement provider is unavailable.")
@@ -196,6 +200,8 @@ def _load(symbol: str) -> dict:
         info = saved_info.data
         if saved_info.stale:
             issues.append("Using saved quote data; the provider could not be refreshed.")
+    except PersonalYahooLimit:
+        raise
     except Exception:
         info = {}
         issues.append("Quote and company profile provider is unavailable.")
@@ -205,29 +211,32 @@ def _load(symbol: str) -> dict:
     return result
 
 
-def _completed(symbol: str, future: Future) -> None:
+def _completed(key, future: Future) -> None:
     with _lock:
-        _inflight.pop(symbol, None)
+        _inflight.pop(key, None)
         if not future.cancelled() and future.exception() is None:
-            _cache[symbol] = future.result()
+            _cache[key] = future.result()
 
 
 async def get_valuation(symbol: str) -> dict:
     """At most four actual provider jobs, including jobs outliving HTTP timeouts.
 
-    Requests for the same symbol share one job. A timeout does not free a worker
+    Repeat requests by one account for the same symbol share one job. A timeout does not free a worker
     slot while its underlying provider call still runs, so slow calls cannot
     create an unbounded queue of threads or provider requests.
     """
+    key = (yahoo_principal.get(), symbol)
     with _lock:
-        if symbol in _cache:
-            return _cache[symbol]
-        future = _inflight.get(symbol)
-        if future is None:
+        if key in _cache:
+            return _cache[key]
+        future = _inflight.get(key)
+        created = future is None
+        if created:
             if len(_inflight) >= 4:
                 raise ValuationBusy()
-            future = _pool.submit(_load, symbol)
-            _inflight[symbol] = future
+            future = _pool.submit(copy_context().run, _load, symbol)
+            _inflight[key] = future
     # Register outside the lock: add_done_callback runs synchronously if done.
-    future.add_done_callback(lambda done: _completed(symbol, done))
+    if created:
+        future.add_done_callback(lambda done: _completed(key, done))
     return await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), REQUEST_TIMEOUT_SECONDS)

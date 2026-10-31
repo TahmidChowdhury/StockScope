@@ -154,7 +154,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
           </ResponsiveContainer>
         ) : (
           <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-white/10 p-4 text-center text-sm text-slate-400">
-            {query.isError ? limited ? 'Price history is paused by the shared request budget. Saved news and filings are still available.' : 'Price history is unavailable. Try again later.' : 'No price history is available for this period.'}
+            {query.isError ? limited ? 'Price requests are temporarily paused. Saved news and filings are still available.' : 'Price history is unavailable. Try again later.' : 'No price history is available for this period.'}
           </div>
         )}
       </div>

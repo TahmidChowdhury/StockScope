@@ -17,6 +17,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from threading import RLock
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
@@ -45,6 +46,11 @@ def _roll_day(usage, day):
 
 
 _lock = RLock()
+YAHOO_USER_LIMIT = 50
+_EASTERN = ZoneInfo('America/New_York')
+# Set by the authenticated request task. Unattended work has no user to charge.
+yahoo_principal = ContextVar('yahoo_principal', default=None)
+_denied_in_operation = ContextVar('yahoo_personal_denial', default=None)
 _operation = ContextVar('provider_operation', default='other')
 _OPERATIONS = {'profile', 'history', 'fundamentals', 'news', 'other'}
 _CATEGORIES = {'auth', 'chart', 'quote', 'statements', 'news', 'other'}
@@ -53,10 +59,16 @@ _CATEGORIES = {'auth', 'chart', 'quote', 'statements', 'news', 'other'}
 @contextmanager
 def provider_operation(name):
     token = _operation.set(name if name in _OPERATIONS else 'other')
+    marker = _denied_in_operation.set(None)
     try:
         yield
     finally:
+        denial = _denied_in_operation.get()
+        _denied_in_operation.reset(marker)
         _operation.reset(token)
+        # The SDK sometimes turns transport exceptions into empty or partial data.
+        if denial is not None:
+            raise denial
 
 
 def request_category(url):
@@ -75,7 +87,7 @@ def request_category(url):
     return 'other'
 
 # Hard local ceilings, not claims about a provider's plan allowance.
-DEFAULT_LIMITS = {"yahoo": 100, "sec": 200, "newsapi": 0, "google": 30,
+DEFAULT_LIMITS = {"yahoo": None, "sec": 200, "newsapi": 0, "google": 30,
                   "finviz": 30, "disclosures": 10, "rss": 30, "refresh": 12}
 
 
@@ -83,6 +95,45 @@ class BudgetExceeded(RuntimeError):
     def __init__(self, message, retry_after=3600):
         super().__init__(message)
         self.retry_after = max(1, math.ceil(retry_after))
+
+
+class PersonalYahooLimit(BudgetExceeded):
+    """A caller-specific denial must never be saved in a shared ticker cache."""
+
+
+def _personal_window(timestamp):
+    now = datetime.fromtimestamp(timestamp, _EASTERN)
+    midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return now.date().isoformat(), midnight
+
+
+def _personal_used(usage, principal, day):
+    if usage.get('personal_day') != day:
+        return 0
+    return usage.get('personal_counts', {}).get(principal, 0)
+
+
+def personal_yahoo_usage(principal):
+    usage = read_states(['provider:yahoo']).get('provider:yahoo', {})
+    day, reset = _personal_window(time.time())
+    return {'used': _personal_used(usage, principal, day), 'limit': YAHOO_USER_LIMIT,
+            'resets_at': reset.isoformat(), 'timezone': _EASTERN.key}
+
+
+def _check_personal(usage, timestamp, *, charge=False):
+    principal = yahoo_principal.get()
+    if principal is None:
+        return
+    day, reset = _personal_window(timestamp)
+    used = _personal_used(usage, principal, day)
+    if used >= YAHOO_USER_LIMIT:
+        raise PersonalYahooLimit(
+            f'You have used all {YAHOO_USER_LIMIT} Yahoo requests for today. Your allowance resets at midnight Eastern.',
+            reset.timestamp() - timestamp)
+    if charge:
+        if usage.get('personal_day') != day:
+            usage.update(personal_day=day, personal_counts={})
+        usage['personal_counts'][principal] = used + 1
 
 
 def provider_for(url):
@@ -103,11 +154,19 @@ def provider_for(url):
 
 
 def daily_limit(provider):
-    # Operators can lower ceilings without permitting accidental unbounded use.
+    ceiling = DEFAULT_LIMITS[provider]
+    configured = os.getenv('PROVIDER_' + provider.upper() + '_DAILY_LIMIT')
+    if configured is None:
+        return ceiling
     try:
-        return max(0, min(DEFAULT_LIMITS[provider], int(os.getenv('PROVIDER_' + provider.upper() + '_DAILY_LIMIT', str(DEFAULT_LIMITS[provider])))))
+        requested = max(0, int(configured))
     except ValueError:
-        return DEFAULT_LIMITS[provider]
+        return ceiling
+    if ceiling is None:
+        # Older installs may still specify 100. Keep an explicit disable switch.
+        return 0 if requested == 0 else None
+    return min(ceiling, requested)
+
 
 
 @contextmanager
@@ -162,9 +221,11 @@ def require_available(provider):
     if usage.get('blocked_until', 0) > now.timestamp():
         raise BudgetExceeded(f'{provider.title()} is cooling down after a provider response. Saved research remains available.',
                              usage['blocked_until'] - now.timestamp())
+    if provider == 'yahoo':
+        _check_personal(usage, now.timestamp())
     used = usage.get('count', 0) if usage.get('day') == now.date().isoformat() else 0
     limit = daily_limit(provider)
-    if used >= limit:
+    if limit is not None and used >= limit:
         reset = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         raise BudgetExceeded(f'Shared {provider.title()} daily limit reached ({used}/{limit}). Saved research remains available.',
                              (reset - now).total_seconds())
@@ -175,6 +236,8 @@ def reserve(provider, *, cooldown=1.1, category="other"):
     try:
         _reserve(provider, cooldown=cooldown, category=category)
     except BudgetExceeded as exc:
+        if isinstance(exc, PersonalYahooLimit):
+            _denied_in_operation.set(exc)
         usage_event('provider_denied', provider=provider, operation=_operation.get(), category=category,
                     retry_after_seconds=exc.retry_after, reason=str(exc))
         raise
@@ -186,17 +249,21 @@ def _reserve(provider, *, cooldown=1.1, category="other"):
     wait = 0
     with state('provider:' + provider) as usage:
         now = time.time()
-        day = datetime.now(timezone.utc).date().isoformat()
+        day = datetime.fromtimestamp(now, timezone.utc).date().isoformat()
         _roll_day(usage, day)
         if usage.get('blocked_until', 0) > now:
             raise BudgetExceeded(f'{provider} is cooling down after a provider response. Saved data remains available.', usage['blocked_until'] - now)
-        if usage.get('count', 0) >= daily_limit(provider):
+        limit = daily_limit(provider)
+        if limit is not None and usage.get('count', 0) >= limit:
             reset = (datetime.fromtimestamp(now, timezone.utc) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-            raise BudgetExceeded(f'Shared {provider.title()} daily limit reached ({usage.get("count", 0)}/{daily_limit(provider)}). Saved research remains available.', reset.timestamp() - now)
+            raise BudgetExceeded(f'Shared {provider.title()} daily limit reached ({usage.get("count", 0)}/{limit}). Saved research remains available.', reset.timestamp() - now)
         scheduled = max(now, usage.get('next_request', 0))
         wait = scheduled - now
         if wait > 30:
             raise BudgetExceeded(f'{provider} request queue is busy. Try again later.')
+        if provider == 'yahoo':
+            # Both counts commit under the same database row/file lock.
+            _check_personal(usage, now, charge=True)
         usage.update(count=usage.get('count', 0) + 1, next_request=scheduled + cooldown)
         for field, label in (('operations', _operation.get()), ('categories', category if category in _CATEGORIES else 'other')):
             counts = usage.setdefault(field, {})

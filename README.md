@@ -506,8 +506,12 @@ their direct Yahoo calls are outside the active app's budget wrapper and should 
 be run alongside the app as unmetered collectors.
 
 All active requests through the SEC/news/disclosure collectors and yfinance transport
-use persistent shared UTC daily budgets. Defaults: Yahoo 100 actual HTTP attempts,
-SEC 200, Google/Finviz/other feeds 30 each, disclosures 10, research jobs 12. Manual
+record usage by UTC day. Each signed-in account (including the owner) can reserve 50 outbound Yahoo HTTP
+attempts per New York calendar day. Cached reads are free. At midnight Eastern, including
+daylight-saving changes, a new allowance is available. The daily workspace totals still use
+UTC. The requesting account pays for SDK authentication, data requests and retries. Unattended
+work contributes only to the workspace totals. See Your account for individual usage.
+The other daily limits default to SEC 200, Google/Finviz/other feeds 30 each, disclosures 10, research jobs 12. Manual
 research collection has a six-hour per-symbol cooldown, including failed jobs. Budgets
 can be lowered via `.env`; raising the hard ceilings requires an intentional code
 change. NewsAPI is disabled even if a key is present. HTTP 429/403/503 responses start

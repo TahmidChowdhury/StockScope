@@ -2,6 +2,8 @@
 Optimized FastAPI backend for StockScope with caching, proper error handling, efficient data access, and simple authentication
 """
 
+from uuid import uuid4
+
 from fastapi import Request, FastAPI, HTTPException, BackgroundTasks, Depends, Query, status
 from contextlib import asynccontextmanager
 from sqlalchemy.exc import SQLAlchemyError
@@ -23,6 +25,7 @@ from enum import Enum
 from dotenv import load_dotenv
 from backend.core.auth import (
     authenticate_user,
+    can_collect_research,
     get_access_token_expire_minutes,
     create_access_token,
     validate_auth_config,
@@ -49,7 +52,7 @@ from backend.services.research import (
     data_directory, load_evidence, latest_timestamp, freshness,
     sentiment_metrics, source_analyses, filing_events, normalized_symbol, evidence_freshness,
     parse_timestamp, repository, list_saved_symbols, delete_saved_research,
-    saved_news, read_records_reference, save_records,
+    saved_news, query_saved_news, read_records_reference, save_records,
 )
 
 # Import fundamentals router
@@ -350,12 +353,21 @@ async def lifespan(app):
     from backend.trading import disclosure_collector
     stop = asyncio.Event()
     task = asyncio.create_task(disclosure_collector.run_scheduler(stop)) if disclosure_collector.enabled() else None
+    from backend.services import market_tape
+    tape_ready = asyncio.Event()
+    app.state.market_tape_ready = tape_ready
+    tape_task = None
+    if os.getenv("MARKET_TAPE_ENABLED", "true").lower() == "true":
+        tape_task = asyncio.create_task(market_tape.run_scheduler(stop, tape_ready))
+    else:
+        tape_ready.set()
     app.state.disclosure_collection_task = task
     try:
         yield
     finally:
-        if task is not None:
-            await disclosure_collector.stop_scheduler(task, stop)
+        workers = [worker for worker in (task, tape_task) if worker is not None]
+        if workers:
+            await asyncio.gather(*(disclosure_collector.stop_scheduler(worker, stop) for worker in workers))
 
 
 app = FastAPI(
@@ -660,7 +672,7 @@ async def get_stock_suggestions(
     
     cache_key = f"suggestions_{q}_{limit}"
     cached_result = cache.get(cache_key)
-    if cached_result:
+    if cached_result is not None:
         return cached_result
     
     try:
@@ -682,14 +694,23 @@ async def get_stock_suggestions(
             other_matches = [s for s in matches if s not in exact_matches + prefix_matches + name_matches]
             
             result = (exact_matches + prefix_matches + name_matches + other_matches)[:limit]
+            if not exact_matches:
+                from backend.core.market_provider import search_companies
+                provider_matches = await asyncio.to_thread(search_companies, q)
+                # A small catalog must not hide another listing/share class.
+                # A successful provider zero-match response also must not turn
+                # a partial catalog name match into a presumed resolution.
+                result = provider_matches[:limit]
         
         # Cache the result
         cache.set(cache_key, result, ttl=3600)  # 1 hour cache for suggestions
         return result
         
+    except BudgetExceeded:
+        raise
     except Exception as e:
         logger.error(f"Error getting suggestions: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch suggestions")
+        raise HTTPException(status_code=503, detail="Company lookup is unavailable. Retry or use explicit ticker entry.")
 
 @app.get("/api/stocks", tags=["Portfolio"])
 def get_available_stocks(current_user: str = Depends(verify_password_with_role)):
@@ -744,7 +765,7 @@ async def reconcile_finished_job(symbol, repo):
 
 @app.post("/api/stocks/analyze", status_code=202, tags=["Analysis"])
 async def analyze_stock(request: StockRequest, background_tasks: BackgroundTasks, current_user: str = Depends(verify_password_with_role)):
-    if current_user in {"guest", "demo", "viewer"}:
+    if not can_collect_research(current_user):
         raise HTTPException(403, "Member access is required to refresh shared research.")
     async with research_mutation_lock():
         symbol = normalized_symbol(request.symbol)
@@ -773,10 +794,10 @@ async def analyze_stock(request: StockRequest, background_tasks: BackgroundTasks
             if not persisted["created"]:
                 return job
         else:
-            job = AnalysisStatus(symbol=symbol, status="pending", progress=0, message="Research refresh queued", started_at=datetime.now(timezone.utc))
+            job = AnalysisStatus(symbol=symbol, run_id=str(uuid4()), status="pending", progress=0, message="Research refresh queued", started_at=datetime.now(timezone.utc))
         analysis_status[symbol] = job
         background_tasks.add_task(run_optimized_analysis, symbol, request.sources)
-        return {"message": f"Refresh started for {symbol}", "symbol": symbol, "status": "pending", "status_endpoint": f"/api/stocks/{symbol}/status"}
+        return {**job.model_dump(), "status_endpoint": f"/api/stocks/{symbol}/status"}
 
 @app.get("/api/stocks/{symbol}/status", response_model=AnalysisStatus, tags=["Analysis"])
 async def get_analysis_status(symbol: str, current_user: str = Depends(verify_password_with_role)):
@@ -815,6 +836,17 @@ async def get_investment_advice(symbol: str, current_user: str = Depends(verify_
 async def get_quantitative_analysis(symbol: str, current_user: str = Depends(verify_password_with_role)):
     return {"symbol": symbol.upper(), "status": "unavailable", "reason": "Quantitative results are unavailable until calculations and backtests use verified price history, explicit assumptions, costs, and a benchmark.", "metrics": {}, "signals": {}, "strategies": {}}
 
+@app.get("/api/market-tape", tags=["Analysis"])
+async def get_market_tape(request: Request, current_user: str = Depends(verify_password_with_role)):
+    from backend.services.market_tape import saved_quotes
+    quotes = await asyncio.to_thread(saved_quotes)
+    ready = request.app.state.market_tape_ready
+    if not quotes and not ready.is_set():
+        await ready.wait()
+        quotes = await asyncio.to_thread(saved_quotes)
+    return quotes
+
+
 @app.get("/api/stocks/{symbol}/info", tags=["Analysis"])
 def get_company_info_endpoint(symbol: str, current_user: str = Depends(verify_password_with_role)):
     """Get company information for a stock symbol"""
@@ -841,10 +873,25 @@ def get_company_info_endpoint(symbol: str, current_user: str = Depends(verify_pa
         raise HTTPException(status_code=500, detail="Failed to fetch company information")
 
 @app.get("/api/stocks/{symbol}/news", tags=["Analysis"])
-async def get_stock_news(symbol: str, limit: int = Query(default=20, ge=1, le=100), current_user: str = Depends(verify_password_with_role)):
-    symbol = normalized_symbol(symbol)
-    articles = await asyncio.to_thread(saved_news, symbol, limit)
-    return {"ticker": symbol, "count": len(articles), "articles": articles}
+async def get_stock_news(
+    symbol: str,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=1000000),
+    sort: str = Query(default="date-desc", pattern="^(date|sentiment)-(asc|desc)$"),
+    exclude_source: List[str] = Query(default=[]),
+    current_user: str = Depends(verify_password_with_role),
+):
+    try:
+        symbol = normalized_symbol(symbol)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    try:
+        page = await asyncio.to_thread(query_saved_news, symbol, limit=limit, offset=offset,
+                                       sort=sort, exclude_sources=exclude_source)
+    except Exception as exc:
+        logger.exception("Failed to read saved news for %s", symbol)
+        raise HTTPException(503, "Saved news could not be loaded. Please retry.") from exc
+    return {**page, "can_collect": can_collect_research(current_user)}
 
 @app.get("/api/stocks/{symbol}/price-history", tags=["Analysis"])
 def get_price_history(
@@ -912,6 +959,8 @@ def get_price_history(
             "priceChangePercent": price_change_percent,
             "quote_as_of": quote_time.isoformat() if quote_time else None,
             "price_source": "Yahoo Finance",
+            "currency": (hist.attrs.get('metadata') or {}).get('currency'),
+            "quote_currency": info.get('currency'),
             "retrieved_at": hist.attrs.get('retrieved_at'),
             "stale": hist.attrs.get('stale', False) or bool(saved_info and saved_info.stale),
             "lastHistoricalClose": historical_close,
@@ -1058,7 +1107,8 @@ def _collect_news(symbol):
 async def persist_job(job):
     if job.run_id:
         repo = repository()
-        await asyncio.to_thread(repo.update_run, job.run_id, status=job.status, progress=job.progress, message=job.message, providers=job.providers)
+        if repo is not None:
+            await asyncio.to_thread(repo.update_run, job.run_id, status=job.status, progress=job.progress, message=job.message, providers=job.providers)
 
 
 def _collect_sec_facts(symbol):

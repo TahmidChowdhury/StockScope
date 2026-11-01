@@ -12,6 +12,7 @@ tweepy
 vaderSentiment
 wordcloud
 yfinance>=0.2.40
+exchange-calendars>=4.5.6,<5
 # Saved-curve risk analytics; this release supports the app's Python 3.9 runtime.
 quantstats==0.0.77
 # QuantStats imports its report module on package import, which requires IPython.

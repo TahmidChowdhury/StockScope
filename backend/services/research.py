@@ -4,11 +4,12 @@ import json
 import math
 import os
 import re
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+
+from backend.core.atomic_file import atomic_text_writer
 
 SNAPSHOT_TYPES = {
     "sec_sentiment": "sec", "sec_filings": "sec",
@@ -42,18 +43,12 @@ def save_records(symbol: str, suffix: str, records: list) -> str:
     directory = data_directory()
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{normalized_symbol(symbol)}_{suffix}.json"
-    with tempfile.NamedTemporaryFile(mode="w", dir=directory, delete=False) as handle:
-        temporary = handle.name
+    with atomic_text_writer(path) as handle:
         json.dump(records, handle, indent=2, allow_nan=False)
-    try:
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
     return str(path)
 
 
-def saved_snapshots(symbol: str, suffixes=None):
+def saved_snapshots(symbol: str, suffixes=None, *, strict=False):
     symbol = normalized_symbol(symbol)
     selected = set(SNAPSHOT_TYPES) if suffixes is None else set(suffixes)
     if not selected.issubset(SNAPSHOT_TYPES):
@@ -69,7 +64,11 @@ def saved_snapshots(symbol: str, suffixes=None):
         try:
             records = json.loads(path.read_text())
         except (OSError, ValueError):
+            if strict:
+                raise
             continue
+        if strict and not isinstance(records, list):
+            raise ValueError("Invalid saved research snapshot")
         if isinstance(records, list):
             snapshots.append((suffix, records))
     return snapshots
@@ -126,9 +125,9 @@ def _is_social_record(record):
     )
 
 
-def saved_news(symbol: str, limit: int = 20):
+def saved_news(symbol: str, limit: int = 20, *, strict=False):
     articles, seen = [], set()
-    for suffix, records in saved_snapshots(symbol, ("news_sentiment", "comprehensive_news")):
+    for suffix, records in saved_snapshots(symbol, ("news_sentiment", "comprehensive_news"), strict=strict):
         if SNAPSHOT_TYPES.get(suffix) != "news":
             continue
         for record in records:
@@ -143,6 +142,42 @@ def saved_news(symbol: str, limit: int = 20):
             articles.append(record)
     articles.sort(key=lambda item: parse_timestamp(item.get("publishedAt")) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     return articles[:limit]
+
+
+def query_saved_news(symbol: str, *, limit=20, offset=0, sort="date-desc", exclude_sources=()):
+    """Filter and order the entire deduplicated saved collection before slicing."""
+    if sort not in {"date-desc", "date-asc", "sentiment-desc", "sentiment-asc"}:
+        raise ValueError("Unsupported saved-news order")
+    articles = saved_news(symbol, None, strict=True)
+    source = lambda row: row.get("source") or "Unknown Source"
+    sources = sorted({source(row) for row in articles})
+    excluded = set(exclude_sources)
+    matches = [row for row in articles if source(row) not in excluded]
+
+    def value(row):
+        if sort.startswith("date"):
+            stamp = parse_timestamp(row.get("publishedAt"))
+            return stamp.timestamp() if stamp else None
+        tone = row.get("sentiment")
+        score = tone.get("compound") if isinstance(tone, dict) else None
+        if row.get("source_type") == "company_release" or isinstance(score, bool):
+            return None
+        return score if isinstance(score, (int, float)) and math.isfinite(score) and -1 <= score <= 1 else None
+
+    def ordering(row):
+        observation = value(row)
+        # URL/title is the existing deduplication identity; it breaks ties in
+        # both directions. Unknown dates and unavailable tone always sort last.
+        identity = str(row.get("url") or row.get("title"))
+        return (observation is None, -(observation or 0) if sort.endswith("desc") else (observation or 0), identity)
+
+    matches.sort(key=ordering)
+    total = len(matches)
+    offset = min(offset, ((total - 1) // limit) * limit) if total else 0
+    page = matches[offset:offset + limit]
+    return {"ticker": symbol, "articles": page, "count": len(page),
+            "total": total, "saved_total": len(articles), "sources": sources,
+            "offset": offset, "limit": limit, "has_more": offset + len(page) < total}
 
 
 def saved_sec_facts(symbol: str):

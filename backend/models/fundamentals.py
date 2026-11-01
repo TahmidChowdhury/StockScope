@@ -29,6 +29,7 @@ class FundamentalsSeries(BaseModel):
 class FundamentalsTTM(BaseModel):
     """TTM (trailing twelve months) fundamental metrics - all fields optional except ticker."""
     ticker: str
+    reporting_currency: Optional[str] = None
     insufficient_data: bool = False
     
     # Core metrics - only present if data is available

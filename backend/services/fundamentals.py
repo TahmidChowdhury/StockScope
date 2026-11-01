@@ -419,11 +419,20 @@ class FundamentalsService:
             ttm_dict = ttm.model_dump(exclude_none=True) if hasattr(ttm, 'model_dump') else ttm.__dict__
             series_dict = series.model_dump(exclude_none=True) if hasattr(series, 'model_dump') else series.__dict__
             
+            # Use the provider's statement currency, never the trading currency.
+            # Profile failure must not discard successfully loaded financials.
+            try:
+                reporting_currency = yf.get_info(ticker).data.get('financialCurrency')
+                reporting_currency = reporting_currency.strip() if isinstance(reporting_currency, str) and reporting_currency.strip() else None
+            except Exception:
+                reporting_currency = None
+            ttm_dict['reporting_currency'] = reporting_currency
             ttm_out = compact(ttm_dict)
             series_out = compact(series_dict)
             
             metadata = {
                 "data_type": "quarterly",
+                "financial_currency": reporting_currency,
                 "periods_available": int(q["revenue"].shape[0]) if _exists(q["revenue"]) else 0,
                 "retrieved_at": datetime.now(timezone.utc).isoformat(),
                 "source": "Yahoo Finance via yfinance",

@@ -1,0 +1,80 @@
+{
+  "provenance": "Captured Google News provider items from the live VOD.L session, 2026-11-01. Original saved item metadata retained; diagnostic annotations omitted.",
+  "items": [
+    {
+      "source": "Yahoo Finance Singapore",
+      "title": "BT Group plc (BT-A.L) stock price, news, quote and history - Yahoo Finance Singapore",
+      "description": "BT Group plc (BT-A.L) stock price, news, quote and history Yahoo Finance Singapore",
+      "url": "https://news.google.com/rss/articles/CBMiVEFVX3lxTFBOamhoQV92VUJDRHhlay13V0RvOUdZeFo3RGdpS1M3OEZaTF9uczctYjhrNjk3SjlQUlp3ajBjS09aRFVDLTd1aWVPakV5UVV0S3FsXw?oc=5",
+      "publishedAt": "2026-10-30T20:13:04+00:00",
+      "sentiment": {
+        "compound": 0.0,
+        "label": "neutral"
+      },
+      "provider": "google_news",
+      "original_source": "Yahoo Finance Singapore",
+      "source_type": "news",
+      "fetched_at": "2026-11-01T05:08:08.648327+00:00"
+    },
+    {
+      "source": "Yahoo Finance UK",
+      "title": "BT Group plc (BT-A.L) stock price, news, quote and history - Yahoo Finance UK",
+      "description": "BT Group plc (BT-A.L) stock price, news, quote and history Yahoo Finance UK",
+      "url": "https://news.google.com/rss/articles/CBMiZEFVX3lxTE5BRmdpd3dQamp4MDVnOV9lenF5UmRrd0FHd3cyMUV6X0M3SXhFeGhaeGJBWjFRQ2U1a2U1cl94dXgyNFN6dExmSFZDZ2ZmRE5OeldxNFl1QTV1V1dkbnlNMktjdDY?oc=5",
+      "publishedAt": "2026-10-30T13:24:32+00:00",
+      "sentiment": {
+        "compound": 0.0,
+        "label": "neutral"
+      },
+      "provider": "google_news",
+      "original_source": "Yahoo Finance UK",
+      "source_type": "news",
+      "fetched_at": "2026-11-01T05:08:08.649100+00:00"
+    },
+    {
+      "source": "Yahoo Finance UK",
+      "title": "VOD Oct 2026 17.000 put (VOD261030P00017000) stock price, news, quote and history - Yahoo Finance UK",
+      "description": "VOD Oct 2026 17.000 put (VOD261030P00017000) stock price, news, quote and history Yahoo Finance UK",
+      "url": "https://news.google.com/rss/articles/CBMiZEFVX3lxTFBTcWlHdzlReDVPNEpZZHBPRlQ4bk9Hc0xsbFBRWkc1LXNrTElLdXZxTk45bnBzdGxjdHllbUlWZ2o2TEl0TXFIOHhyVWdmSjBLM1V6TjJuTkFfLTl5VHhXeU9ud04?oc=5",
+      "publishedAt": "2026-10-29T03:50:14+00:00",
+      "sentiment": {
+        "compound": 0.0,
+        "label": "neutral"
+      },
+      "provider": "google_news",
+      "original_source": "Yahoo Finance UK",
+      "source_type": "news",
+      "fetched_at": "2026-11-01T05:08:08.649469+00:00"
+    },
+    {
+      "source": "Yahoo Finance UK",
+      "title": "VOD Oct 2026 16.500 call (VOD261030C00016500) stock price, news, quote and history - Yahoo Finance UK",
+      "description": "VOD Oct 2026 16.500 call (VOD261030C00016500) stock price, news, quote and history Yahoo Finance UK",
+      "url": "https://news.google.com/rss/articles/CBMiZEFVX3lxTFBHRnBVZDkxWkJDbUpUT0hlLThvQzluMF9Hc0J1a2lZN0tkeXV2UHNXQk1zcUlQM09oVGlNZmFMMTJ2MERWdkt4eHByVFNiMEZxLU0wQUNGVU5BV2N2UUo3SjBvbUo?oc=5",
+      "publishedAt": "2026-10-29T03:45:59+00:00",
+      "sentiment": {
+        "compound": 0.0,
+        "label": "neutral"
+      },
+      "provider": "google_news",
+      "original_source": "Yahoo Finance UK",
+      "source_type": "news",
+      "fetched_at": "2026-11-01T05:08:08.649776+00:00"
+    },
+    {
+      "source": "Yahoo Finance UK",
+      "title": "VOD Nov 2026 16.000 put (VOD261106P00016000) stock price, news, quote and history - Yahoo Finance UK",
+      "description": "VOD Nov 2026 16.000 put (VOD261106P00016000) stock price, news, quote and history Yahoo Finance UK",
+      "url": "https://news.google.com/rss/articles/CBMiZEFVX3lxTFBLY1daWkRXUVZuNkxtQnRlQ2xWZ2pKcFB4ZjRzY0czWmEyTXZTVl9Kd0plV1l1dkxhelNjRWw0aVV2dzZDVnZkVzRqbjZ0alZfaEEwazk3SjgxNWxDZ01iaF9JV1g?oc=5",
+      "publishedAt": "2026-10-28T16:50:15+00:00",
+      "sentiment": {
+        "compound": 0.0,
+        "label": "neutral"
+      },
+      "provider": "google_news",
+      "original_source": "Yahoo Finance UK",
+      "source_type": "news",
+      "fetched_at": "2026-11-01T05:08:08.650385+00:00"
+    }
+  ]
+}

@@ -233,3 +233,90 @@ def test_chart_rejects_unbounded_query_variants_before_provider(api, monkeypatch
     with pytest.raises(api.HTTPException) as error:
         api.get_price_history('IBM', period=period, interval=interval, current_user='admin')
     assert error.value.status_code == 422
+
+
+@pytest.mark.parametrize('history_unit,quote_unit', [('EUR', 'EUR'), ('GBp', 'GBP'), (None, None), ('EUR', None), (None, 'JPY')])
+def test_chart_units_follow_each_observation_without_conversion(api, monkeypatch, history_unit, quote_unit):
+    frame = pd.DataFrame({'Open': [123.45], 'High': [124.45], 'Low': [122.45], 'Close': [123.45], 'Volume': [0.]},
+                         index=pd.date_range('2024-01-02', periods=1, tz='UTC'))
+    ticker = fake_ticker(monkeypatch, {'currency': quote_unit, 'regularMarketPrice': 1.25,
+                                      'regularMarketChange': -.05, 'regularMarketChangePercent': -4}, frame)
+    ticker._price_history = SimpleNamespace(_history_metadata={'currency': history_unit})
+    result = api.get_price_history('UNIT', current_user='admin')
+    assert result['currency'] == history_unit
+    assert result['quote_currency'] == quote_unit
+    assert result['data'][0]['close'] == result['lastHistoricalClose'] == 123.45
+    assert result['currentPrice'] == 1.25
+    assert result['priceChange'] == -.05
+    monkeypatch.setattr(yf, 'Ticker', lambda _: pytest.fail('Cached metadata must survive without provider access'))
+    assert api.get_price_history('UNIT', current_user='admin')['currency'] == history_unit
+
+
+def test_apple_name_uses_provider_resolution_while_ticker_uses_catalog(api, monkeypatch):
+    import asyncio
+    monkeypatch.setattr(yf, 'search_companies', lambda q: [{'symbol':'AAPL','name':'Apple Inc.'}])
+    matches = asyncio.run(api.get_stock_suggestions(q='Apple', limit=50, current_user='admin'))
+    assert [(row['symbol'], row['name']) for row in matches] == [('AAPL', 'Apple Inc.')]
+
+
+def test_live_vodafone_quote_payload_preserves_pence_not_reporting_currency(api, monkeypatch):
+    fake_ticker(monkeypatch, {'currency': 'GBp', 'financialCurrency': 'EUR',
+                            'currentPrice': 119.1, 'regularMarketPrice': 119.1,
+                            'regularMarketTime': 1793378823, 'regularMarketChange': 2.35})
+    metrics = api.get_company_info_endpoint('VOD.L', 'admin')
+    assert metrics['currency'] == 'GBp'
+    assert metrics['currentPrice'] == 119.1
+    assert metrics['regularMarketChange'] == 2.35
+    assert metrics['quote_as_of'] == '2026-10-30T16:47:03+00:00'
+
+
+@pytest.mark.parametrize('name,rows', [('Vodafone', [{'symbol':'VOD.L','name':'Vodafone Group'}]),
+                                    ('Shopify', [{'symbol':'SHOP','name':'Shopify Inc.'}]),
+                                    ('Unfindablezz', [])])
+def test_non_catalog_search_uses_provider_and_caches_successful_zero(api, monkeypatch, name, rows):
+    import asyncio
+    monkeypatch.setattr(api, 'load_stock_suggestions', lambda: [])
+    calls = []
+    monkeypatch.setattr(yf, 'search_companies', lambda query: calls.append(query) or rows)
+    assert asyncio.run(api.get_stock_suggestions(q=name, limit=50, current_user='admin')) == rows
+    assert asyncio.run(api.get_stock_suggestions(q=name, limit=50, current_user='admin')) == rows
+    assert len(calls) == 1
+
+
+def test_company_lookup_failure_is_not_a_successful_empty_search(api, monkeypatch):
+    import asyncio
+    monkeypatch.setattr(api, 'load_stock_suggestions', lambda: [])
+    def unavailable(query):
+        raise RuntimeError('Controlled lookup outage')
+    monkeypatch.setattr(yf, 'search_companies', unavailable)
+    with pytest.raises(api.HTTPException) as error:
+        asyncio.run(api.get_stock_suggestions(q='Vodafone', limit=50, current_user='admin'))
+    assert error.value.status_code == 503
+    monkeypatch.setattr(yf, 'search_companies', lambda _: [])
+    assert asyncio.run(api.get_stock_suggestions(q='Vodafone', limit=50, current_user='admin')) == []
+
+
+def test_provider_search_contract_keeps_exchange_symbols_and_rejects_malformed_responses(api, monkeypatch):
+    from yfinance.data import YfData
+    from backend.core.provider_cache import Snapshot, ProviderUnavailable
+    import backend.core.provider_cache as snapshots
+    monkeypatch.setattr(snapshots, 'fetch_snapshot', lambda namespace, identity, loader, **kwargs: Snapshot(loader(), None))
+    payload = {'quotes': [{'symbol':'VOD.L','longname':'Vodafone Group','quoteType':'EQUITY'},
+                          {'symbol':'VOD261030P00017000','shortname':'Option','quoteType':'OPTION'}]}
+    monkeypatch.setattr(YfData, 'get_raw_json', lambda *args, **kwargs: payload)
+    assert yf.search_companies('Vodafone') == [{'symbol':'VOD.L','name':'Vodafone Group'}]
+    payload['quotes'] = []
+    assert yf.search_companies('Zero results') == []
+    del payload['quotes']
+    with pytest.raises(ProviderUnavailable):
+        yf.search_companies('Malformed response')
+
+
+def test_catalog_single_name_match_does_not_hide_ambiguous_provider_listings(api, monkeypatch):
+    import asyncio
+    monkeypatch.setattr(api, 'load_stock_suggestions', lambda: [{'symbol':'GOOGL','name':'Alphabet Inc.'}])
+    rows = [{'symbol':'GOOGL','name':'Alphabet Inc.'}, {'symbol':'GOOG','name':'Alphabet Inc.'}]
+    monkeypatch.setattr(yf, 'search_companies', lambda _: rows)
+    assert asyncio.run(api.get_stock_suggestions(q='Alphabet', limit=50, current_user='admin')) == rows
+    monkeypatch.setattr(yf, 'search_companies', lambda _: pytest.fail('Exact ticker needs no name lookup'))
+    assert asyncio.run(api.get_stock_suggestions(q='GOOGL', limit=50, current_user='admin')) == rows[:1]

@@ -5,13 +5,13 @@ import copy
 import json
 import os
 import re
-import tempfile
 from contextlib import contextmanager
 from threading import RLock
 
 from sqlalchemy import JSON, cast, literal, select, update
 from sqlalchemy.orm import Session
 
+from backend.core.atomic_file import atomic_text_writer
 from backend.db.models import TradingDocument
 from backend.services import research
 
@@ -163,14 +163,8 @@ def mutate(key, callback):
         previous = json.loads(path.read_text()) if path.exists() else None
         document = callback(previous)
         encoded = json.dumps(document, allow_nan=False)
-        with tempfile.NamedTemporaryFile(mode="w", dir=directory, delete=False) as handle:
-            temporary = handle.name
+        with atomic_text_writer(path) as handle:
             handle.write(encoded)
             handle.flush()
             os.fsync(handle.fileno())
-        try:
-            os.replace(temporary, path)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
         return document

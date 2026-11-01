@@ -41,7 +41,7 @@ def is_article_candidate(title, url):
     parts = urlsplit(canonical)
     if parts.hostname == 'seekingalpha.com' and re.match(r'^/symbol/[^/]+(?:/(?:news|analysis))?/?$', parts.path):
         return False
-    return not re.search(r'stock price, news, quote\s*&\s*history|stock quotes, company news and chart analysis|stock forecast and price target \d{4}|stock chart\s*(?:-\s*ChartMill)?$', str(title), re.IGNORECASE)
+    return not re.search(r'stock price, news, quote(?:\s*&\s*|\s+and\s+)history|stock quotes, company news and chart analysis|stock forecast and price target \d{4}|stock chart\s*(?:-\s*ChartMill)?$', str(title), re.IGNORECASE)
 
 
 def parse_finviz_news(soup, *, observed_at=None):

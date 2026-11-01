@@ -26,7 +26,7 @@ export function tradingRoute(pathname: string, tabQuery: string | null): {
     const tab = kind === 'backtest' ? 'backtest' : 'paper'
     let id = ''
     try { id = decodeURIComponent(match[2]) } catch { /* Invalid paths have no fetchable record. */ }
-    if (!validSavedTradingId(kind, id)) return { tab, saved: null, error: 'This saved research link is invalid (404). Choose a saved item from the workspace.' }
+    if (!validSavedTradingId(kind, id)) return { tab, saved: null, error: 'This link is invalid. Open a saved portfolio or backtest from the workspace.' }
     return { tab, saved: { kind, id, href: savedTradingHref(kind, id), apiPath: `/${match[1]}/${id}` }, error: null }
   }
   return { tab: tabQuery === 'backtest' || tabQuery === 'congress' ? tabQuery : 'paper', saved: null, error: null }

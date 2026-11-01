@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  devIndicators: process.env.NEXT_PUBLIC_SHOW_DEVTOOLS === 'true' ? { position: 'top-left' } : false,
   async headers() {
     return [
       {

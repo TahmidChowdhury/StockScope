@@ -103,18 +103,13 @@ test('screen completion preserves newer input edits and cannot overwrite a newer
   assert.equal(api.completeScreen(api.initialScreenerDraft, 'aaaa', snapshot()), api.initialScreenerDraft)
 })
 
-test('comparison completion is associated with submitted symbols and retains only five bounded snapshots', () => {
-  let draft = { ...clone(api.initialCompareDraft), tickers: ['MSFT', 'GOOG'] }
-  for (let i = 0; i < 7; i++) {
-    draft.requestId = `aaa${i}`
-    draft = api.completeComparison(draft, `aaa${i}`, { tickers: [`A${i}`, 'AAPL'], results: [row()], capturedAt: '2026-10-22T16:00:00Z' })
-  }
-  assert.equal(draft.tickers.join(','), 'MSFT,GOOG')
-  assert.equal(draft.snapshots.length, 5)
-  assert.equal(draft.snapshots[0].tickers.join(','), 'A6,AAPL')
-  assert.equal(api.isCompareDraft(draft), true)
-  assert.equal(api.completeComparison(draft, 'stale', { tickers: ['MSFT', 'AAPL'], results: [row()], capturedAt: '2026-10-22T16:00:00Z' }), draft)
-  const bad = clone(draft)
-  bad.snapshots[0].results.push(row('UNKNOWN'))
-  assert.equal(api.isCompareDraft(bad), false)
+test('screen snapshots retain reporting currencies across storage and accept legacy unknowns', () => {
+  const draft = { ...clone(api.initialScreenerDraft), snapshot: snapshot(), selected: ['AAPL'] }
+  draft.snapshot.data.results = api.draftFinancialRows([{ ...row(), reporting_currency: 'JPY' }])
+  assert.equal(draft.snapshot.data.results[0].reporting_currency, 'JPY')
+  assert.equal(api.isScreenerDraft(JSON.parse(JSON.stringify(draft))), true)
+  delete draft.snapshot.data.results[0].reporting_currency
+  assert.equal(api.isScreenerDraft(draft), true)
+  draft.snapshot.data.results[0].reporting_currency = 123
+  assert.equal(api.isScreenerDraft(draft), false)
 })

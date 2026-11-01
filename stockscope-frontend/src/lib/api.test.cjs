@@ -200,3 +200,28 @@ test('signing out during a pending restore cannot bring back the old account', a
   await pending
   assert.equal(api.getAuthSession(), null)
 })
+
+test('Retry-After parses seconds and HTTP dates, rejects unusable deadlines', () => {
+  const { api } = harness()
+  const now = Date.parse('2026-10-31T16:00:00Z')
+  assert.equal(api.retryAfterDeadline('2', now), now + 2000)
+  assert.equal(api.retryAfterDeadline('0', now), now)
+  assert.equal(api.retryAfterDeadline('Sat, 31 Oct 2026 16:00:05 GMT', now), now + 5000)
+  assert.equal(api.retryAfterDeadline('Sat, 31 Oct 2026 15:00:00 GMT', now), now - 3600000)
+  for (const invalid of [null, '', ' ', '-3', 'nonsense', '999999999999999999999999']) {
+    assert.equal(api.retryAfterDeadline(invalid, now), null)
+  }
+})
+
+test('429 errors retain a reusable deadline and repeated responses establish a new deadline', async () => {
+  const { api } = harness()
+  const first = await api.readApiJson(new Response('{"detail":"Rate limited"}', {status:429,headers:{'Retry-After':'1'}}), 'Failure').catch(e=>e)
+  const next = await api.readApiJson(new Response('{}', {status:429,headers:{'Retry-After':'10'}}), 'Failure').catch(e=>e)
+  assert.equal(first.status, 429)
+  assert.ok(first.retryAt > Date.now())
+  assert.ok(next.retryAt > first.retryAt)
+  const missing = await api.readApiJson(new Response('{}', {status:429}), 'Failure').catch(e=>e)
+  assert.equal(missing.retryAt, null)
+  const other = await api.readApiJson(new Response('{}', {status:503,headers:{'Retry-After':'10'}}), 'Failure').catch(e=>e)
+  assert.equal(other.retryAt, null)
+})

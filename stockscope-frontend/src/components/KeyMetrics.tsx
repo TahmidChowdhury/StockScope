@@ -1,5 +1,8 @@
 'use client'
 
+import { priceAmount, unitLabel } from '@/lib/financial-format'
+import ResearchPanel from './ResearchPanel'
+import { Skeleton } from './ResearchLoading'
 import { useQuery } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
 import { apiFetch, ApiError, readApiJson } from '@/lib/api'
@@ -62,10 +65,8 @@ export default function KeyMetrics({
     style: 'number' | 'money' | 'compact' | 'percent' = 'number',
   ) => {
     if (typeof value !== 'number' || !Number.isFinite(value)) return '—'
-    const currency =
-      data?.currency && /^[A-Z]{3}$/.test(data.currency) ? data.currency : null
+    if (style === 'money') return priceAmount(value, data?.currency)
     return new Intl.NumberFormat('en-US', {
-      ...(style === 'money' && currency ? { style: 'currency', currency } : {}),
       ...(style === 'percent' ? { style: 'percent' } : {}),
       ...(style === 'compact' ? { notation: 'compact' } : {}),
       maximumFractionDigits: 2,
@@ -75,45 +76,44 @@ export default function KeyMetrics({
     low == null || high == null
       ? '—'
       : `${number(low, 'money')} – ${number(high, 'money')}`
-  const sections = data
-    ? [
-        {
-          title: 'Valuation',
-          rows: [
-            ['Market cap', number(data.marketCap, 'compact')],
-            ['P/E ratio', number(data.priceToEarningsRatio)],
-            ['Price / book', number(data.priceToBook)],
-            ['Price / sales', number(data.priceToSalesTrailing12Months)],
-          ],
-        },
-        {
-          title: 'Trading',
-          rows: [
-            ['Day range', range(data.dayLow, data.dayHigh)],
-            [
-              '52-week range',
-              range(data.fiftyTwoWeekLow, data.fiftyTwoWeekHigh),
-            ],
-            ['Volume', number(data.volume, 'compact')],
-            ['Average volume', number(data.averageVolume, 'compact')],
-            ['Beta', number(data.beta)],
-          ],
-        },
-        {
-          title: 'Per share',
-          rows: [
-            ['Earnings / share', number(data.earningsPerShare, 'money')],
-            ['Trailing dividend yield', number(data.dividendYield, 'percent')],
-          ],
-        },
-      ]
-    : []
+  const sections = [
+    {
+      title: 'Valuation',
+      rows: [
+        ['Market cap', number(data?.marketCap, 'compact')],
+        ['P/E ratio', number(data?.priceToEarningsRatio)],
+        ['Price / book', number(data?.priceToBook)],
+        ['Price / sales', number(data?.priceToSalesTrailing12Months)],
+      ],
+    },
+    {
+      title: 'Trading',
+      rows: [
+        ['Day range', range(data?.dayLow, data?.dayHigh)],
+        [
+          '52-week range',
+          range(data?.fiftyTwoWeekLow, data?.fiftyTwoWeekHigh),
+        ],
+        ['Volume', number(data?.volume, 'compact')],
+        ['Average volume', number(data?.averageVolume, 'compact')],
+        ['Beta', number(data?.beta)],
+      ],
+    },
+    {
+      title: 'Per share',
+      rows: [
+        // EPS has no independently supplied unit in this response.
+        ['Earnings / share', priceAmount(data?.earningsPerShare, null)],
+        ['Trailing dividend yield', number(data?.dividendYield, 'percent')],
+      ],
+    },
+  ]
   return (
-    <section
+    <ResearchPanel pending={isPending}
       aria-labelledby="metrics-heading"
       className={`surface p-5 ${className}`}
     >
-      <div className="mb-5 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between">
         <h2
           id="metrics-heading"
           className="text-sm font-semibold text-slate-100"
@@ -132,65 +132,56 @@ export default function KeyMetrics({
           />
         </button>
       </div>
-      {isPending ? (
-        <div aria-label="Loading metrics" className="space-y-4">
-          {[0, 1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-7 animate-pulse rounded bg-white/5" />
-          ))}
+      {isPending && <span role="status" className="sr-only">Loading company metrics…</span>}
+      {isError && (
+        <div role="alert" className="mb-4 text-xs leading-5 text-amber-200">
+          {error?.message}
+          {data
+            ? ' Previously loaded observations are shown.'
+            : limited ? '' : ' Use the reload button to try again.'}
         </div>
-      ) : (
+      )}
+      {data?.stale && <p role="status" className="mb-4 text-xs leading-5 text-amber-200">Showing saved metrics. The provider could not be refreshed; observation dates are unchanged.</p>}
+      {(data || isPending) && (
         <>
-          {isError && (
-            <div role="alert" className="mb-4 text-xs leading-5 text-amber-200">
-              {error?.message}
-              {data
-                ? ' Previously loaded observations are shown.'
-                : limited ? '' : ' Use the reload button to try again.'}
+          <div className="mb-5 border-b border-white/[0.07] pb-5">
+            <p className="text-[10px] font-semibold tracking-widest text-slate-400">
+              Provider quote · {unitLabel(data?.currency)}
+            </p>
+            <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums text-white">
+              {isPending ? <Skeleton className="h-9 w-24" /> : number(data?.currentPrice, 'money')}
+            </p>
+            <p className="mt-2 text-xs leading-5 text-slate-400">
+              {isPending ? <Skeleton className="my-1 h-3 w-32" /> : `As of ${timestamp(data?.quote_as_of)}`}
+            </p>
+          </div>
+          {sections.map((section) => (
+            <div key={section.title} className="mb-5">
+              <h3 className="eyebrow mb-3">{section.title}</h3>
+              <dl className="space-y-2">
+                {section.rows.map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="flex items-baseline justify-between gap-3 text-xs"
+                  >
+                    <dt className="text-slate-400">{label}</dt>
+                    <dd className="text-right font-medium tabular-nums text-slate-200">
+                      {isPending ? <Skeleton className="h-3 w-14" /> : value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
             </div>
-          )}
-          {data?.stale && <p role="status" className="mb-4 text-xs leading-5 text-amber-200">Showing saved metrics. The provider could not be refreshed; observation dates are unchanged.</p>}
-          {data && (
-            <>
-              <div className="mb-5 border-b border-white/[0.07] pb-5">
-                <p className="text-[10px] uppercase tracking-wider text-slate-500">
-                  Provider quote{data.currency ? ` · ${data.currency}` : ''}
-                </p>
-                <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums text-white">
-                  {number(data.currentPrice, 'money')}
-                </p>
-                <p className="mt-2 text-[10px] leading-5 text-slate-500">
-                  As of {timestamp(data.quote_as_of)}
-                </p>
-              </div>
-              {sections.map((section) => (
-                <div key={section.title} className="mb-5">
-                  <h3 className="eyebrow mb-3">{section.title}</h3>
-                  <dl className="space-y-3">
-                    {section.rows.map(([label, value]) => (
-                      <div
-                        key={label}
-                        className="flex items-baseline justify-between gap-3 text-xs"
-                      >
-                        <dt className="text-slate-400">{label}</dt>
-                        <dd className="text-right font-medium tabular-nums text-slate-200">
-                          {value}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                </div>
-              ))}
-              <div className="border-t border-white/[0.07] pt-4 text-[10px] leading-5 text-slate-500">
-                <p>Retrieved {timestamp(data.retrieved_at)}</p>
-                <p>
-                  Provider data may be delayed and cached for up to one hour. —
-                  means unavailable.{!data.currency && ' Currency unavailable.'}
-                </p>
-              </div>
-            </>
-          )}
+          ))}
+          <div className="border-t border-white/[0.07] pt-4 text-xs leading-5 text-slate-400">
+            <p>{isPending ? <Skeleton className="my-1 h-3 w-32" /> : `Retrieved ${timestamp(data?.retrieved_at)}`}</p>
+            <p>
+              Provider data may be delayed and cached for up to one hour. —
+              means unavailable.{data && !data.currency && ' Currency unavailable.'}
+            </p>
+          </div>
         </>
       )}
-    </section>
+    </ResearchPanel>
   )
 }

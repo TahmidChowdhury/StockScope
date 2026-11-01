@@ -2,8 +2,6 @@ import { apiFetch, readApiJson } from '@/lib/api'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { 
   FundamentalsResponse, 
-  FundamentalsTTM, 
-  CompareRequest, 
   ScreenerRequest, 
   ScreenerResponse 
 } from '@/types'
@@ -20,31 +18,12 @@ export const useFundamentals = (ticker: string) => {
         { signal },
       )
       
-      return readApiJson<FundamentalsResponse>(response, `Failed to fetch fundamentals for ${ticker}`)
+      return readApiJson<FundamentalsResponse>(response, `Couldn’t load financials for ${ticker}. Try again later.`)
     },
     enabled: !!ticker && ticker.length > 0,
     staleTime: 6 * 60 * 60_000,
     refetchOnWindowFocus: false,
     retry: false
-  })
-}
-
-export const useCompare = () => {
-  return useMutation({
-    mutationFn: async (request: CompareRequest): Promise<FundamentalsTTM[]> => {
-      const response = await apiFetch(
-        `/api/fundamentals/compare`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(request)
-        }
-      )
-      
-      return readApiJson<FundamentalsTTM[]>(response, 'Failed to compare fundamentals')
-    }
   })
 }
 
@@ -62,11 +41,7 @@ export const useScreener = () => {
         }
       )
       
-      if (!response.ok) {
-        throw new Error('Failed to run screener')
-      }
-      
-      return response.json()
+      return readApiJson<ScreenerResponse>(response, 'The screen could not finish.')
     }
   })
 }

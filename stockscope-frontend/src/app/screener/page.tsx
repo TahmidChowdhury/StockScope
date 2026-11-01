@@ -5,13 +5,17 @@ import AnimatedSelect from '@/components/ui/AnimatedSelect'
 import { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { ArrowUpRight, ScanLine, SlidersHorizontal } from 'lucide-react'
+import { ScanLine, SlidersHorizontal } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import AppShell from '@/components/AppShell'
+import { comparisonCurrencyNotice } from '@/lib/financial-format'
+import ScreenComparison, { screenMetrics, ScreenMetricValue } from '@/components/ScreenComparison'
+import ResearchPanel from '@/components/ResearchPanel'
+import { Skeleton } from '@/components/ResearchLoading'
 import { useScreener } from '@/hooks/useFundamentals'
 import { useWatchlist } from '@/hooks/useWatchlist'
 import { useWorkspaceDraft } from '@/hooks/useWorkspaceDraft'
-import { amount, parseSymbols, percent, ratio } from '@/lib/financial-format'
+import { parseSymbols } from '@/lib/financial-format'
 import { companyResearchHref, snapshotTime } from '@/lib/research-workflow'
 import type { FundamentalsTTM, ScreenerRequest } from '@/types'
 import { completeScreen, draftFinancialRows, editScreenDraft, initialScreenerDraft, isScreenerDraft, replaceResearchUrl, screenCriteriaFromUrl, screenCriteriaKey, screenCriteriaParams, type ScreenCriteria } from '@/lib/research-drafts'
@@ -61,23 +65,9 @@ const sortOptions = [
   ['operating_margin_ttm', 'Operating margin'],
   ['revenue_ttm', 'Revenue · TTM'],
 ]
-const columns: {
-  key: keyof FundamentalsTTM
-  label: string
-  format: (value?: number | null) => string
-}[] = [
-  { key: 'revenue_ttm', label: 'Revenue · TTM', format: amount },
-  { key: 'revenue_growth_yoy', label: 'Revenue growth', format: percent },
-  { key: 'fcf_margin_ttm', label: 'FCF margin', format: percent },
-  { key: 'fcf_growth_yoy', label: 'FCF growth', format: percent },
-  { key: 'operating_margin_ttm', label: 'Operating margin', format: percent },
-  { key: 'ebitda_growth_yoy', label: 'EBITDA growth', format: percent },
-  { key: 'debt_to_cash', label: 'Debt / cash', format: ratio },
-]
-
 export default function ScreenerPage() {
   return (
-    <Suspense fallback={<div className="min-h-dvh bg-[#101218]" />}>
+    <Suspense fallback={<div className="min-h-dvh bg-[#111513]" />}>
       <ScreenerWorkspace />
     </Suspense>
   )
@@ -90,6 +80,7 @@ function ScreenForm() {
   const queryClient = useQueryClient()
   const draft = useWorkspaceDraft('screener', initialScreenerDraft, isScreenerDraft)
   const { value, setValue, ready, generation, reset } = draft
+  const [filtersOpen, setFiltersOpen] = useState<boolean | null>(null)
   const url = search.toString()
   const lastUrl = useRef<string | null>(null)
   const internalUrls = useRef(new Set<string>())
@@ -183,29 +174,20 @@ function ScreenForm() {
     return () => window.removeEventListener('popstate', navigatingHistory)
   }, [])
   const data = snapshot?.data
+  const loading = screener.isPending && !data
+  const rows: (FundamentalsTTM | null)[] = data?.results ?? (loading ? Array.from({ length: Math.min(Number(limit), 6) }, () => null) : [])
+  const activeFilterCount = Object.values(filters).filter(Boolean).length
   const returnTo = `/screener?${screenCriteriaParams(value.criteria)}`
   if (!ready || appliedUrl === null) return <AppShell><p role="status" className="text-sm text-slate-400">Restoring saved screen…</p></AppShell>
   return (
     <AppShell>
       <header className="mb-7">
-        <p className="eyebrow mb-2">Discover with a clear set of criteria</p>
-        <h1 className="page-title">Stock screener</h1><p className="mt-3 text-xs leading-6 text-slate-400">Screens use saved fundamentals to conserve the shared data budget. Open a company’s Financials view to load its data; coverage and original retrieval dates remain visible.</p>
+        <h1 className="page-title">Stock screener</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-          Narrow the field by growth, cash generation, and balance sheet
-          strength. Coverage is shown alongside every result.
+          Filter companies with saved financials by growth, margins, or debt.
+          Open a company’s Financials page to add coverage.
         </p>
       </header>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
-        <p role="status">{draft.status === 'saved' ? `Draft saved in this browser · ${snapshotTime(draft.savedAt!)}` : 'Screening draft stays in this browser.'}{draft.message ? ` ${draft.message}` : ''}</p>
-        <button type="button" className="button-secondary !text-xs" onClick={() => {
-          reset()
-          internalUrls.current.clear()
-          screener.reset()
-          setError('')
-          queryClient.removeQueries({ queryKey: ['workspace', 'screener-snapshot'] })
-          syncUrl(new URLSearchParams())
-        }}>Clear saved screen</button>
-      </div>
       <form
         className="surface mb-6 p-5 sm:p-6"
         onSubmit={(event) => {
@@ -214,10 +196,10 @@ function ScreenForm() {
         }}
       >
         <fieldset disabled={screener.isPending} className="min-w-0">
-          <div className="mb-6 flex items-center gap-2">
-            <SlidersHorizontal className="h-4 w-4 text-violet-300" />
-            <h2 className="text-sm font-semibold">Screening criteria</h2>
-            <span className="ml-auto text-[11px] text-slate-500">
+          <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <SlidersHorizontal className="h-4 w-4 text-sage-300" />
+            <h2 className="text-base font-medium">Screening criteria</h2>
+            <span className="w-full text-xs text-slate-400 sm:ml-auto sm:w-auto">
               Leave any filter blank to skip it
             </span>
           </div>
@@ -251,76 +233,86 @@ function ScreenForm() {
               </label>
             )}
           </div>
-          <p className="mb-6 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-[11px] leading-5 text-slate-400">
+          <p className="mb-4 max-w-2xl text-xs leading-5 text-slate-400">
             {universe === 'curated'
-              ? 'The bundled list is curated, with an unknown membership date. It is not the full current S&P 500. Larger screens may take a minute.'
+              ? 'This list covers a selection of S&P 500 stocks. Its membership date is unknown. Larger screens may take a minute.'
               : universe === 'watchlist'
-                ? 'Screen the companies already saved in this shared research workspace.'
-                : 'Supply up to 500 unique symbols. Missing data and provider failures will be reported.'}
+                ? 'Includes companies in the shared research library.'
+                : 'Enter up to 500 distinct tickers, separated by commas or spaces.'}
           </p>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {filterFields.map((field) => (
-              <label key={field.key} className="field-label">
-                {field.label}
-                <span className="ml-1 text-[10px] text-slate-500">
-                  {' '}
-                  {field.unit}
-                </span>
+          <details
+            className="border-y border-white/10"
+            open={filtersOpen ?? (window.matchMedia('(min-width: 640px)').matches || activeFilterCount > 0)}
+            onToggle={event => setFiltersOpen(event.currentTarget.open)}
+          >
+            <summary className="cursor-pointer py-3 text-sm font-medium text-sage-300">
+              Filters &amp; sorting
+              {activeFilterCount > 0 && <span className="ml-2 text-xs text-slate-400">{activeFilterCount} active</span>}
+            </summary>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {filterFields.map((field) => (
+                <label key={field.key} className="field-label">
+                  {field.label}
+                  <span className="ml-1 text-[10px] text-slate-500">
+                    {' '}
+                    {field.unit}
+                  </span>
+                  <input
+                    className="field-input"
+                    type="number"
+                    step="any"
+                    min={field.key === 'max_debt_to_cash' ? 0 : undefined}
+                    value={filters[field.key]}
+                    placeholder={field.placeholder}
+                    onInput={(e) => setFilters({ ...filters, [field.key]: e.currentTarget.value })}
+                    onChange={(e) =>
+                      setFilters({ ...filters, [field.key]: e.target.value })
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="my-4 grid gap-4 sm:grid-cols-3">
+              <label className="field-label">
+                Sort by
+                <AnimatedSelect
+                  className="field-input"
+                  value={sort}
+                  onValueChange={(value) => setSort(value)}
+                >
+                  {sortOptions.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </AnimatedSelect>
+              </label>
+              <label className="field-label">
+                Direction
+                <AnimatedSelect
+                  className="field-input"
+                  value={direction}
+                  onValueChange={(value) => setDirection(value)}
+                >
+                  <option value="desc">Highest first</option>
+                  <option value="asc">Lowest first</option>
+                </AnimatedSelect>
+              </label>
+              <label className="field-label">
+                Maximum results
                 <input
                   className="field-input"
                   type="number"
-                  step="any"
-                  min={field.key === 'max_debt_to_cash' ? 0 : undefined}
-                  value={filters[field.key]}
-                  placeholder={field.placeholder}
-                  onInput={(e) => setFilters({ ...filters, [field.key]: e.currentTarget.value })}
-                  onChange={(e) =>
-                    setFilters({ ...filters, [field.key]: e.target.value })
-                  }
+                  min={1}
+                  max={500}
+                  required
+                  value={limit}
+                  onInput={(e) => setLimit(e.currentTarget.value)}
+                  onChange={(e) => setLimit(e.target.value)}
                 />
               </label>
-            ))}
-          </div>
-          <div className="mt-6 grid gap-4 border-t border-white/[0.07] pt-6 sm:grid-cols-3">
-            <label className="field-label">
-              Sort by
-              <AnimatedSelect
-                className="field-input"
-                value={sort}
-                onValueChange={(value) => setSort(value)}
-              >
-                {sortOptions.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </AnimatedSelect>
-            </label>
-            <label className="field-label">
-              Direction
-              <AnimatedSelect
-                className="field-input"
-                value={direction}
-                onValueChange={(value) => setDirection(value)}
-              >
-                <option value="desc">Highest first</option>
-                <option value="asc">Lowest first</option>
-              </AnimatedSelect>
-            </label>
-            <label className="field-label">
-              Maximum results
-              <input
-                className="field-input"
-                type="number"
-                min={1}
-                max={500}
-                required
-                value={limit}
-                onInput={(e) => setLimit(e.currentTarget.value)}
-                onChange={(e) => setLimit(e.target.value)}
-              />
-            </label>
-          </div>
+            </div>
+          </details>
           {error && (
             <p role="alert" className="mt-4 text-xs text-rose-200">
               {error}
@@ -328,7 +320,7 @@ function ScreenForm() {
           )}
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <button
-              className="button-primary disabled:opacity-40"
+              className="button-primary min-w-28 disabled:opacity-40"
               type="submit"
             >
               <ScanLine className="h-4 w-4" />
@@ -348,28 +340,26 @@ function ScreenForm() {
             >
               Clear filters
             </button>
-            <span className="text-[11px] text-slate-500">
-              Inputs save in this browser and in the URL.
-            </span>
           </div>
         </fieldset>
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-white/10 pt-3 text-xs text-slate-400">
+          <p role="status">{draft.status === 'saved' ? `Draft saved in this browser · ${snapshotTime(draft.savedAt!)}` : 'Criteria are saved in this browser and reflected in the URL.'}{draft.message ? ` ${draft.message}` : ''}</p>
+          <button type="button" className="text-xs underline decoration-white/20 underline-offset-4 hover:text-white" onClick={() => {
+            reset()
+            internalUrls.current.clear()
+            screener.reset()
+            setError('')
+            queryClient.removeQueries({ queryKey: ['workspace', 'screener-snapshot'] })
+            syncUrl(new URLSearchParams())
+          }}>Clear saved screen</button>
+        </div>
       </form>
-      {screener.isPending && (
-        <p role="status" className="surface mb-5 p-5 text-sm text-violet-200">
-          Collecting financial data and evaluating your criteria…
-        </p>
-      )}
-      {screener.isError && (
-        <p
-          role="alert"
-          className="surface mb-5 border-rose-400/20 p-5 text-sm text-rose-200"
-        >
-          {screener.error.message} Run the screen again to retry.
-        </p>
-      )}
-      {snapshot && data ? (
-        <>
-          {screenCriteriaKey(snapshot.criteria) !== formKey && (
+      <ResearchPanel pending={screener.isPending} aria-label="Screen results">
+        {screener.isError && <p role="alert" className="surface mb-4 border-rose-400/20 p-4 text-sm text-rose-200">
+          {screener.error.message} Run the screen again.{snapshot && ' Your saved screen is still shown.'}
+        </p>}
+        {data || loading ? <>
+          {snapshot && screenCriteriaKey(snapshot.criteria) !== formKey && (
             <p
               role="status"
               className="surface mb-4 border-amber-400/20 p-4 text-xs text-amber-200"
@@ -378,59 +368,54 @@ function ScreenForm() {
               screen. Run again to apply the new filters.
             </p>
           )}
-          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div data-reading-anchor="coverage" className="mb-5 grid grid-cols-2 gap-x-4 gap-y-3 border-y border-white/10 py-4 sm:grid-cols-4">
             {[
-              ['Attempted', data.total_attempted],
-              ['Evaluated', data.total_evaluated],
-              ['Matches', data.total_matches],
+              ['Attempted', data?.total_attempted],
+              ['Evaluated', data?.total_evaluated],
+              ['Matches', data?.total_matches],
               [
                 'Not cached / insufficient',
-                `${data.total_failed} / ${data.total_insufficient}`,
+                data && `${data.total_failed} / ${data.total_insufficient}`,
               ],
             ].map(([label, value]) => (
-              <div key={label} className="surface p-4">
+              <div key={label}>
                 <p className="text-[11px] text-slate-500">{label}</p>
-                <p className="mt-2 text-xl font-semibold tabular-nums">
-                  {value}
-                </p>
+                <div className="mt-2 flex h-7 items-center text-xl font-semibold tabular-nums">
+                  {loading ? <Skeleton className="h-5 w-10" /> : value}
+                </div>
               </div>
             ))}
           </div>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div data-reading-anchor="summary" className="mb-4 grid justify-items-start gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
             <div>
               <h2 className="text-lg font-semibold">Screening results</h2>
-              <p className="mt-1 text-xs text-slate-500">
-                {snapshot.universeName || data.universe_name} · Showing{' '}
-                {data.results.length} of {data.total_matches} matches
+              <p role="status" className="mt-1 text-xs text-slate-500">
+                {snapshot && data ? `${snapshot.universeName || data.universe_name} · Showing ${data.results.length} of ${data.total_matches} matches` : 'Evaluating your criteria…'}
               </p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                Saved {snapshotTime(snapshot.capturedAt)} · Run screen to refresh
+              <p className="mt-1 min-h-4 text-[11px] text-slate-500">
+                {snapshot && <>Saved {snapshotTime(snapshot.capturedAt)} · Run screen to refresh</>}
+                {snapshot && screener.isPending && <span className="sr-only" role="status">Refreshing the saved screen…</span>}
               </p>
             </div>
-            <Link
-              aria-disabled={selected.length < 2}
-              onClick={(e) => {
-                if (selected.length < 2) e.preventDefault()
-              }}
-              href={`/compare?tickers=${selected.join(',')}`}
-              className={`button-secondary ${selected.length < 2 ? 'opacity-40' : ''}`}
-            >
-              Compare selected ({selected.length})
-              <ArrowUpRight className="h-3 w-3" />
-            </Link>
+            <ScreenComparison
+              key={snapshot?.capturedAt}
+              companies={data?.results.filter(company => selected.includes(company.ticker)) ?? []}
+              capturedAt={snapshot?.capturedAt}
+            />
           </div>
-          {data.results.length ? (
+          {data && <p className="mb-3 text-xs text-slate-400">{comparisonCurrencyNotice(data.results)} Revenue sorting uses raw reported amounts, not a common currency.</p>}
+          {rows.length ? (
             <div className="surface overflow-hidden">
               <p className="border-b border-white/[0.07] px-4 py-3 text-xs text-slate-500 sm:hidden">Swipe across for more metrics. Select companies to compare.</p>
-              <div className="overflow-x-auto" role="region" aria-label="Screening results, scroll horizontally for more metrics" tabIndex={0}>
+              <div data-reading-anchor="table" className="overflow-x-auto" role="region" aria-label="Screening results, scroll horizontally for more metrics" tabIndex={0}>
                 <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="border-b border-white/10 text-[10px] uppercase tracking-wider text-slate-500">
-                      <th className="sticky left-0 z-10 w-12 min-w-12 bg-[#171a22] p-0">
+                      <th className="sticky left-0 z-10 w-12 min-w-12 bg-[#191e1b] p-0">
                         <span className="sr-only">Select</span>
                       </th>
-                      <th scope="col" className="sticky left-12 z-10 min-w-28 bg-[#171a22] p-3">Company</th>
-                      {columns.map((column) => (
+                      <th scope="col" className="sticky left-12 z-10 min-w-28 bg-[#191e1b] p-3">Company</th>
+                      {screenMetrics.map((column) => (
                         <th
                           key={column.key}
                           className="whitespace-nowrap p-4 text-right font-medium"
@@ -441,13 +426,15 @@ function ScreenForm() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.results.map((company) => (
+                    {rows.map((company, index) => (
                       <tr
-                        key={company.ticker}
+                        key={company?.ticker ?? index}
+                        data-reading-anchor={`result-${index}`}
+                        aria-hidden={company ? undefined : true}
                         className="border-b border-white/[0.05] last:border-0 hover:bg-white/[0.02]"
                       >
-                        <td className="sticky left-0 z-10 bg-[#171a22] p-0">
-                          <label className="flex h-12 w-12 cursor-pointer items-center justify-center">
+                        <td className="sticky left-0 z-10 bg-[#191e1b] p-0">
+                          {company ? <label className="flex h-12 w-12 cursor-pointer items-center justify-center">
                           <input
                             type="checkbox"
                             aria-label={`Select ${company.ticker} for comparison`}
@@ -466,74 +453,54 @@ function ScreenForm() {
                               }))
                             }}
                           />
-                          </label>
+                          </label> : <Skeleton className="mx-auto h-3.5 w-3.5" />}
                         </td>
-                        <td className="sticky left-12 z-10 bg-[#171a22] p-3 font-semibold">
-                          <Link
-                            className="inline-flex min-h-11 items-center text-violet-200"
+                        <td className="sticky left-12 z-10 bg-[#191e1b] p-3 font-semibold">
+                          {company ? <Link
+                            className="inline-flex min-h-11 items-center text-sage-200"
                             href={companyResearchHref(company.ticker, returnTo)}
                           >
                             {company.ticker} ↗
-                          </Link>
+                          </Link> : <span className="flex h-11 items-center"><Skeleton className="h-3 w-12" /></span>}
                         </td>
-                        {columns.map(({ key, format }) => {
-                          const value = company[key]
-                          const basis = company.growth_metadata?.[key]
-                          return (
-                            <td
-                              key={key}
-                              className="whitespace-nowrap p-4 text-right text-slate-200"
-                            >
-                              {format(typeof value === 'number' ? value : null)}
-                              {basis && (
-                                <span className="mt-1 block text-[10px] text-slate-500">
-                                  {basis.status === 'available'
-                                    ? basis.basis === 'fiscal_year'
-                                      ? 'Fiscal year'
-                                      : 'TTM'
-                                    : 'Unavailable'}
-                                </span>
-                              )}
-                            </td>
-                          )
-                        })}
+                        {screenMetrics.map(metric => (
+                          <td key={metric.key} className="whitespace-nowrap p-4 text-right text-slate-200">
+                            {company ? <ScreenMetricValue company={company} metric={metric} /> : <Skeleton className="ml-auto h-3 w-12" />}
+                          </td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </div>
-          ) : (
+          ) : data && (
             <div className="surface p-10 text-center">
               <h3 className="text-sm font-medium">
                 {data.total_evaluated === 0 ? 'No saved fundamentals in this view' : 'No companies matched this screen'}
               </h3>
               <p className="mt-2 text-xs leading-6 text-slate-400">
-                {data.total_evaluated === 0 ? 'Open a company’s Financials view to load its data, then run this screen again. No provider calls were made by this screen.' : 'Review coverage above, loosen the filters, or try a different universe.'}
+                {data.total_evaluated === 0 ? 'Open a company’s Financials view to load its data, then run this screen again. This screen uses saved data only.' : 'Review coverage above, loosen the filters, or try a different universe.'}
               </p>
             </div>
           )}
-          <p className="mt-4 text-[11px] leading-6 text-slate-500">
+          <p data-reading-anchor="notes" className="mt-4 text-[11px] leading-6 text-slate-500">
             Growth can use TTM or fiscal-year comparisons; each available growth
             figure identifies its basis. Missing values stay unavailable and do
             not pass a filter that requires them. Amounts use provider reporting
             units; verify reporting currencies before comparing companies.
           </p>
-        </>
-      ) : (
-        !screener.isPending && (
-          <div className="surface px-6 py-10 text-center">
-            <ScanLine className="mx-auto mb-4 h-7 w-7 text-violet-300" />
+        </> : !screener.isError && (
+          <div className="border-t border-white/10 pt-5">
             <h2 className="text-base font-medium">
-              Start broad. Find what deserves a closer look.
+              Screening results
             </h2>
-            <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-400">
-              Choose your universe and criteria, then run a screen. Select
-              results to carry them straight into a comparison.
+            <p className="mt-1 max-w-lg text-sm leading-6 text-slate-400">
+              Run a screen, then select two or more results to see their financials side by side.
             </p>
           </div>
-        )
-      )}
+        )}
+      </ResearchPanel>
     </AppShell>
   )
 }

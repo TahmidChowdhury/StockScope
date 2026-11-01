@@ -41,14 +41,6 @@ test('financial research preserves disclosure context through the company round 
   assert.equal(api.companyFundamentalsHref('GOOG', '//example.com/disclosures'), '/fundamentals/GOOG')
 })
 
-test('company comparison links explicitly select a normalized single ticker', () => {
-  assert.equal(api.companyComparisonHref('GOOG'), '/compare?tickers=GOOG')
-  assert.equal(api.companyComparisonHref(' brk.b '), '/compare?tickers=BRK-B')
-  for (const invalid of ['', 'GOOG,MSFT', 'GOOG&tickers=MSFT', '../../compare', 'A'.repeat(11)]) {
-    assert.equal(api.companyComparisonHref(invalid), '/compare')
-  }
-})
-
 test('empty news can open research summary without losing disclosure filters', () => {
   const returnTo = '/disclosures?member=Michael+Rulli&symbol=GOOG'
   const summary = new URL(api.companyResearchHref('GOOG', returnTo, 'analysis'), 'https://stockscope.local')

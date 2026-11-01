@@ -19,7 +19,7 @@ export default function LoadingScreen({
         {/* Spinner */}
         <div className="relative w-14 h-14">
           <div className="absolute inset-0 rounded-full border-4 border-white/8" />
-          <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-purple-400 animate-spin" />
+          <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-sage-400 animate-spin" />
         </div>
 
         {symbol && (

@@ -1,18 +1,18 @@
 # StockScope
 
-StockScope is a personal stock-research workspace for a long-term investing core and a separate trading-learning allocation. It combines company fundamentals, comparison, a curated stock screener, dated news, and links to original SEC filings.
+StockScope is a personal stock-research workspace for a long-term investing core and a separate trading-learning allocation. It brings together dated articles, news sentiment, public disclosures, and original SEC filings. Company financials and a screener provide context.
 
 ## Current behavior
 
 - **Fundamentals:** quarterly and trailing-twelve-month financials from yfinance, with missing values and calculation limitations exposed. Free cash flow requires both operating cash flow and capital expenditure. Growth figures identify their reporting basis.
-- **Comparison and screening:** compare companies and filter a **curated 110-symbol universe**, or supply a custom universe. This is not a complete/current S&P 500 constituent list. Coverage counts distinguish failures, missing data, matches, and displayed results.
+- **Screening:** filter saved financials from a **curated 110-symbol universe**, or supply a custom universe. Select two or more results to compare those same figures within the screener. This is not a complete/current S&P 500 constituent list. Coverage counts distinguish failures, missing data, matches, and displayed results.
 - **SEC reported facts:** an explicit refresh collects primary financial facts and recent filings. The fundamentals page exposes periods, units, filing versions, and original links alongside the existing yfinance metrics; SEC facts do not silently replace TTM calculations.
 - **Research:** news text-tone scores describe saved articles; SEC filing events and company press releases are unscored. Publication dates are distinct from summary-generation dates, and unknown dates stay unknown.
 - **Disclosures:** House and Senate transaction snapshots refresh automatically, with original filing links, publisher coverage, amendment versions, and StockScope observation times. Search disclosures, open company research, and test a defined following rule.
 - **Refresh:** company research refreshes explicitly, with completion, partial-result, and failure status. Disclosure collection runs on its own schedule. Merely opening saved research does not imply it was refreshed.
 - **Shared watchlist:** saved analyzed symbols are shared across authenticated roles. This is not a holdings ledger or a measure of actual portfolio returns. Dashboard evidence counts include news and filing records, not just distinct articles.
-- **Workspace navigation:** dashboard, company research, financials, comparison, screening, and paper experiments share a responsive shell and watchlist. Saved backtests and paper portfolios have direct URLs. Screener selections carry into Compare; missing data and coverage remain visible.
-- **Browser drafts:** screening inputs/results/selections, comparison inputs/results, trading forms, per-portfolio order drafts, company valuation assumptions, and tone annotations/completed reports restore after refresh or return visits. Drafts use local browser storage separated by API connection and individual account (or legacy access role before owner setup), without cross-device sync. Drafts contain no login credentials. Saved snapshots retain their collection dates and do not trigger fresh screening, model inference, or trading actions. Clear controls affect only their local workspace; blocked or full browser storage displays an unsaved warning.
+- **Workspace navigation:** dashboard, company research, financials, disclosures, screening, and paper experiments share a responsive shell and watchlist. Saved backtests and paper portfolios have direct URLs. Disclosures opens directly from mobile navigation; the menu includes the screener. Older Compare links open the screener with their tickers prefilled.
+- **Browser drafts:** screening inputs/results/selections, trading forms, per-portfolio order drafts, company valuation assumptions, and tone annotations/completed reports restore after refresh or return visits. Drafts use local browser storage separated by API connection and individual account (or legacy access role before owner setup), without cross-device sync. Drafts contain no login credentials. Saved snapshots retain their collection dates and do not trigger fresh screening, model inference, or trading actions. Clear controls affect only their local workspace; blocked or full browser storage displays an unsaved warning.
 - **Authentication:** friends sign in with their individual invited account. The owner can manage access and send single-use password reset links. The installed app selects “Keep me signed in on this device for 30 days” by default. Browser tabs offer the same checkbox. See the private workspace setup below.
 
 The former BUY/SELL/HOLD recommendations, probability-like confidence percentages, and fabricated quantitative metrics have been removed from active API responses. The legacy `/investment-advice` route now returns an evidence summary. `/quantitative` explicitly reports that validated metrics are unavailable. Experimental code in `analysis/` is not a validated investment model and is no longer called by these routes.
@@ -93,6 +93,8 @@ npm run frontend
 
 The frontend is at `http://localhost:3000`; the API is at `http://localhost:8000`; API documentation is at `/docs`. `npm run start` starts the API using `$PORT` (default 8000).
 
+To show the Next.js and React Query debugging controls during local development, set `NEXT_PUBLIC_SHOW_DEVTOOLS=true` in `stockscope-frontend/.env.local` and restart the frontend.
+
 ## Supabase setup and existing-data migration
 
 Create a dedicated Supabase project on the Free plan. Copy the owner Postgres URI from **Connect** into `DATABASE_URL` in your private backend `.env` and Railway variables; never put it in Vercel or a `NEXT_PUBLIC_` variable. Use the direct connection when IPv6 is available, or the **Session pooler** on port 5432 for IPv4. Percent-encode reserved password characters and enable TLS with `sslmode=require` (`verify-full` with the supplied CA is stronger). Use the exact dashboard hostname and username. See [Supabase connection instructions](https://supabase.com/docs/guides/database/connecting-to-postgres).
@@ -161,7 +163,7 @@ Saved records open at `/trading/backtests/{run_id}` and
 refresh or sign-in and work with browser Back/Forward. Opening a saved record
 does not rerun it. Malformed IDs and unavailable records show explicit missing-record
 states. `/trading?tab=backtest&symbols=AAPL,MSFT` remains a research handoff;
-refreshing that URL preserves later draft edits, while a new Compare handoff
+refreshing that URL preserves later draft edits, while a new handoff
 updates the symbols without discarding other experiment inputs.
 
 **Before deploying this change**, run `venv/bin/python -m alembic upgrade head` with
@@ -395,7 +397,7 @@ No automatic trade execution is implemented. No provider subscription or brokera
 
 ## Local tone research, valuation and risk
 
-Company research includes a **Tone lab** tab. VADER remains the production news-tone method. The lab compares it with two allowlisted local research checkpoints: FinSense ModernBERT and ModernFinBERT. Every challenger result includes its pinned revision, text coverage, truncation and model probabilities. Softmax probabilities are uncalibrated tone estimates, not probabilities of investment success. SEC events, company releases, empty text and unsupported/unknown languages are excluded.
+Company research includes a **Sentiment** tab with the tone lab. VADER remains the production news-tone method. The lab compares it with two allowlisted local research checkpoints: FinSense ModernBERT and ModernFinBERT. Every challenger result includes its pinned revision, text coverage, truncation and model probabilities. Softmax probabilities are uncalibrated tone estimates, not probabilities of investment success. SEC events, company releases, empty text and unsupported/unknown languages are excluded.
 
 Install the optional CPU research runtime, then explicitly cache the models (about 1.2 GB of model weights):
 
@@ -422,7 +424,7 @@ venv/bin/python -m scripts.benchmark_sentiment AAPL --limit 12 --compare --label
 
 Templates start with null labels. Accuracy and macro-F1 are unavailable until annotations are supplied; model agreement is not ground truth. Sample identifiers and text hashes reject annotations for changed text. These commands read saved evidence without replacing production scores or collecting new articles.
 
-**Business quality & valuation** appears in company Overview and Financials. It separates operating metrics from price-based ratios, retaining dates, unknown inputs and provider-declared financial currency. Cross-source ratios require matching supported currencies, a recent timestamped quote and dated four-quarter financials. Provider operating cash flow minus CapEx is not treated as verified FCFF or FCFE. Editable equity cash-flow scenarios use the user's explicit FCFE and share assumptions with cash-flow multiples; they are illustrative, save as a local company draft, and are not DCF forecasts or buy/sell ratings. Refreshed evidence preserves those assumptions; Reset uses current quote defaults. Tone annotations are tied to article IDs and text hashes. Saved tone reports are dated snapshots checked against current samples before restoration; changed samples withhold incompatible reports and labels while preserving them for local export.
+**Business quality & valuation** is in Financials, linked from the company header. It separates operating metrics from price-based ratios, retaining dates, unknown inputs and provider-declared financial currency. Cross-source ratios require matching supported currencies, a recent timestamped quote and dated four-quarter financials. Provider operating cash flow minus CapEx is not treated as verified FCFF or FCFE. Editable equity cash-flow scenarios use the user's explicit FCFE and share assumptions with cash-flow multiples; they are illustrative, save as a local company draft, and are not DCF forecasts or buy/sell ratings. Refreshed evidence preserves those assumptions; Reset uses current quote defaults. Tone annotations are tied to article IDs and text hashes. Saved tone reports are dated snapshots checked against current samples before restoration; changed samples withhold incompatible reports and labels while preserving them for local export.
 
 Saved backtests now include a **Risk profile** from QuantStats 0.0.77, the release pinned for this app's Python 3.9 environment. It uses the saved strategy and benchmark equity curves, including initial cash to first saved close. Sharpe/Sortino use zero risk-free rate, 252 sessions per year and the documented sample/downside estimators. Undefined ratios remain unavailable; measured zero volatility remains zero. Drawdown duration uses observed underwater sessions and calendar time, with recovery sessions excluded. Saved experiments and their data hashes remain unchanged.
 
@@ -498,7 +500,17 @@ use the actual reset/cooldown time. Prior good observations remain available wit
 saved-data notice and unchanged retrieval/source dates. Backtests and paper refreshes
 require an unexpired price snapshot and never silently use the stale fallback.
 
-Provider-backed panels do not automatically retry or refresh on window focus. Home,
+The home market tape reads a separate, shared snapshot of QQQ, SPY, DIA and the
+workspace's default companies. At API startup one worker fills a missing snapshot
+with a single Yahoo quote batch. It refreshes every five minutes during the NYSE
+session and for twenty minutes after the close to capture delayed closing quotes.
+The final snapshot persists through weekends, holidays and restarts. Tapping a
+symbol shows its original regular-session quote time in Eastern time. Missing
+or older provider rows keep their last dated observations. The worker uses the
+shared Yahoo request budget; viewing the strip spends no personal allowance.
+Set `MARKET_TAPE_ENABLED=false` to serve saved changes without the worker.
+
+Provider-backed research panels do not automatically retry or refresh on window focus. Home,
 lists, quick previews, screener, saved news and filings do not request fresh market
 data. Refreshing/restarting the app does not clear durable provider snapshots or
 budgets. The old standalone `analysis/` prototypes are not imported by the web API;

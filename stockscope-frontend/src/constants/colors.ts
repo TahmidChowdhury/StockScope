@@ -5,8 +5,8 @@
 // Source colors for different data sources
 export const SOURCE_COLORS = {
   NEWS: '#1DA1F2',
-  SEC: '#6366F1',
-  DEFAULT: '#8B5CF6'
+  SEC: '#91a68a',
+  DEFAULT: '#b6c8ab'
 } as const
 
 // Sentiment colors based on sentiment score
@@ -18,7 +18,7 @@ export const SENTIMENT_COLORS = {
 
 // Chart colors
 export const CHART_COLORS = {
-  PRIMARY: '#6366F1'
+  PRIMARY: '#91a68a'
 } as const
 
 /**

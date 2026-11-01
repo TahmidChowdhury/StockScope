@@ -114,7 +114,7 @@ export default function NewsCard({
         </div>
 
         {/* Title */}
-        <h3 className="text-xl font-semibold text-white mb-3 group-hover:text-purple-200 transition-colors">
+        <h3 className="text-xl font-semibold text-white mb-3 group-hover:text-sage-200 transition-colors">
           {article.title}
         </h3>
 
@@ -138,7 +138,7 @@ export default function NewsCard({
             href={article.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-purple-300 hover:text-purple-200 text-sm font-medium transition-colors"
+            className="inline-flex items-center gap-2 text-sage-300 hover:text-sage-200 text-sm font-medium transition-colors"
           >
             Read Full Article
             <ExternalLink className="h-4 w-4" />
@@ -168,7 +168,7 @@ export default function NewsCard({
       </div>
 
       {/* Title */}
-      <h3 className="text-lg font-semibold text-white mb-3 line-clamp-2 group-hover:text-purple-200 transition-colors">
+      <h3 className="text-lg font-semibold text-white mb-3 line-clamp-2 group-hover:text-sage-200 transition-colors">
         {article.title}
       </h3>
 
@@ -185,7 +185,7 @@ export default function NewsCard({
           href={article.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 text-purple-300 hover:text-purple-200 text-sm font-medium transition-colors z-20 relative"
+          className="inline-flex items-center gap-2 text-sage-300 hover:text-sage-200 text-sm font-medium transition-colors z-20 relative"
         >
           Read More
           <ExternalLink className="h-3 w-3" />

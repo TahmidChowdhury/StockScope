@@ -47,6 +47,7 @@ export function signOut() {
 const ROLES = ['admin', 'demo', 'guest', 'member', 'viewer'] as const
 
 export interface AuthSession {
+  isFirstSession?: boolean
   user?: { id: string; name: string; email: string; role: string }
   accessToken: string
   role: 'admin' | 'demo' | 'guest' | 'member' | 'viewer'
@@ -54,27 +55,33 @@ export interface AuthSession {
 }
 
 export class ApiError extends Error {
-  constructor(message: string, public readonly status: number) {
+  constructor(message: string, public readonly status: number, public readonly retryAt: number | null = null) {
     super(message)
     this.name = 'ApiError'
   }
 }
 
+/** Retry-After supports delay seconds and HTTP dates. Invalid values allow manual retry. */
+export function retryAfterDeadline(value: string | null, now = Date.now()): number | null {
+  if (!value?.trim()) return null
+  const text = value.trim()
+  const numeric = /^[+-]?\d+(?:\.\d+)?$/.test(text)
+  const seconds = Number(text)
+  const time = numeric ? (seconds >= 0 ? now + seconds * 1000 : NaN) : Date.parse(text)
+  return Number.isFinite(time) && Math.abs(time) <= 8.64e15 ? time : null
+}
+
 /** Preserve actionable API errors instead of turning rate limits into missing data. */
 export async function readApiJson<T>(response: Response, fallback: string): Promise<T> {
   if (response.ok) return response.json()
+  const retryAt = response.status === 429 ? retryAfterDeadline(response.headers.get('Retry-After')) : null
   let message = fallback
   try {
     const body = await response.json()
     if (typeof body.detail === 'string') message = body.detail
   } catch { /* Proxy errors may not be JSON. */ }
-  const retry = response.headers.get('Retry-After')
-  if (response.status === 429 && retry) {
-    const seconds = Number(retry)
-    const time = Number.isFinite(seconds) ? Date.now() + seconds * 1000 : Date.parse(retry)
-    if (Number.isFinite(time)) message += ` Available after ${new Date(time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}.`
-  }
-  throw new ApiError(message, response.status)
+  if (retryAt !== null) message += ` Available after ${new Date(retryAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}.`
+  throw new ApiError(message, response.status, retryAt)
 }
 
 function removeLegacyCredentials() {
@@ -112,13 +119,14 @@ export function getAuthSession(): AuthSession | null {
   }
 }
 
-export function saveAuthSession(response: SimpleAuthResponse): void {
+export function saveAuthSession(response: SimpleAuthResponse, isFirstSession = false): void {
   if (
     !response.success || !response.access_token || response.token_type !== 'bearer' ||
     !ROLES.includes(response.role) || !Number.isFinite(response.expires_in_seconds) ||
     response.expires_in_seconds <= 0
   ) throw new Error('The server did not return a valid session. Please sign in again.')
   const session: AuthSession = {
+    isFirstSession,
     user: response.user,
     accessToken: response.access_token,
     role: response.role,

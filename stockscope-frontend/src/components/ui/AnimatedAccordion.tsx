@@ -32,7 +32,7 @@ export default function AnimatedAccordion({
         <div className="flex items-center gap-2">
           <Accordion.Header asChild>
             <Heading className="min-w-0 flex-1">
-              <Accordion.Trigger className={`group/accordion flex min-h-11 w-full items-center justify-between gap-3 rounded-md text-left hover:text-violet-200 ${triggerClassName}`}>
+              <Accordion.Trigger className={`group/accordion flex min-h-11 w-full items-center justify-between gap-3 rounded-md text-left hover:text-sage-200 ${triggerClassName}`}>
                 <span className="min-w-0">{title}</span>
                 <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-300 ease-out group-data-[state=open]/accordion:rotate-180 motion-reduce:transition-none" />
               </Accordion.Trigger>

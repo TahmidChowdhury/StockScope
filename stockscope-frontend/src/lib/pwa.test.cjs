@@ -13,7 +13,7 @@ function worker({ network = async () => new Response('live page'), cacheNames = 
   const opened = []
   const removed = []
   const fetched = []
-  const offline = new Response('<h1>Let’s reconnect.</h1>', { headers: { 'Content-Type': 'text/html' } })
+  const offline = new Response('<h1>StockScope can’t connect</h1>', { headers: { 'Content-Type': 'text/html' } })
   const cache = {
     async add(request) {
       added.push(request)
@@ -62,14 +62,14 @@ function worker({ network = async () => new Response('live page'), cacheNames = 
 }
 
 test('installation stores only the anonymous public fallback and leaves updates waiting', async () => {
-  const sw = worker({ cacheNames: ['stockscope-offline-v0', 'stockscope-offline-v1', 'another-app-cache'] })
+  const sw = worker({ cacheNames: ['stockscope-offline-v0', 'stockscope-offline-v1', 'stockscope-offline-v2', 'stockscope-offline-v3', 'another-app-cache'] })
   await sw.lifecycle('install')
   assert.equal(sw.added.length, 1)
   assert.equal(sw.added[0].url, `${origin}/offline.html`)
   assert.equal(sw.added[0].credentials, 'omit')
   assert.equal(sw.added[0].cache, 'reload')
   await sw.lifecycle('activate')
-  assert.deepEqual(sw.removed, ['stockscope-offline-v0'])
+  assert.deepEqual(sw.removed, ['stockscope-offline-v0', 'stockscope-offline-v1', 'stockscope-offline-v2'])
 })
 
 test('a failed offline download rejects installation rather than replacing a working worker', async () => {
@@ -90,7 +90,7 @@ test('offline page navigation uses the public fallback, never cached research', 
   const sw = worker({ network: async () => { throw new TypeError('Offline') } })
   await sw.lifecycle('install')
   const response = await sw.request('/stock/AAPL?tab=news')
-  assert.match(await response.text(), /Let’s reconnect/)
+  assert.match(await response.text(), /StockScope can’t connect/)
   assert.equal(sw.stored.size, 1)
   assert.ok(sw.stored.has('/offline.html'))
   sw.stored.clear()

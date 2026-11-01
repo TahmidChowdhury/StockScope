@@ -1,12 +1,12 @@
 'use client'
 
-import { apiFetch } from '@/lib/api'
-import { newsDateLabels, normalizeNewsSentiment } from '@/lib/news'
+import { apiFetch, readApiJson } from '@/lib/api'
+import { newsDateLabels, normalizeNewsSentiment, readSavedNewsPage, savedNewsParams, type SavedNewsPage } from '@/lib/news'
 import { companyResearchHref } from '@/lib/research-workflow'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { ArrowUpRight, Newspaper, RefreshCw, ExternalLink } from 'lucide-react'
 import FilterSortBar from './FilterSortBar'
 
@@ -35,142 +35,100 @@ interface NewsComponentProps {
   className?: string
 }
 
-interface FilterOption {
-  id: string
-  label: string
-  icon?: string
-  enabled: boolean
+const sortOptions = [
+  { id: 'date-desc', label: 'Latest First', direction: 'desc' as const },
+  { id: 'date-asc', label: 'Oldest First', direction: 'asc' as const },
+  { id: 'sentiment-desc', label: 'Most Positive', direction: 'desc' as const },
+  { id: 'sentiment-asc', label: 'Most Negative', direction: 'asc' as const },
+]
+
+export default function NewsComponent(props: NewsComponentProps) {
+  // A new company starts with its own filters, order, page, and source catalog.
+  return <SavedNews key={props.symbol} {...props} />
 }
 
-interface SortOption {
-  id: string
-  label: string
-  direction: 'asc' | 'desc'
-}
-
-const getArticleId = (article: Pick<NewsArticle, 'url' | 'publishedAt' | 'title' | 'source'>) => {
-  return article.url || `${article.source.name}:${article.publishedAt}:${article.title}`
-}
-
-function getSourceIcon(source: string): string {
-  const s = source.toLowerCase()
-  if (s.includes('yahoo')) return '📰'
-  if (s.includes('stocktwits')) return '💬'
-  if (s.includes('seeking alpha') || s.includes('seekingalpha')) return '🔭'
-  if (s.includes('finviz')) return '📊'
-  if (s.includes('reuters')) return '📡'
-  if (s.includes('bloomberg')) return '💼'
-  if (s.includes('cnbc')) return '📺'
-  if (s.includes('marketwatch')) return '📈'
-  if (s.includes('benzinga')) return '⚡'
-  if (s.includes('motley')) return '🎯'
-  if (s.includes('google')) return '🔍'
-  if (s.includes('cnn')) return '🏛️'
-  if (s.includes('thestreet')) return '🏦'
-  return '🗞️'
-}
-
-export default function NewsComponent({ symbol, className = '' }: NewsComponentProps) {
+function SavedNews({ symbol, className = '' }: NewsComponentProps) {
   const search = useSearchParams()
   const researchHref = companyResearchHref(symbol, search.get('returnTo') || '', 'analysis')
-  const [articles, setArticles] = useState<NewsArticle[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const overviewHref = companyResearchHref(symbol, search.get('returnTo') || '')
+  const [selection, setSelection] = useState({ sort: 'date-desc', offset: 0, excluded: [] as string[] })
+  const [sources, setSources] = useState<string[]>([])
+  const params = savedNewsParams(selection.sort, selection.offset, selection.excluded)
+  const query = useQuery({
+    queryKey: ['saved-news', symbol, params],
+    queryFn: async ({ signal }) => readSavedNewsPage(await readApiJson<unknown>(
+      await apiFetch(`/api/stocks/${encodeURIComponent(symbol)}/news?${params}`, { signal }),
+      'Saved news could not be loaded. Please retry.',
+    )),
+    staleTime: 0, retry: false, refetchOnWindowFocus: false,
+    placeholderData: previous => previous,
+  })
+  const pageInfo = query.data
+  const data = query.isPlaceholderData ? undefined : query.data
+  useEffect(() => { if (data) setSources(data.sources) }, [data])
+  const articles = data ? transformArticles(data) : []
+  const pending = query.isPending || query.isPlaceholderData
+  const clearFilters = () => setSelection(previous => ({ ...previous, excluded: [], offset: 0 }))
+  return <section className={`surface min-w-0 p-3 sm:p-6 ${className}`} aria-label="Saved news" aria-busy={query.isFetching}>
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <h2 className="text-lg font-semibold">Saved news</h2>
+      <button onClick={() => void query.refetch()} disabled={query.isFetching}
+        aria-label="Reload saved news" title="Reload saved news"
+        className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-sage-200">
+        <RefreshCw className={`h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} />
+      </button>
+    </div>
+    {!!sources.length && <FilterSortBar
+      filters={sources.map(source => ({ id: source, label: source, enabled: !selection.excluded.includes(source) }))}
+      onFilterChange={(source, enabled) => setSelection(previous => ({ ...previous, offset: 0,
+        excluded: enabled ? previous.excluded.filter(value => value !== source) : [...new Set([...previous.excluded, source])],
+      }))}
+      sortOptions={sortOptions} currentSort={selection.sort}
+      onSortChange={sort => setSelection(previous => ({ ...previous, sort, offset: 0 }))}
+      className="mb-3"
+    />}
+    <p role="status" className="mb-3 text-xs text-slate-400">
+      {pending ? 'Loading saved articles…' : data ? `${data.count ? data.offset + 1 : 0}–${data.offset + data.count} of ${data.total} matching saved articles · ${data.saved_total} saved in total` : 'Saved article count unavailable'}
+    </p>
+    {query.isError && <div role="alert" className="mb-4 text-sm text-amber-200">
+      <p>Couldn’t load saved news for {symbol}. {query.error.message}</p>
+      {data && <p>Previously loaded results are shown.</p>}
+      <button onClick={() => void query.refetch()} disabled={query.isFetching} className="button-secondary mt-3">Retry saved news</button>
+    </div>}
+    {pending && <div aria-hidden="true" className="space-y-4 py-5 motion-safe:animate-pulse">
+      {[0, 1, 2].map(index => <div key={index} className="h-12 rounded bg-white/5" />)}
+    </div>}
+    {data && !query.isError && !articles.length && <div className="py-6 text-center sm:py-8">
+      <Newspaper className="mx-auto mb-4 h-12 w-12 text-white/20" />
+      {data.saved_total === 0 ? <>
+        <p className="text-sm text-white/60">No saved news for {symbol} yet.</p>
+        {data.can_collect ? <>
+          <p className="mt-2 text-xs leading-5 text-slate-400">Open the research summary to refresh sources and look for articles to save.</p>
+          <Link href={researchHref} className="button-primary mt-5">Open research summary<ArrowUpRight className="h-4 w-4" /></Link>
+        </> : <>
+          <p className="mt-2 text-xs leading-5 text-slate-400">No articles have been saved here. A member or administrator can refresh shared research.</p>
+          <Link href={overviewHref} className="button-secondary mt-5">View company overview</Link>
+        </>}
+      </> : <>
+        <p className="text-sm text-white/60">No saved articles match the selected sources.</p>
+        <button onClick={clearFilters} className="button-secondary mt-4">Clear source filters</button>
+      </>}
+    </div>}
+    {!!articles.length && <div className="divide-y divide-white/[0.07]">
+      {articles.map((article, index) => <EnhancedNewsCard key={`${article.url || article.title}-${index}`} article={article} />)}
+    </div>}
+    {pageInfo && <nav aria-label="Saved news pagination" className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3">
+      <button className="button-secondary" disabled={query.isFetching || query.isError || pageInfo.offset === 0}
+        onClick={() => setSelection(previous => ({ ...previous, offset: Math.max(0, pageInfo.offset - pageInfo.limit) }))}>Previous page</button>
+      <span className="text-xs text-slate-400">Page {Math.floor(pageInfo.offset / pageInfo.limit) + 1} of {Math.max(1, Math.ceil(pageInfo.total / pageInfo.limit))}</span>
+      <button className="button-secondary" disabled={query.isFetching || query.isError || !pageInfo.has_more}
+        onClick={() => setSelection(previous => ({ ...previous, offset: pageInfo.offset + pageInfo.limit }))}>Next page</button>
+    </nav>}
+    {data?.can_collect && articles.length > 0 && <Link href={researchHref} className="mt-3 inline-flex min-h-11 items-center text-xs text-sage-300 hover:underline">Open research summary to refresh sources →</Link>}
+  </section>
+}
 
-  // Dynamic source filtering — built from whatever sources are actually in the data
-  const [disabledSources, setDisabledSources] = useState<Set<string>>(new Set())
-
-  // Derive available sources from loaded articles
-  const availableSources = useMemo((): FilterOption[] => {
-    const seen = new Map<string, string>() // sourceName → icon
-    articles.forEach(a => {
-      const name = a.source.name
-      if (name && !seen.has(name)) {
-        seen.set(name, getSourceIcon(name))
-      }
-    })
-    return Array.from(seen.entries()).map(([name, icon]) => ({
-      id: name,
-      label: name,
-      icon,
-      enabled: !disabledSources.has(name)
-    }))
-  }, [articles, disabledSources])
-  
-  const [currentSort, setCurrentSort] = useState('date-desc')
-  
-  const sortOptions: SortOption[] = [
-    { id: 'date-desc', label: 'Latest First', direction: 'desc' },
-    { id: 'date-asc', label: 'Oldest First', direction: 'asc' },
-    { id: 'sentiment-desc', label: 'Most Positive', direction: 'desc' },
-    { id: 'sentiment-asc', label: 'Most Negative', direction: 'asc' }
-  ]
-
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const requestRef = useRef<AbortController | null>(null)
-
-  // Filtered and sorted articles using dynamic source set
-  const filteredAndSortedArticles = useMemo(() => {
-    const filtered = articles.filter(article => !disabledSources.has(article.source.name))
-
-    // Sort articles
-    filtered.sort((a, b) => {
-
-      switch (currentSort) {
-        case 'date-desc':
-          return (b.publishedAt ? new Date(b.publishedAt).getTime() : 0) - (a.publishedAt ? new Date(a.publishedAt).getTime() : 0)
-        case 'date-asc':
-          return (a.publishedAt ? new Date(a.publishedAt).getTime() : Infinity) - (b.publishedAt ? new Date(b.publishedAt).getTime() : Infinity)
-        case 'sentiment-desc':
-        case 'sentiment-asc':
-          if (!a.sentiment) return b.sentiment ? 1 : 0
-          if (!b.sentiment) return -1
-          return currentSort === 'sentiment-desc'
-            ? b.sentiment.score - a.sentiment.score
-            : a.sentiment.score - b.sentiment.score
-        default:
-          return 0
-      }
-    })
-
-    return filtered
-  }, [articles, disabledSources, currentSort])
-
-  const handleFilterChange = (filterId: string, enabled: boolean) => {
-    setDisabledSources(prev => {
-      const next = new Set(prev)
-      if (enabled) {
-        next.delete(filterId)
-      } else {
-        next.add(filterId)
-      }
-      return next
-    })
-  }
-
-  const handleSortChange = (sortId: string) => {
-    setCurrentSort(sortId)
-  }
-
-  const fetchNews = useCallback(async (refresh = false) => {
-    requestRef.current?.abort()
-    const controller = new AbortController()
-    requestRef.current = controller
-    setLoading(!refresh)
-    setIsRefreshing(refresh)
-    setError(null)
-
-    try {
-      const response = await apiFetch(`/api/stocks/${encodeURIComponent(symbol)}/news`, {
-        signal: controller.signal,
-      })
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch news data')
-      }
-      
-      const data = await response.json()
-
+function transformArticles(data: SavedNewsPage): NewsArticle[] {
       const isGenericStocktwitsUrl = (url: string) => {
         const normalizedUrl = url.trim().replace(/\/+$/, '').toLowerCase()
         return [
@@ -184,20 +142,20 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
           'http://www.stocktwits.com/mobile'
         ].includes(normalizedUrl)
       }
-      
+
       // Transform the articles to match our interface
-      const transformedArticles = data.articles?.map((item: { 
-        title?: string; 
-        url?: string; 
+      const transformedArticles = data.articles.map((item: {
+        title?: string;
+        url?: string;
         publishedAt?: string | null;
         provider_seen_at?: string | null;
         source_type?: string;
         provider?: string;
         original_source?: string;
-        source?: string; 
+        source?: string;
         username?: string;
         message_id?: number | string;
-        description?: string; 
+        description?: string;
         sentiment?: { compound?: number; label?: string } | null
       }) => {
         // Handle missing or invalid URLs better
@@ -207,7 +165,7 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
         if (sourceName.includes('stocktwits') && item.username && item.message_id) {
           articleUrl = `https://stocktwits.com/${item.username}/message/${item.message_id}`
         }
-        
+
         // If no URL provided, create appropriate fallback based on source
         if (
           !articleUrl ||
@@ -217,7 +175,7 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
         ) {
           articleUrl = ''
         }
-        
+
         return {
           title: item.title || 'No title available',
           url: articleUrl,
@@ -235,223 +193,33 @@ export default function NewsComponent({ symbol, className = '' }: NewsComponentP
           sentiment: normalizeNewsSentiment(item.sentiment, item.source_type)
         }
       }) || []
-      
-      if (!controller.signal.aborted) setArticles(transformedArticles.slice(0, 20))
-    } catch (err) {
-      if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Unknown error')
-    } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false)
-        setIsRefreshing(false)
-      }
-    }
-  }, [symbol])
 
-  useEffect(() => {
-    setArticles([])
-    setDisabledSources(new Set())
-    if (symbol) void fetchNews()
-    return () => requestRef.current?.abort()
-  }, [symbol, fetchNews])
-
-  if (loading) {
-    return (
-      <div className={`bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 sm:p-6 ${className}`}>
-        <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
-          <Newspaper className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400" />
-          <h2 className="text-lg sm:text-xl font-semibold text-white">Saved news</h2>
-        </div>
-        
-        <div className="space-y-3 sm:space-y-4">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="bg-white/5 rounded-lg p-3 sm:p-4 animate-pulse">
-              <div className="h-3 sm:h-4 bg-white/10 rounded w-3/4 mb-2"></div>
-              <div className="h-2 sm:h-3 bg-white/10 rounded w-1/2 mb-2"></div>
-              <div className="h-2 sm:h-3 bg-white/10 rounded w-1/4"></div>
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  if (error && articles.length === 0) {
-    return (
-      <div className={`bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 sm:p-6 ${className}`}>
-        <div className="flex items-center gap-2 sm:gap-3 mb-4">
-          <Newspaper className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400" />
-          <h2 className="text-lg sm:text-xl font-semibold text-white">Saved news</h2>
-        </div>
-        <div className="text-center py-6 sm:py-8">
-          <p className="text-red-400 mb-2 text-sm sm:text-base">Failed to load news</p>
-          <p className="text-gray-400 text-xs sm:text-sm">{error}</p>
-          <button onClick={() => void fetchNews()} className="button-secondary mt-4">Try again</button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <>
-      <div
-        className={`min-w-0 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-3 sm:p-6 ${className}`}
-        aria-busy={isRefreshing}
-      >
-        {/* Header with refresh button - Mobile optimized */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 mb-4 sm:mb-6">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <Newspaper className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400" />
-            <h2 className="text-lg sm:text-xl font-semibold text-white">Saved news</h2>
-            <span className="text-xs sm:text-sm text-white/60">for {symbol}</span>
-          </div>
-          
-          <button
-            onClick={() => void fetchNews(true)}
-            disabled={isRefreshing || loading}
-            className="flex min-h-11 items-center gap-2 px-3 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-lg text-white text-sm transition-all disabled:opacity-50 touch-manipulation self-start sm:self-auto"
-          >
-            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span>Reload saved news</span>
-          </button>
-        </div>
-
-        <p className="text-xs text-white/50 mb-4">Saved articles may be out of date. Use Refresh sources in <Link href={researchHref} className="text-violet-300 underline underline-offset-2">Research summary</Link> to collect new research. Company releases are company statements and are not scored. News sentiment describes wording, not expected returns.</p>
-
-        {error && <p role="status" className="mb-4 text-xs text-amber-200">Could not reload news. Previously loaded articles are still shown. {error}</p>}
-
-        {/* Filter and Sort Bar - Mobile responsive */}
-        <FilterSortBar
-          filters={availableSources}
-          onFilterChange={handleFilterChange}
-          sortOptions={sortOptions}
-          currentSort={currentSort}
-          onSortChange={handleSortChange}
-          resultCount={filteredAndSortedArticles.length}
-          className="mb-4 sm:mb-6"
-        />
-
-        {/* Articles Grid - Enhanced mobile layout */}
-        {filteredAndSortedArticles.length === 0 ? (
-          <div className="text-center py-6 sm:py-8">
-            <Newspaper className="h-12 w-12 text-white/20 mx-auto mb-4" />
-            {articles.length === 0 ? <>
-              <p className="text-white/60 text-sm sm:text-base">No saved news for {symbol} yet.</p>
-              <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-400">Open Research summary and refresh sources to collect articles and filing evidence.</p>
-              <Link href={researchHref} className="button-primary mt-5">Open research to collect news<ArrowUpRight className="h-4 w-4" /></Link>
-            </> : <>
-              <p className="text-white/60 text-sm sm:text-base">No news articles found with current filters</p>
-              <button onClick={() => setDisabledSources(new Set())} className="button-secondary mt-4">Clear source filters</button>
-            </>}
-          </div>
-        ) : (
-          <div className="space-y-3 sm:space-y-4 lg:grid lg:gap-4 lg:grid-cols-2 lg:space-y-0">
-            {filteredAndSortedArticles.map((article, index) => (
-              <EnhancedNewsCard
-                key={`${getArticleId(article)}-${index}`}
-                article={article}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </>
-  )
+  return transformedArticles
 }
 
-// News Card Component
 function EnhancedNewsCard({ article }: { article: NewsArticle }) {
-  const hasLink = Boolean(article.url)
-  const isCompanyRelease = article.source_type === 'company_release'
+  const release = article.source_type === 'company_release'
   const dates = newsDateLabels(article.publishedAt, article.provider_seen_at)
-  const providerLabel = article.provider === 'gdelt' ? 'GDELT'
-    : article.provider === 'company_ir_rss' ? 'Official company RSS' : null
-
-  const getSentimentColor = (score?: number) => {
-    if (score == null) return 'text-gray-400'
-    if (score >= 0.05) return 'text-green-400'
-    if (score <= -0.05) return 'text-red-400'
-    return 'text-yellow-400'
-  }
-
-  const getSentimentIcon = (score?: number) => {
-    if (score == null) return '➡️'
-    if (score >= 0.05) return '📈'
-    if (score <= -0.05) return '📉'
-    return '➡️'
-  }
-
-  // Deduplicate: skip description if it's the same text as the title
-  const showDescription =
-    article.description && article.description.trim() !== article.title.trim()
-
-  const CardWrapper = hasLink
-    ? ({ children }: { children: React.ReactNode }) => (
-        <a
-          href={article.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 hover:border-purple-500/30 transition-all duration-200 overflow-hidden"
-        >
-          {children}
-        </a>
-      )
-    : ({ children }: { children: React.ReactNode }) => (
-        <div className="bg-white/5 rounded-lg border border-white/10 overflow-hidden opacity-80">
-          {children}
-        </div>
-      )
-
+  const provider = article.provider === 'gdelt' ? 'GDELT' : article.provider === 'company_ir_rss' ? 'Official company RSS' : null
+  const tone = article.sentiment
+  const description = article.description?.trim()
   return (
-    <CardWrapper>
-      <div className="p-4">
-        {/* Title */}
-        <h3 className={`font-semibold mb-2 line-clamp-2 leading-tight ${
-          hasLink ? 'text-white group-hover:text-purple-300' : 'text-white/70'
-        }`}>
-          {article.title}
-        </h3>
-
-        {/* Meta row */}
-        <div className="flex flex-wrap items-center gap-2 text-sm text-white/60 mb-2">
-          <span className="break-all">{article.original_source || article.source.name}</span>
-          {isCompanyRelease && (
-            <span className="rounded border border-blue-400/30 bg-blue-400/10 px-2 py-0.5 text-xs text-blue-200">Company release</span>
-          )}
-          {providerLabel && <span className="text-xs text-white/40">via {providerLabel}</span>}
-          {!isCompanyRelease && article.sentiment && (
-            <>
-              <span>•</span>
-              <span className={`flex items-center gap-1 ${getSentimentColor(article.sentiment.score)}`}>
-                {getSentimentIcon(article.sentiment.score)}
-                <span className="hidden sm:inline">{article.sentiment.label}</span>
-              </span>
-            </>
-          )}
-        </div>
-        <div className="text-xs text-white/50 mb-3 space-y-1">
-          <p title={article.publishedAt || undefined}>{dates.publication}</p>
-          {dates.discovery && <p title={article.provider_seen_at || undefined}>{dates.discovery}{article.provider === 'gdelt' ? ' by GDELT' : ''}</p>}
-        </div>
-
-        {/* Description (only if different from title) */}
-        {showDescription && (
-          <p className="text-white/80 text-sm leading-relaxed line-clamp-3 mb-3">
-            {article.description}
-          </p>
-        )}
-
-        {/* Footer */}
-        <div className="flex justify-end pt-2 border-t border-white/10">
-          {hasLink ? (
-            <span className="inline-flex items-center gap-1 text-xs text-purple-400">
-              <ExternalLink className="h-3 w-3" />
-              {isCompanyRelease ? 'Read company release' : 'Read article'}
-            </span>
-          ) : (
-            <span className="text-xs text-white/30">No link available</span>
-          )}
-        </div>
+    <article className="py-4 sm:py-5">
+      <h3 className="max-w-3xl font-medium leading-snug text-slate-100">
+        {article.url ? <a href={article.url} target="_blank" rel="noopener noreferrer" className="hover:text-sage-200 hover:underline">
+          {article.title} <ExternalLink aria-hidden="true" className="inline h-3 w-3 text-sage-300" />
+        </a> : article.title}
+      </h3>
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs text-slate-400">
+        <span>{article.original_source || article.source.name}{provider && ` · via ${provider}`}</span>
+        <span title={article.publishedAt || undefined}>{dates.publication}</span>
+        {dates.discovery && <span title={article.provider_seen_at || undefined}>{dates.discovery}</span>}
+        {release && <span className="text-sage-200">Company release</span>}
+        {tone && <span className={tone.score >= 0.05 ? 'text-sage-300' : tone.score <= -0.05 ? 'text-rose-300' : 'text-slate-400'}>{tone.label} tone</span>}
+        {!article.url && <span>Source link unavailable</span>}
       </div>
-    </CardWrapper>
+      {description && description !== article.title.trim() &&
+        <p className="mt-2 line-clamp-2 max-w-3xl text-sm leading-relaxed text-slate-300">{description}</p>}
+    </article>
   )
 }

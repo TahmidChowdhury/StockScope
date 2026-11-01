@@ -7,7 +7,7 @@ import AnimatedAccordion from '@/components/ui/AnimatedAccordion'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Download, FlaskConical, Play, RefreshCw } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
-import { SentimentLoading } from './SentimentLoading'
+import { SentimentLoading } from './ResearchLoading'
 
 import { useWorkspaceDraft } from '@/hooks/useWorkspaceDraft'
 import { valuationDate } from '@/lib/valuation'
@@ -159,11 +159,11 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
           throw new Error(
             typeof data.detail === 'string'
               ? data.detail
-              : 'Could not read the sentiment research sample.',
+              : 'Couldn’t load the headline sample. Try loading it again.',
           )
         if (!isToneReport(data) || data.symbol !== symbol)
           throw new Error(
-            'The tone report has an unsupported format. Your saved workspace has been kept.',
+            'StockScope couldn’t read the tone report. Try loading the sample again.',
           )
         if (current === requestId.current) {
           const saved = draftRef.current.report
@@ -183,7 +183,7 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
           setError(
             cause instanceof Error
               ? cause.message
-              : 'Could not read the sentiment research sample.',
+              : 'Couldn’t load the headline sample. Try loading it again.',
           )
       } finally {
         if (current === requestId.current) setBusy(false)
@@ -249,7 +249,7 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
         )
       if (!isToneReport(data) || data.symbol !== symbol)
         throw new Error(
-          'The evaluated tone report has an unsupported format. Your labels have been kept.',
+          'StockScope couldn’t read the evaluation. Your labels are available to submit again.',
         )
       if (current === requestId.current) {
         setReport(data)
@@ -272,10 +272,10 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
   if (!report && !error) return <SentimentLoading />
 
   return (
-    <section className="space-y-6 rounded-2xl border border-white/10 bg-[#16161e] p-4 sm:p-6">
+    <section className="space-y-6 rounded-2xl border border-white/10 bg-[#191e1b] p-4 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-violet-300">
+          <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-sage-300">
             <FlaskConical className="h-4 w-4" /> Research preview
           </div>
           <h2 className="text-xl font-semibold text-white">Article tone lab</h2>
@@ -404,11 +404,11 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
                 excluded
               </p>
             </div>
-            <div className="rounded-xl border border-violet-400/15 bg-violet-400/5 p-4">
-              <p className="text-xs text-violet-200/60">
+            <div className="rounded-xl border border-sage-400/15 bg-sage-400/5 p-4">
+              <p className="text-xs text-sage-200/60">
                 Reference-label evaluation
               </p>
-              <p className="mt-1 text-lg font-medium text-violet-100">
+              <p className="mt-1 text-lg font-medium text-sage-100">
                 {report.evaluation.status === 'evaluated'
                   ? `${report.evaluation.annotation_count} supplied labels`
                   : 'Not evaluated'}
@@ -441,7 +441,7 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
                       ? 'FinSense ModernBERT'
                       : 'ModernFinBERT'}
                   </h3>
-                  <span className="rounded-full border border-violet-400/20 bg-violet-400/5 px-2 py-1 text-xs capitalize text-violet-200">
+                  <span className="rounded-full border border-sage-400/20 bg-sage-400/5 px-2 py-1 text-xs capitalize text-sage-200">
                     {statusLabel(model.status)}
                   </span>
                 </div>
@@ -455,13 +455,13 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
                     {model.load_latency_ms?.toFixed(0) ?? '—'} ms
                   </p>
                 )}
-                <AnimatedAccordion className="mt-3 text-xs text-white/50" triggerClassName="text-violet-300" title="Model details and terms">
+                <AnimatedAccordion className="mt-3 text-xs text-white/50" triggerClassName="text-sage-300" title="Model details and terms">
                   <div className="mt-3 space-y-2">
                     <a
                       href={model.source_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block break-all text-violet-300 hover:underline"
+                      className="block break-all text-sage-300 hover:underline"
                     >
                       {model.model_id}
                     </a>
@@ -481,7 +481,7 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
               type="button"
               onClick={() => void load(true)}
               disabled={busy || report.sample.eligible === 0}
-              className="inline-flex items-center gap-2 rounded-lg bg-violet-500 px-4 py-2 text-sm font-medium text-white hover:bg-violet-400 disabled:opacity-40"
+              className="inline-flex items-center gap-2 rounded-lg bg-sage-300 px-4 py-2 text-sm font-medium text-[#111613] hover:bg-sage-200 disabled:opacity-40"
             >
               <Play className="h-4 w-4" />
               {busy ? 'Working locally…' : 'Compare article tone'}
@@ -525,16 +525,14 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
             </button>
           </div>
           <p className="text-xs text-white/40">
-            Only pinned local weights run. Missing models stay unavailable.
-            Supply your own reference labels to measure agreement on this
-            sample. Labels and completed reports are saved in this browser for
-            this company and access role, and evaluation exports include
-            submitted labels. Saved news is unchanged.
+            Label headlines to compare your ratings with the available models.
+            This browser saves labels and reports for this company and access role.
+            Evaluation exports include the labels you submit.
           </p>
 
           {labelling && (
-            <div className="rounded-xl border border-violet-400/15 bg-violet-400/5 p-4">
-              <h3 className="text-sm font-medium text-violet-100">
+            <div className="rounded-xl border border-sage-400/15 bg-sage-400/5 p-4">
+              <h3 className="text-sm font-medium text-sage-100">
                 Your reference labels
               </h3>
               <p className="mt-2 text-xs leading-relaxed text-white/55">
@@ -548,7 +546,7 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
                 type="button"
                 onClick={() => void evaluateLabels()}
                 disabled={busy || Object.keys(annotations).length === 0}
-                className="mt-3 rounded-lg bg-violet-500 px-3 py-2 text-sm font-medium text-white hover:bg-violet-400 disabled:opacity-40"
+                className="mt-3 rounded-lg bg-sage-300 px-3 py-2 text-sm font-medium text-[#111613] hover:bg-sage-200 disabled:opacity-40"
               >
                 Evaluate supplied labels ({Object.keys(annotations).length})
               </button>
@@ -578,7 +576,7 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
                       </p>
                       {metric.status === 'evaluated' ? (
                         <>
-                          <p className="mt-2 text-sm tabular-nums text-violet-200">
+                          <p className="mt-2 text-sm tabular-nums text-sage-200">
                             Macro-F1 {metric.macro_f1?.toFixed(3)} ·{' '}
                             {metric.evaluated_count} scored labels
                           </p>
@@ -646,7 +644,7 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
                             : row.source?.name || 'Source unavailable'}{' '}
                           · {publication(row.published_at)}
                         </p>
-                        <AnimatedAccordion className="mt-2 text-xs text-white/50" triggerClassName="text-violet-300" title="Inspect saved input">
+                        <AnimatedAccordion className="mt-2 text-xs text-white/50" triggerClassName="text-sage-300" title="View text scored">
                           <p className="mt-2 whitespace-pre-wrap break-words leading-relaxed">
                             {row.text || 'No text available'}
                           </p>
@@ -659,7 +657,7 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
                               href={articleLink(row.url) || undefined}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="mt-2 inline-block text-violet-300 hover:underline"
+                              className="mt-2 inline-block text-sage-300 hover:underline"
                             >
                               Read source article
                             </a>
@@ -698,7 +696,7 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
                                   return { ...previous, annotations: next }
                                 }, generation)
                               }}
-                              className="mt-1 block w-full rounded-lg border border-white/10 bg-[#1d1d28] px-2 py-2 text-sm text-white"
+                              className="mt-1 block w-full rounded-lg border border-white/10 bg-[#202722] px-2 py-2 text-sm text-white"
                             >
                               <option value="">Unlabelled / uncertain</option>
                               <option value="negative">Negative</option>

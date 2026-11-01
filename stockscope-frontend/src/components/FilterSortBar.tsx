@@ -6,7 +6,6 @@ import { Filter, ArrowUpDown, CheckCircle, X } from 'lucide-react'
 interface FilterOption {
   id: string
   label: string
-  icon?: string
   enabled: boolean
 }
 
@@ -66,11 +65,12 @@ export default function FilterSortBar({
     }
   }, [])
 
-  const activeFiltersCount = filters.filter(f => f.enabled).length
+  const enabledCount = filters.filter(filter => filter.enabled).length
+  const filtered = enabledCount < filters.length
 
   return (
-    <div className={`bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg p-3 sm:p-4 ${className}`}>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div className={`border-b border-white/[0.07] pb-2 ${className}`}>
+      <div className="relative flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         {/* Top/Left side - Result count */}
         <div className="text-xs sm:text-sm text-white/60">
           {resultCount !== undefined && (
@@ -79,32 +79,30 @@ export default function FilterSortBar({
         </div>
 
         {/* Bottom/Right side - Filter and Sort controls */}
-        <div className="relative flex items-center gap-2 sm:gap-3">
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
           {/* Filter Dropdown */}
-          <div className="min-w-0 flex-1 sm:relative sm:flex-initial" ref={filterRef}>
+          <div className="sm:relative" ref={filterRef}>
             <button
               type="button"
               aria-expanded={showFilters}
               aria-controls={filterId}
               onClick={() => { setShowFilters(!showFilters); setShowSort(false) }}
               className={`
-                min-h-11 w-full sm:w-auto flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-all text-sm
-                ${activeFiltersCount > 0 
-                  ? 'bg-purple-600/20 border-purple-500/40 text-purple-300' 
-                  : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
+                inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-xs transition-colors
+                ${filtered
+                  ? 'bg-sage-400/10 text-sage-200'
+                  : 'text-slate-300 hover:bg-white/5'
                 }
               `}
             >
               <Filter className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>
-                <span className="hidden sm:inline">Filter</span>
-                <span className="sm:hidden">Filters</span>
-                {activeFiltersCount > 0 && ` (${activeFiltersCount})`}
+                Sources{filtered && ` (${enabledCount}/${filters.length})`}
               </span>
             </button>
 
             {showFilters && (
-              <div id={filterId} className="absolute inset-x-0 top-full mt-2 sm:left-auto sm:w-56 bg-slate-900/95 backdrop-blur-sm border border-white/20 rounded-xl shadow-xl z-50 max-h-[min(20rem,50dvh)] overflow-y-auto overscroll-contain">
+              <div id={filterId} className="absolute right-0 top-full mt-1 w-56 max-w-full sm:max-w-none bg-[#202722] border border-white/10 rounded-xl shadow-xl z-50 max-h-[min(20rem,50dvh)] overflow-y-auto overscroll-contain">
                   <div className="p-3 sm:p-4">
                     <div className="flex items-center justify-between mb-3">
                       <div className="text-sm font-medium text-white">Filter by Source</div>
@@ -124,9 +122,9 @@ export default function FilterSortBar({
                               className="peer sr-only"
                             />
                             <div className={`
-                              w-5 h-5 rounded border-2 flex items-center justify-center transition-all peer-focus-visible:ring-2 peer-focus-visible:ring-violet-300
+                              w-5 h-5 rounded border-2 flex items-center justify-center transition-all peer-focus-visible:ring-2 peer-focus-visible:ring-sage-300
                               ${filter.enabled 
-                                ? 'bg-purple-600 border-purple-600' 
+                                ? 'bg-sage-600 border-sage-600'
                                 : 'border-gray-400 hover:border-gray-300'
                               }
                             `}>
@@ -134,7 +132,6 @@ export default function FilterSortBar({
                             </div>
                           </div>
                           <span className="min-w-0 break-words text-sm text-gray-200 flex items-center gap-2 flex-1">
-                            {filter.icon && <span>{filter.icon}</span>}
                             {filter.label}
                           </span>
                         </label>
@@ -142,13 +139,13 @@ export default function FilterSortBar({
                     </div>
 
                     {/* Clear all filters */}
-                    {activeFiltersCount > 0 && (
+                    {filtered && (
                       <button
-                        onClick={() => filters.forEach(f => onFilterChange(f.id, false))}
+                        onClick={() => filters.forEach(f => onFilterChange(f.id, true))}
                         type="button"
                         className="min-h-11 w-full mt-3 px-3 py-2 text-sm text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
                       >
-                        Clear All
+                        Show all sources
                       </button>
                     )}
                   </div>
@@ -157,20 +154,20 @@ export default function FilterSortBar({
           </div>
 
           {/* Sort Dropdown */}
-          <div className="min-w-0 flex-1 sm:relative sm:flex-initial" ref={sortRef}>
+          <div className="sm:relative" ref={sortRef}>
             <button
               type="button"
               aria-expanded={showSort}
               aria-controls={sortId}
               onClick={() => { setShowSort(!showSort); setShowFilters(false) }}
-              className="min-h-11 w-full sm:w-auto flex items-center justify-center gap-2 px-3 py-2 rounded-lg border bg-white/5 border-white/20 text-white/70 hover:bg-white/10 transition-all text-sm"
+              className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-xs text-slate-300 transition-colors hover:bg-white/5"
             >
               <ArrowUpDown className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Sort</span>
             </button>
 
             {showSort && (
-              <div id={sortId} className="absolute inset-x-0 top-full mt-2 sm:left-auto sm:w-48 bg-slate-900/95 backdrop-blur-sm border border-white/20 rounded-xl shadow-xl z-50">
+              <div id={sortId} className="absolute right-0 top-full mt-1 w-48 max-w-full sm:max-w-none bg-[#202722] border border-white/10 rounded-xl shadow-xl z-50">
                 <div className="p-2">
                   <div className="flex items-center justify-between mb-2 sm:hidden px-2">
                     <span className="text-sm font-medium text-white">Sort by</span>
@@ -196,7 +193,7 @@ export default function FilterSortBar({
                         className={`
                           min-h-11 w-full text-left px-3 py-2 rounded-lg text-sm transition-colors
                           ${currentSort === option.id 
-                            ? 'bg-purple-600/20 text-purple-300' 
+                            ? 'bg-sage-600/20 text-sage-300'
                             : 'text-gray-300 hover:bg-white/5 hover:text-white'
                           }
                         `}
@@ -212,26 +209,6 @@ export default function FilterSortBar({
         </div>
       </div>
 
-      {/* Active filters display - Better mobile layout */}
-      {activeFiltersCount > 0 && (
-        <div className="mt-3 pt-3 border-t border-white/10">
-          <div className="flex flex-wrap gap-1.5 sm:gap-2">
-            {filters.filter(f => f.enabled).map((filter) => (
-              <button
-                key={filter.id}
-                type="button"
-                aria-label={`Hide articles from ${filter.label}`}
-                onClick={() => onFilterChange(filter.id, false)}
-                className="inline-flex min-h-11 max-w-full items-center gap-2 px-3 py-2 bg-purple-600/20 text-purple-300 rounded-md text-xs hover:bg-purple-600/30 sm:min-h-0 sm:px-2 sm:py-1"
-              >
-                {filter.icon && <span className="text-xs">{filter.icon}</span>}
-                <span className="truncate max-w-[20ch] sm:max-w-none">{filter.label}</span>
-                <X aria-hidden="true" className="h-3 w-3 shrink-0" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

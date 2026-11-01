@@ -7,7 +7,7 @@ const compiled = ts.transpileModule(fs.readFileSync(`${__dirname}/news.ts`, 'utf
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText
 const api = {}
-vm.runInNewContext(compiled, { exports: api })
+vm.runInNewContext(compiled, { exports: api, URLSearchParams })
 
 test('unknown and invalid provider sentiment does not become a neutral score', () => {
   for (const value of [undefined, null, {}, { label: 'positive' }, { compound: null }, { compound: '0.5' }, { compound: false }, { compound: NaN }, { compound: Infinity }, { compound: 1.1 }, { compound: -1.1 }]) {
@@ -47,4 +47,16 @@ test('publisher date and later discovery remain independently labeled', () => {
   const unknown = api.newsDateLabels('invalid', 'invalid')
   assert.equal(unknown.publication, 'Publication date unknown')
   assert.equal(unknown.discovery, null)
+})
+
+
+test('saved-news requests encode all exclusions and the chosen page/order deterministically', () => {
+  assert.equal(api.savedNewsParams('date-asc', 40, ['Z & Co', 'A']), 'sort=date-asc&offset=40&limit=20&exclude_source=A&exclude_source=Z+%26+Co')
+})
+test('invalid or failed page payloads cannot masquerade as successful empty news', () => {
+  for(const payload of [null, {}, {articles:[]}, {detail:'Failed'}]) assert.throws(()=>api.readSavedNewsPage(payload))
+  const empty={articles:[],sources:[],total:0,saved_total:0,offset:0,limit:20,count:0,has_more:false,can_collect:false}
+  assert.equal(api.readSavedNewsPage(empty),empty)
+  assert.throws(()=>api.readSavedNewsPage({...empty,total:3}))
+  assert.throws(()=>api.readSavedNewsPage({...empty,count:1}))
 })

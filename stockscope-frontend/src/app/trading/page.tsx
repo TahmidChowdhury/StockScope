@@ -4,10 +4,10 @@ import AnimatedSelect from '@/components/ui/AnimatedSelect'
 
 import AnimatedAccordion from '@/components/ui/AnimatedAccordion'
 
-import { FormEvent, ReactNode, Suspense, useEffect, useState } from 'react'
+import { FormEvent, ReactNode, Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   CartesianGrid,
   Legend,
@@ -60,6 +60,19 @@ const emptyCongress: CongressData = {
   offset: 0,
   members: [],
   last_import: null,
+}
+
+function DatasetStatus({ label, query }: { label: string; query: {
+  isPending: boolean; isFetching: boolean; isError: boolean; error: Error | null;
+  data: unknown; refetch: () => Promise<unknown>
+} }) {
+  return <div className="mb-3 text-sm">
+    {(query.isPending || query.isFetching) && <p role="status" className="text-slate-400">{query.data === undefined ? `Loading ${label}…` : `Refreshing ${label}… Previously loaded content remains visible.`}</p>}
+    {query.isError && <div role="alert" className="flex flex-wrap items-center gap-3 text-amber-200">
+      <p>Could not load {label}. {query.error?.message}</p>
+      <button type="button" disabled={query.isFetching} onClick={() => void query.refetch()} className="button-secondary">Retry {label}</button>
+    </div>}
+  </div>
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -206,7 +219,7 @@ function Results({
                 type="linear"
                 dataKey="equity"
                 name="Paper strategy"
-                stroke="#c084fc"
+                stroke="#b6c8ab"
                 dot={false}
                 strokeWidth={2}
               />
@@ -297,7 +310,7 @@ function Results({
                     <td className="p-2 font-mono">
                       {f.source_url ? (
                         <a
-                          className="text-purple-300 underline"
+                          className="text-sage-300 underline"
                           href={f.source_url}
                           target="_blank"
                           rel="noreferrer"
@@ -364,7 +377,7 @@ function Results({
 
 export default function TradingPage() {
   return (
-    <Suspense fallback={<div className="min-h-dvh bg-[#101218]" />}>
+    <Suspense fallback={<div className="min-h-dvh bg-[#111513]" />}>
       <TradingWorkspace />
     </Suspense>
   )
@@ -385,8 +398,32 @@ function TradingWorkspace() {
     params.set('tab', value)
     router.push(`/trading?${params}`, { scroll: false })
   }
-  const [portfolios, setPortfolios] = useState<Summary[]>([])
-  const [runs, setRuns] = useState<Summary[]>([])
+  const portfoliosQuery = useQuery({
+    queryKey: ['trading', 'portfolios'],
+    queryFn: ({ signal }) => tradingRequest<Summary[]>('/portfolios', undefined, undefined, signal),
+    retry: false, refetchOnWindowFocus: false,
+  })
+  const runsQuery = useQuery({
+    queryKey: ['trading', 'backtests'],
+    queryFn: ({ signal }) => tradingRequest<Summary[]>('/backtests', undefined, undefined, signal),
+    retry: false, refetchOnWindowFocus: false,
+  })
+  const portfolios = portfoliosQuery.data ?? []
+  const runs = runsQuery.data ?? []
+  const [disclosureRequest, setDisclosureRequest] = useState({ member: '', offset: 0 })
+  const lastCongress = useRef<CongressData | undefined>(undefined)
+  const congressQuery = useQuery({
+    queryKey: ['trading', 'congress', disclosureRequest],
+    queryFn: ({ signal }) => tradingRequest<CongressData>(`/congress?member=${encodeURIComponent(disclosureRequest.member)}&offset=${disclosureRequest.offset}`, undefined, undefined, signal),
+    retry: false, refetchOnWindowFocus: false,
+    placeholderData: previous => previous,
+  })
+  useEffect(() => {
+    if (congressQuery.data && !congressQuery.isPlaceholderData) lastCongress.current = congressQuery.data
+  }, [congressQuery.data, congressQuery.isPlaceholderData])
+  const congress = congressQuery.data ?? lastCongress.current ?? emptyCongress
+  const congressReady = congressQuery.data !== undefined && !congressQuery.isPlaceholderData
+  const loading = tab === 'paper' ? portfoliosQuery.isPending : tab === 'backtest' ? runsQuery.isPending : congressQuery.isPending
   const [savedPortfolio, setPortfolio] = useState<Portfolio | null>(null)
   const [savedRun, setRun] = useState<Run | null>(null)
   const portfolio = route.saved?.kind === 'portfolio' && savedPortfolio?.id === route.saved.id ? savedPortfolio : null
@@ -409,7 +446,7 @@ function TradingWorkspace() {
       setSelectionLoading(false)
     }, (reason) => {
       setSelectionError(/not found/i.test(reason.message)
-        ? 'This saved research was not found (404). Choose another saved item below.'
+        ? 'This saved item could not be found. Choose another portfolio or backtest.'
         : `Saved research could not be opened: ${reason.message}`)
       setSelectionLoading(false)
     })
@@ -417,14 +454,11 @@ function TradingWorkspace() {
   const [renaming, setRenaming] = useState(false)
   const [renameLabel, setRenameLabel] = useState('')
   useEffect(() => setRenaming(false), [run?.id])
-  const [congress, setCongress] = useState<CongressData>(emptyCongress)
-  const [congressReady, setCongressReady] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
-  const [memberFilter, setMemberFilter] = useState('')
+  const memberFilter = disclosureRequest.member
   const [dateRange] = useState(() => {
     const marketToday = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/New_York',
@@ -507,23 +541,10 @@ function TradingWorkspace() {
   const unavailableDraftMember = strategy === 'congress' && congressReady && !!member && !congress.members.includes(member)
 
   async function reloadLists() {
-    const [p, r, c] = await Promise.all([
-      tradingRequest<Summary[]>('/portfolios'),
-      tradingRequest<Summary[]>('/backtests'),
-      tradingRequest<CongressData>('/congress'),
-    ])
-    setPortfolios(p)
-    setRuns(r)
-    setCongress(c)
-    setCongressReady(true)
-    setMemberFilter('')
+    // Each query owns its result and error; one failure cannot reject the others.
+    await Promise.all([portfoliosQuery.refetch(), runsQuery.refetch(), congressQuery.refetch()])
   }
-  useEffect(() => {
-    setIsAdmin(getAuthSession()?.role === 'admin')
-    reloadLists()
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [])
+  useEffect(() => { setIsAdmin(getAuthSession()?.role === 'admin') }, [])
 
   async function act(operation: () => Promise<void>) {
     setError('')
@@ -547,9 +568,8 @@ function TradingWorkspace() {
     <AppShell>
       <div className="space-y-6">
         <header>
-          <p className="eyebrow">Strategy workspace</p>
-          <h1 className="page-title mt-2">Paper portfolios & tests</h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/55">
+          <h1 className="page-title">Paper portfolios & backtests</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
             Paper portfolios and daily historical tests with explicit costs and
             a benchmark. All portfolios and research are shared across this app.
             No real orders are placed.
@@ -575,7 +595,7 @@ function TradingWorkspace() {
             <button
               key={id}
               disabled={busy}
-              className={`min-h-11 shrink-0 whitespace-nowrap border-b-2 px-1 pb-3 pt-2 text-sm ${tab === id ? 'border-violet-400 text-violet-200' : 'border-transparent text-slate-500 hover:text-slate-200'}`}
+              className={`min-h-11 shrink-0 whitespace-nowrap border-b-2 px-1 pb-3 pt-2 text-sm ${tab === id ? 'border-sage-400 text-sage-200' : 'border-transparent text-slate-500 hover:text-slate-200'}`}
               onClick={() => setTab(id)}
               aria-pressed={tab === id}
             >
@@ -616,20 +636,45 @@ function TradingWorkspace() {
             {notice}
           </p>
         )}
-        {loading && (
-          <p role="status" className="text-sm text-white/50">
-            Loading saved research…
-          </p>
-        )}
         {busy && (
-          <p role="status" className="text-sm text-purple-200">
+          <p role="status" className="text-sm text-sage-200">
             Working… Price collection may take a minute. Keep this page open.
           </p>
         )}
 
         {tab === 'paper' && (
           <>
-            <div className="grid gap-5 xl:grid-cols-2">
+            <div className="grid items-start gap-5 xl:grid-cols-2">
+              <div className={panelStyle}>
+                <h2 className="mb-4 text-lg font-semibold">Saved portfolios</h2>
+                <DatasetStatus label="portfolios" query={portfoliosQuery} />
+                <div className="space-y-2 lg:max-h-96 lg:overflow-y-auto">
+                  {portfolios.length === 0 ? (
+                    <p className="text-sm text-white/50">
+                      {portfoliosQuery.isSuccess ? 'No paper portfolios yet.' : null}
+                    </p>
+                  ) : (
+                    portfolios.map((p) => (
+                      <Link
+                        key={p.id}
+                        href={savedTradingHref('portfolio', p.id)}
+                        aria-current={portfolio?.id === p.id ? 'page' : undefined}
+                        aria-disabled={busy || undefined}
+                        onClick={(event) => { if (busy) event.preventDefault() }}
+                        className={`block w-full rounded-lg border p-3 text-left ${portfolio?.id === p.id ? 'border-sage-400 bg-sage-500/10' : 'border-white/10 hover:bg-white/5'}`}
+                      >
+                        <span className="font-medium">{p.name}</span>
+                        <span className="mt-1 block text-xs text-white/50">
+                          Created {tradingDate(p.created_at)} ·{' '}
+                          {p.metrics
+                            ? `${percent(p.metrics.total_return)} through ${p.as_of}`
+                            : 'Awaiting completed sessions'}
+                        </span>
+                      </Link>
+                    ))
+                  )}
+                </div>
+              </div>
               <form
                 className={panelStyle}
                 onSubmit={(e) =>
@@ -644,7 +689,7 @@ function TradingWorkspace() {
                     router.push(savedTradingHref('portfolio', p.id), { scroll: false })
                     await reloadLists()
                     setNotice(
-                      'Paper portfolio created. Submit a thesis and queue your first order.',
+                      'Portfolio created. Enter your reason for the trade and queue a paper order.',
                     )
                   })
                 }
@@ -691,35 +736,6 @@ function TradingWorkspace() {
                   <button className={buttonStyle}>Create portfolio</button>
                 </fieldset>
               </form>
-              <div className={panelStyle}>
-                <h2 className="mb-4 text-lg font-semibold">Saved portfolios</h2>
-                <div className="space-y-2 lg:max-h-96 lg:overflow-y-auto">
-                  {portfolios.length === 0 ? (
-                    <p className="text-sm text-white/50">
-                      No paper portfolios yet.
-                    </p>
-                  ) : (
-                    portfolios.map((p) => (
-                      <Link
-                        key={p.id}
-                        href={savedTradingHref('portfolio', p.id)}
-                        aria-current={portfolio?.id === p.id ? 'page' : undefined}
-                        aria-disabled={busy || undefined}
-                        onClick={(event) => { if (busy) event.preventDefault() }}
-                        className={`block w-full rounded-lg border p-3 text-left ${portfolio?.id === p.id ? 'border-purple-400 bg-purple-500/10' : 'border-white/10 hover:bg-white/5'}`}
-                      >
-                        <span className="font-medium">{p.name}</span>
-                        <span className="mt-1 block text-xs text-white/50">
-                          Created {tradingDate(p.created_at)} ·{' '}
-                          {p.metrics
-                            ? `${percent(p.metrics.total_return)} through ${p.as_of}`
-                            : 'Awaiting completed sessions'}
-                        </span>
-                      </Link>
-                    ))
-                  )}
-                </div>
-              </div>
             </div>
             {portfolio && (
               <>
@@ -739,7 +755,7 @@ function TradingWorkspace() {
                     </div>
                     <button
                       disabled={formDisabled}
-                      className={buttonStyle}
+                      className="button-secondary"
                       onClick={() =>
                         void act(async () => {
                           setPortfolio(
@@ -825,7 +841,7 @@ function TradingWorkspace() {
                           />
                         </Field>
                       </div>
-                      <Field label="Thesis / reason, recorded before execution">
+                      <Field label="Reason for the order (recorded before execution)">
                         <textarea
                           className={inputStyle}
                           required
@@ -845,7 +861,7 @@ function TradingWorkspace() {
                     <h3 className="font-semibold">Trade journal</h3>
                     <button
                       disabled={busy}
-                      className="text-xs text-purple-300 underline"
+                      className="text-xs text-sage-300 underline"
                       onClick={() =>
                         void act(async () =>
                           downloadTradingFile(
@@ -916,7 +932,7 @@ function TradingWorkspace() {
                               canCancelPaperOrder(o) &&
                               isAdmin && (
                                 <button
-                                  className="mt-2 text-xs text-purple-300 underline disabled:opacity-40"
+                                  className="mt-2 text-xs text-sage-300 underline disabled:opacity-40"
                                   disabled={busy}
                                   onClick={() =>
                                     void act(async () =>
@@ -1001,9 +1017,10 @@ function TradingWorkspace() {
               {memberHandoff.status === 'invalid' && (
                 <p role="alert" className="mb-4 text-sm text-amber-200">{memberHandoff.message}</p>
               )}
+              {(memberHandoff.status === 'pending' || strategy === 'congress') && <DatasetStatus label="disclosures" query={congressQuery} />}
               {memberHandoff.status === 'pending' && (
-                <p role={loading ? 'status' : 'alert'} className="mb-4 text-sm text-amber-200">
-                  {loading ? 'Checking the linked member against available disclosures…' : 'The linked member could not be checked. Reload the saved workspace to try again.'}
+                <p role={congressQuery.isPending ? 'status' : 'alert'} className="mb-4 text-sm text-amber-200">
+                  {congressQuery.isPending ? 'Checking the linked member against available disclosures…' : 'The linked member could not be checked. Retry loading disclosures.'}
                 </p>
               )}
               {unavailableDraftMember && (
@@ -1129,7 +1146,7 @@ function TradingWorkspace() {
                       </Field>
                     </div>
                     <label className="flex items-start gap-3 rounded-xl border border-amber-300/15 bg-amber-300/5 p-4 text-sm text-amber-100/80">
-                      <input type="checkbox" className="mt-1 accent-violet-400" checked={allowEstimatedDates} onChange={(e) => setBacktestField('allowEstimatedDates', e.target.checked)} />
+                      <input type="checkbox" className="mt-1 accent-sage-400" checked={allowEstimatedDates} onChange={(e) => setBacktestField('allowEstimatedDates', e.target.checked)} />
                       <span>Use estimated filing dates for historical research
                         <span className="mt-1 block text-xs leading-5 text-amber-100/60">Optional. These dates are publisher estimates, not verified publication times. Results may contain look-ahead bias and do not prove the strategy was followable.</span>
                       </span>
@@ -1224,7 +1241,8 @@ function TradingWorkspace() {
                 <button className={buttonStyle}>Run and save backtest</button>
               </fieldset>
             </form>
-            {!loading && !error && runs.length === 0 && (
+            <DatasetStatus label="backtests" query={runsQuery} />
+            {runsQuery.isSuccess && runs.length === 0 && (
               <div className={panelStyle}>
                 <h3 className="text-sm font-medium">
                   No saved experiments yet
@@ -1246,7 +1264,7 @@ function TradingWorkspace() {
                       aria-current={run?.id === r.id ? 'page' : undefined}
                       aria-disabled={busy || undefined}
                       onClick={(event) => { if (busy) event.preventDefault() }}
-                      className={`rounded-lg border p-3 text-left text-xs ${run?.id === r.id ? 'border-purple-400 bg-purple-500/10' : 'border-white/10 hover:bg-white/5'}`}
+                      className={`rounded-lg border p-3 text-left text-xs ${run?.id === r.id ? 'border-sage-400 bg-sage-500/10' : 'border-white/10 hover:bg-white/5'}`}
                     >
                       {backtestName(r)}
                       <span className="mt-1 block text-white/50">
@@ -1275,7 +1293,7 @@ function TradingWorkspace() {
                           setRenameLabel(backtestName(run))
                           setRenaming(true)
                         }}
-                        className="mt-2 text-xs text-violet-300 underline underline-offset-4"
+                        className="mt-2 text-xs text-sage-300 underline underline-offset-4"
                       >
                         Rename experiment
                       </button>
@@ -1289,7 +1307,7 @@ function TradingWorkspace() {
                   </div>
                   <button
                     disabled={busy}
-                    className={buttonStyle}
+                    className="button-secondary"
                     onClick={() =>
                       void act(async () =>
                         downloadTradingFile(
@@ -1313,8 +1331,8 @@ function TradingWorkspace() {
                           { name: renameLabel },
                         )
                         setRun(renamed)
-                        setRuns((current) =>
-                          current.map((saved) =>
+                        queryClient.setQueryData<Summary[]>(['trading', 'backtests'], (current) =>
+                          current?.map((saved) =>
                             saved.id === renamed.id
                               ? { ...saved, name: renamed.name }
                               : saved,
@@ -1367,7 +1385,7 @@ function TradingWorkspace() {
 
         {tab === 'congress' && (
           <>
-            <DisclosureCollectionStatus onCollected={() => { void reloadLists().catch((e) => setError(e.message)) }} />
+            <DisclosureCollectionStatus onCollected={() => { void congressQuery.refetch() }} />
             <section className={panelStyle}>
               <h2 className="text-lg font-semibold">
                 Disclosure imports
@@ -1381,9 +1399,9 @@ function TradingWorkspace() {
                 amendments.
               </p>
               <div className="mt-4 flex flex-wrap gap-4 text-sm">
-                <Link href="/disclosures" className="text-purple-300 underline">Explore disclosures</Link>
+                <Link href="/disclosures" className="text-sage-300 underline">Explore disclosures</Link>
                 <button
-                  className="text-purple-300 underline"
+                  className="text-sage-300 underline"
                   onClick={() =>
                     void act(async () =>
                       downloadTradingFile(
@@ -1396,7 +1414,7 @@ function TradingWorkspace() {
                   Download CSV header template
                 </button>
                 <a
-                  className="text-purple-300 underline"
+                  className="text-sage-300 underline"
                   href="https://disclosures-clerk.house.gov/FinancialDisclosure"
                   target="_blank"
                   rel="noreferrer"
@@ -1404,7 +1422,7 @@ function TradingWorkspace() {
                   House disclosure portal ↗
                 </a>
                 <a
-                  className="text-purple-300 underline"
+                  className="text-sage-300 underline"
                   href="https://efdsearch.senate.gov/search/"
                   target="_blank"
                   rel="noreferrer"
@@ -1481,7 +1499,7 @@ function TradingWorkspace() {
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="font-semibold">
-                    Available transactions · {congress.total}
+                    Available transactions{congressQuery.data !== undefined ? ` · ${congress.total}` : ''}
                   </h3>
                   {congress.last_import && (
                     <p className="mt-1 text-xs text-white/50">
@@ -1496,15 +1514,7 @@ function TradingWorkspace() {
                     disabled={busy}
                     className={inputStyle}
                     value={memberFilter}
-                    onValueChange={(value) => {
-                      void act(async () => {
-                        const data = await tradingRequest<CongressData>(
-                          `/congress?member=${encodeURIComponent(value)}`,
-                        )
-                        setCongress(data)
-                        setMemberFilter(value)
-                      })
-                    }}
+                    onValueChange={(member) => setDisclosureRequest({ member, offset: 0 })}
                   >
                     <option value="">All members</option>
                     {congress.members.map((m) => (
@@ -1513,12 +1523,15 @@ function TradingWorkspace() {
                   </AnimatedSelect>
                 </label>
               </div>
-              {congress.records.length === 0 ? (
+              <DatasetStatus label="disclosures" query={congressQuery} />
+              {congressQuery.isError && !congressQuery.data && lastCongress.current && <p role="status" className="mb-3 text-xs text-slate-400">Previously loaded disclosures are shown. The requested filter could not be loaded.</p>}
+              {congressQuery.isPlaceholderData && <p role="status" className="mb-3 text-xs text-slate-400">Loading the requested disclosures. Previously loaded records are shown.</p>}
+              {congress.records.length === 0 ? congressQuery.isSuccess && !congressQuery.isPlaceholderData ? (
                 <p className="text-sm text-white/50">
                   No disclosures available. Wait for collection or import source-backed records to test
                   a copying strategy.
                 </p>
-              ) : (
+              ) : null : (
                 <div className="overflow-x-auto">
                   <table className="w-full whitespace-nowrap text-left text-xs">
                     <thead className="text-white/45">
@@ -1552,7 +1565,7 @@ function TradingWorkspace() {
                             </span>
                           </td>
                           <td className="p-2 font-mono">
-                            <Link className="text-purple-300 underline" href={companyResearchHref(r.symbol, '/disclosures')}>{r.symbol}</Link>
+                            <Link className="text-sage-300 underline" href={companyResearchHref(r.symbol, '/disclosures')}>{r.symbol}</Link>
                             <span className="block text-white/40">
                               {r.asset_type}
                             </span>
@@ -1564,7 +1577,7 @@ function TradingWorkspace() {
                           <td className="p-2">{r.amount_range}</td>
                           <td className="p-2">
                             <a
-                              className="text-purple-300 underline"
+                              className="text-sage-300 underline"
                               href={r.source_url}
                               target="_blank"
                               rel="noreferrer"
@@ -1582,7 +1595,7 @@ function TradingWorkspace() {
                 <span>
                   {congress.total
                     ? `${congress.offset + 1}–${congress.offset + congress.records.length} of ${congress.total}`
-                    : '0 records'}
+                    : congressQuery.isSuccess ? '0 records' : 'Record count unavailable'}
                 </span>
                 <div className="flex gap-4">
                   {[
@@ -1592,22 +1605,14 @@ function TradingWorkspace() {
                     <button
                       key={label}
                       disabled={
-                        busy ||
+                        busy || congressQuery.isFetching || !congressReady || congressQuery.isError ||
                         (Number(delta) < 0
                           ? congress.offset === 0
                           : congress.offset + congress.records.length >=
                             congress.total)
                       }
-                      className="text-purple-300 disabled:opacity-30"
-                      onClick={() =>
-                        void act(async () =>
-                          setCongress(
-                            await tradingRequest<CongressData>(
-                              `/congress?member=${encodeURIComponent(memberFilter)}&offset=${congress.offset + Number(delta)}`,
-                            ),
-                          ),
-                        )
-                      }
+                      className="text-sage-300 disabled:opacity-30"
+                      onClick={() => setDisclosureRequest({ member: memberFilter, offset: congress.offset + Number(delta) })}
                     >
                       {label}
                     </button>

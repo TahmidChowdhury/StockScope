@@ -4,13 +4,11 @@ export function researchReturn(value: string | null): { href: string; label: str
   try {
     const url = new URL(value, 'https://stockscope.local')
     if (url.origin !== 'https://stockscope.local') return null
-    const label = url.pathname === '/screener'
+    const label = url.pathname === '/screener' || url.pathname === '/compare'
       ? 'Back to screener'
-      : url.pathname === '/compare'
-        ? 'Back to comparison'
-        : url.pathname === '/disclosures'
-          ? 'Back to disclosures'
-          : null
+      : url.pathname === '/disclosures'
+        ? 'Back to disclosures'
+        : null
     return label ? { href: `${url.pathname}${url.search}`, label } : null
   } catch {
     return null
@@ -31,13 +29,6 @@ function companyWorkspaceHref(workspace: 'stock' | 'fundamentals', symbol: strin
   if (destination) params.set('returnTo', destination.href)
   if (tab) params.set('tab', tab)
   return `/${workspace}/${encodeURIComponent(symbol)}${params.size ? `?${params}` : ''}`
-}
-
-/** An explicit company action starts a comparison with this ticker selected. */
-export function companyComparisonHref(symbol: string): string {
-  const ticker = symbol.trim().toUpperCase().replace(/\./g, '-')
-  if (!/^[A-Z][A-Z0-9-]{0,9}$/.test(ticker)) return '/compare'
-  return `/compare?${new URLSearchParams({ tickers: ticker })}`
 }
 
 export function snapshotTime(timestamp: string): string {

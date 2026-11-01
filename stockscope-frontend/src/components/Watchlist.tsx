@@ -127,7 +127,7 @@ export default function Watchlist() {
             aria-label="Sort watchlist"
             value={sort}
             onValueChange={(value) => setSort(value)}
-            className="min-h-11 w-full max-w-full rounded-md border border-white/[0.08] bg-[#171a22] px-2 py-1.5 text-base text-slate-300 sm:min-h-0 sm:w-auto sm:text-xs"
+            className="min-h-11 w-full max-w-full rounded-md border border-white/[0.08] bg-[#191e1b] px-2 py-1.5 text-base text-slate-300 sm:min-h-0 sm:w-auto sm:text-xs"
           >
             <option value="symbol">Ticker A–Z</option>
             <option value="updated">Recently updated</option>
@@ -181,8 +181,8 @@ export default function Watchlist() {
           </div>
         ) : !stocks.length ? (
           <div className="px-6 py-14 text-center">
-            <Building2 className="mx-auto mb-4 h-8 w-8 text-violet-300" />
-            <h3 className="text-base font-medium">Your research starts here</h3>
+            <Building2 className="mx-auto mb-4 h-8 w-8 text-sage-300" />
+            <h3 className="text-base font-medium">No companies on the watchlist</h3>
             <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-400">
               Search for a company above to collect its research and add it to
               the shared watchlist.
@@ -199,7 +199,7 @@ export default function Watchlist() {
                 <input
                   type="checkbox"
                   aria-label="Select all visible companies"
-                  className="h-4 w-4 accent-violet-400"
+                  className="h-4 w-4 accent-sage-400"
                   checked={filtered.every((stock) => selected.includes(stock.symbol))}
                   onChange={(event) =>
                     setSelected(event.target.checked ? filtered.map((stock) => stock.symbol) : [])
@@ -226,7 +226,7 @@ export default function Watchlist() {
                         <input
                           type="checkbox"
                           aria-label={`Select ${stock.symbol}`}
-                          className="h-4 w-4 accent-violet-400"
+                          className="h-4 w-4 accent-sage-400"
                           checked={selected.includes(stock.symbol)}
                           onChange={(event) => setSelected((current) =>
                             event.target.checked
@@ -257,7 +257,7 @@ export default function Watchlist() {
                     <span>{stock.total_posts == null ? 'Count unavailable' : `${stock.total_posts.toLocaleString()} evidence records`}</span>
                     <span>Updated {dateLabel(stock.last_updated)}</span>
                   </div>
-                  <AnimatedAction asChild className="mt-5 inline-flex min-h-11 items-center justify-between gap-2 rounded-lg border border-violet-400/20 bg-violet-400/[0.08] px-3 text-xs font-medium text-violet-200 hover:border-violet-400/40 hover:bg-violet-400/[0.14]">
+                  <AnimatedAction asChild className="mt-5 inline-flex min-h-11 items-center justify-between gap-2 rounded-lg border border-sage-400/20 bg-sage-400/[0.08] px-3 text-xs font-medium text-sage-200 hover:border-sage-400/40 hover:bg-sage-400/[0.14]">
                     <Link href={`/stock/${encodeURIComponent(stock.symbol)}`} aria-label={`View details for ${stock.symbol}`}>
                       View details
                       <ArrowUpRight aria-hidden="true" className="h-4 w-4" />

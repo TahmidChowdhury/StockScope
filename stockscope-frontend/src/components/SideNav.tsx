@@ -14,7 +14,6 @@ import {
   LogOut,
   Menu,
   ScanLine,
-  Scale,
   X,
 } from 'lucide-react'
 import { signOut, getAuthSession } from '@/lib/api'
@@ -26,7 +25,7 @@ interface SideNavProps {
   onLogout?: () => void
   onStockSelect?: (symbol: string) => void
   currentStock?: string
-  activePage?: 'dashboard' | 'compare' | 'screener' | 'trading' | 'disclosures' | 'lists' | 'access' | 'account'
+  activePage?: 'dashboard' | 'screener' | 'trading' | 'disclosures' | 'lists' | 'access' | 'account'
   watchlistLoading?: boolean
   watchlistError?: boolean
   onWatchlistRetry?: () => void
@@ -35,9 +34,8 @@ interface SideNavProps {
 const items = [
   { id: 'dashboard', href: '/', label: 'Overview', Icon: LayoutDashboard },
   { id: 'lists', href: '/lists', label: 'Companies & lists', Icon: FolderOpen },
-  { id: 'screener', href: '/screener', label: 'Screener', Icon: ScanLine },
-  { id: 'compare', href: '/compare', label: 'Compare', Icon: Scale },
   { id: 'disclosures', href: '/disclosures', label: 'Disclosures', Icon: Landmark },
+  { id: 'screener', href: '/screener', label: 'Screener', Icon: ScanLine },
   {
     id: 'trading',
     href: '/trading',
@@ -47,7 +45,7 @@ const items = [
 ] as const
 
 // Keep primary destinations comfortably tappable; the menu contains every page.
-const mobileItems = items.filter((item) => ['dashboard', 'lists', 'screener', 'compare'].includes(item.id))
+const mobileItems = items.filter((item) => ['dashboard', 'lists', 'disclosures'].includes(item.id))
 
 export default function SideNav({
   stocks = [],
@@ -88,13 +86,12 @@ export default function SideNav({
       <span className="scope-mark" aria-hidden="true">
         <svg viewBox="0 0 32 32" fill="none"><path d="M4 13V4h9M19 4h9v9M28 19v9h-9M13 28H4v-9" stroke="currentColor" strokeWidth="1.5" /><path d="M10 21V16M16 21V10M22 21V13" stroke="currentColor" strokeWidth="2" /></svg>
       </span>
-      <span><span className="scope-wordmark">StockScope<span className="text-[#b6c8ab]">.</span></span><span className="scope-caption">Company research</span></span>
+      <span className="scope-wordmark">StockScope<span className="text-sage-300">.</span></span>
     </Link>
   )
   const links = (
     <nav aria-label="Main navigation" className="scope-navigation">
-      <p className="scope-section-label">Research desk</p>
-      {items.map(({ id, href, label, Icon }, index) => (
+      {items.map(({ id, href, label, Icon }) => (
         <Link
           key={id}
           href={href}
@@ -102,17 +99,14 @@ export default function SideNav({
           onClick={event => navigate(event, href)}
           className="scope-nav-link"
         >
-          <span className="scope-nav-number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
           <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
           <span>{label}</span>
-          <ArrowUpRight className="scope-nav-arrow ml-auto h-3.5 w-3.5" aria-hidden="true" />
         </Link>
       ))}
-      <Link href="/account" onClick={event => navigate(event, '/account')} className="scope-nav-link" aria-current={activePage === 'account' ? 'page' : undefined}>Your account</Link>
       {getAuthSession()?.role === 'admin' && <Link href="/access" onClick={event => navigate(event, '/access')} className="scope-nav-link" aria-current={activePage === 'access' ? 'page' : undefined}>Access & resources</Link>}
     </nav>
   )
-  const watchlist = (
+  const watchlist = (watchlistLoading || watchlistError || stocks.length > 0) && (
     <div className="scope-watchlist">
       <div className="scope-section-label flex items-center justify-between">
         <span>Pinned companies</span>
@@ -161,18 +155,12 @@ export default function SideNav({
             </Link>
           ))}
         </div>
-      ) : (
-        !watchlistError && (
-          <p className="px-3 text-xs leading-5 text-slate-500">
-            Pin companies in your personal lists to keep them close.
-          </p>
-        )
-      )}
+      ) : null}
       {stocks.length > 5 && (
         <Link
           href="/lists"
           onClick={event => navigate(event, '/lists')}
-          className="mt-3 block px-3 py-2 text-xs text-[#b6c8ab]"
+          className="mt-3 block px-3 py-2 text-xs text-sage-300"
         >
           View all {stocks.length} companies →
         </Link>
@@ -182,7 +170,7 @@ export default function SideNav({
   const footer = (
     <div className="scope-nav-footer">
       <div className="flex items-center justify-between gap-2">
-        <div><p className="text-xs text-slate-300">Private workspace</p><p className="mt-1 text-[10px] text-slate-500">Saved research & evidence</p></div>
+        <Link href="/account" aria-current={activePage === 'account' ? 'page' : undefined} className="inline-flex min-h-11 items-center text-sm text-slate-300" onClick={event => navigate(event, '/account')}>Your account</Link>
         <AnimatedAction onClick={onLogout} aria-label="Sign out" className="flex h-11 w-11 items-center justify-center rounded-md text-slate-400 hover:bg-white/5 hover:text-white"><LogOut className="h-4 w-4" /></AnimatedAction>
       </div>
     </div>
@@ -197,7 +185,7 @@ export default function SideNav({
     }}>
       <a
         href="#main-content"
-        className="sr-only z-[100] rounded bg-violet-600 p-3 text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+        className="sr-only z-[100] rounded bg-sage-600 p-3 text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
       >
         Skip to content
       </a>
@@ -209,7 +197,7 @@ export default function SideNav({
       </aside>
       <nav
         aria-label="Mobile navigation"
-        className="shell-mobile-nav relative z-40 grid grid-cols-5 border-t border-white/10 bg-[#101218] lg:hidden"
+        className="shell-mobile-nav relative z-40 grid grid-cols-4 border-t border-white/10 bg-[#111513] lg:hidden"
       >
         {mobileItems.map(({ id, href, label, Icon }) => (
           <Link
@@ -221,7 +209,7 @@ export default function SideNav({
             className={`flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-[11px] ${!currentStock && activePage === id ? 'scope-mobile-active font-medium text-[#dbe6d4]' : 'text-slate-400'}`}
           >
             <Icon className="h-5 w-5" />
-            {id === 'dashboard' ? 'Home' : id === 'lists' ? 'Lists' : id === 'screener' ? 'Discover' : label}
+            {id === 'dashboard' ? 'Home' : id === 'lists' ? 'Lists' : label}
           </Link>
         ))}
         <Dialog.Trigger asChild>
@@ -229,10 +217,10 @@ export default function SideNav({
           aria-label="Open workspace menu"
           aria-expanded={open}
           aria-haspopup="dialog"
-          className={`flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-[11px] ${activePage === 'disclosures' || open ? 'scope-mobile-active font-medium text-[#dbe6d4]' : 'text-slate-400'}`}
+          className={`flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-[11px] ${!mobileItems.some((item) => item.id === activePage) || open ? 'scope-mobile-active font-medium text-[#dbe6d4]' : 'text-slate-400'}`}
         >
           <Menu className="h-5 w-5" />
-          {activePage === 'disclosures' ? 'Disclosures' : 'Menu'}
+          Menu
         </AnimatedAction>
         </Dialog.Trigger>
       </nav>

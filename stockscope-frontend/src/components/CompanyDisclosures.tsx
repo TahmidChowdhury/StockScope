@@ -6,11 +6,12 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowUpRight, Landmark, RefreshCw } from 'lucide-react'
 import { tradingRequest, type DisclosureResearch } from '@/lib/trading'
 
+import ResearchPanel from './ResearchPanel'
 import DisclosureRecord from './DisclosureRecord'
 
-const API_UPDATE_MESSAGE = 'Company disclosures are waiting for a compatible server update. Try again shortly.'
+const API_UPDATE_MESSAGE = 'This disclosure list is temporarily unavailable. Try again later.'
 
-export default function CompanyDisclosures({ symbol }: { symbol: string }) {
+export default function CompanyDisclosures({ symbol, enabled = true }: { symbol: string; enabled?: boolean }) {
   const headingId = useId()
   const query = useQuery({
     queryKey: ['congress', 'company', symbol],
@@ -29,17 +30,18 @@ export default function CompanyDisclosures({ symbol }: { symbol: string }) {
       ) throw new Error(API_UPDATE_MESSAGE)
       return data
     },
+    enabled,
     staleTime: 60_000,
   })
   const records = query.data?.records ?? []
   const disclosureHref = `/disclosures?${new URLSearchParams({ symbol })}`
 
   return (
-    <section aria-labelledby={headingId} className="surface overflow-hidden">
+    <ResearchPanel pending={query.isPending} aria-labelledby={headingId} className="surface overflow-hidden">
       <div className="flex flex-wrap items-start justify-between gap-4 p-5 sm:p-6">
         <div className="flex items-start gap-3">
-          <div className="rounded-xl border border-violet-400/15 bg-violet-400/10 p-2.5">
-            <Landmark className="h-4 w-4 text-violet-300" aria-hidden="true" />
+          <div className="rounded-xl border border-sage-400/15 bg-sage-400/10 p-2.5">
+            <Landmark className="h-4 w-4 text-sage-300" aria-hidden="true" />
           </div>
           <div>
             <h2 id={headingId} className="text-sm font-semibold text-slate-100">
@@ -48,14 +50,11 @@ export default function CompanyDisclosures({ symbol }: { symbol: string }) {
             <p className="mt-1 text-xs leading-5 text-slate-400">
               Congressional transactions involving {symbol}.
             </p>
-            <span className="mt-2 inline-flex rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-medium text-slate-400">
-              {query.data?.mode === 'automatic_and_csv' ? 'Collected & imported records' : 'Imported records'}
-            </span>
           </div>
         </div>
         <Link
           href={disclosureHref}
-          className="inline-flex items-center gap-1.5 rounded-lg py-1 text-xs font-medium text-violet-300 hover:text-violet-200"
+          className="inline-flex items-center gap-1.5 rounded-lg py-1 text-xs font-medium text-sage-300 hover:text-sage-200"
         >
           Explore disclosures <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
         </Link>
@@ -82,7 +81,7 @@ export default function CompanyDisclosures({ symbol }: { symbol: string }) {
         <div role="status" className="space-y-3 px-5 pb-5 sm:px-6">
           <span className="sr-only">Loading {symbol} disclosures…</span>
           {[0, 1].map((index) => (
-            <div key={index} className="h-16 animate-pulse rounded-lg bg-white/5" />
+            <div key={index} className="h-16 motion-safe:animate-pulse rounded-lg bg-white/5" />
           ))}
         </div>
       ) : query.data && records.length === 0 ? (
@@ -99,11 +98,11 @@ export default function CompanyDisclosures({ symbol }: { symbol: string }) {
             {records.map(record => <li key={record.disclosure_id}><DisclosureRecord record={record} showSymbol={false} /></li>)}
           </ul>
           <div className="flex flex-wrap justify-between gap-2 px-5 py-3 text-[10px] leading-5 text-slate-500 sm:px-6">
-            <p>Filing dates estimate availability; CSV dates are importer supplied. Review the original source.</p>
+            <p>Filing dates estimate when records became public. For CSV imports, the importer supplies the dates. Check the original filing.</p>
             <p>{records.length} of {query.data?.total.toLocaleString()} records</p>
           </div>
         </>
       ) : null}
-    </section>
+    </ResearchPanel>
   )
 }

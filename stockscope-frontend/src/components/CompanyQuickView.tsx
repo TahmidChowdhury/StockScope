@@ -6,7 +6,7 @@ import { ArrowUpRight, X } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import * as Popover from '@animate-ui/react/primitives/radix-ui/popover'
 import { apiFetch } from '@/lib/api'
-import { amount, percent } from '@/lib/financial-format'
+import { amount, observed, percent } from '@/lib/financial-format'
 import type { FundamentalsTTM, StockMetadata } from '@/types'
 
 export const shareClass = (symbol: string) => symbol === 'GOOGL' ? 'Class A' : symbol === 'GOOG' ? 'Class C' : null
@@ -16,7 +16,7 @@ function dateLabel(value?: string | null) {
   return new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
 }
 
-type Preview = { saved: boolean; ttm?: FundamentalsTTM | null; metadata?: { retrieved_at?: string | null; currency?: string | null; source?: string | null } }
+type Preview = { saved: boolean; sentiment?: { avg_sentiment: number | null; sample_size: number }; quote?: { price: number | null; currency: string | null; as_of: string | null }; ttm?: FundamentalsTTM | null; metadata?: { retrieved_at?: string | null; currency?: string | null; source?: string | null } }
 
 /** Animate UI's anchored animation with hover intent and an accessible tap/focus popover. */
 export default function CompanyQuickView({ stock, children }: { stock: Pick<StockMetadata, 'symbol'> & Partial<StockMetadata>; children: ReactNode }) {
@@ -46,6 +46,8 @@ export default function CompanyQuickView({ stock, children }: { stock: Pick<Stoc
     retry: false,
   })
   const ttm = preview.data?.ttm
+  const quote = preview.data?.quote
+  const sentiment = preview.data?.sentiment ? preview.data.sentiment.avg_sentiment : stock.avg_sentiment
   const kind = shareClass(stock.symbol)
   return <Popover.Root open={open} onOpenChange={changeOpen}>
     <Popover.Trigger asChild>
@@ -71,6 +73,20 @@ export default function CompanyQuickView({ stock, children }: { stock: Pick<Stoc
         </div>
         {kind && <p className="mt-3 rounded-lg bg-white/5 p-3 text-xs leading-5 text-slate-300">Alphabet has two listed share classes: GOOGL (Class A) and GOOG (Class C). Both belong to the same company; each ticker keeps its own research view.</p>}
         <dl className="mt-5 grid grid-cols-2 gap-4 border-y border-white/10 py-4 text-xs">
+          <div>
+            <dt className="text-slate-400">Saved stock price</dt>
+            <dd className="mt-1 text-base tabular-nums">{observed(quote?.price)
+              ? `${quote.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${quote.currency ?? ''}`.trim()
+              : preview.isPending ? 'Loading…' : 'Unavailable'}</dd>
+            {observed(quote?.price) && <dd className="mt-1 text-slate-400">{quote.as_of ? dateLabel(quote.as_of) : 'Quote date unknown'}</dd>}
+          </div>
+          <div>
+            <dt className="text-slate-400">Average news sentiment</dt>
+            <dd className="mt-1 text-base">{observed(sentiment)
+              ? sentiment >= 0.05 ? 'Positive' : sentiment <= -0.05 ? 'Negative' : 'Neutral'
+              : preview.isPending ? 'Loading…' : preview.isError ? 'Unavailable' : 'Unscored'}</dd>
+            {observed(sentiment) && <dd className="mt-1 tabular-nums text-slate-400">{sentiment > 0 ? '+' : ''}{sentiment.toFixed(3)} on −1 to +1{preview.data?.sentiment && ` · ${preview.data.sentiment.sample_size} scored`}</dd>}
+          </div>
           <div><dt className="text-slate-400">Saved evidence</dt><dd className="mt-1 text-base tabular-nums">{stock.total_posts == null ? 'Not available' : stock.total_posts.toLocaleString()}</dd></div>
           <div><dt className="text-slate-400">Latest evidence</dt><dd className="mt-1">{dateLabel(stock.last_updated)}</dd></div>
           <div className="col-span-2"><dt className="text-slate-400">Sources in the library</dt><dd className="mt-1">{stock.sources?.length ? stock.sources.map(source => source === 'sec' ? 'SEC filings' : source === 'news' ? 'News' : source).join(' · ') : 'No saved sources'}</dd></div>

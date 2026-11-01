@@ -4,6 +4,8 @@ from typing import List, Dict, Any, Optional
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from backend.core.provider_cache import snapshot_key
+from backend.core.resources import read_states
 from backend.core.cache import peek_many
 from backend.core.auth import verify_password_with_role
 from backend.core.resources import BudgetExceeded, PersonalYahooLimit
@@ -13,7 +15,7 @@ from backend.models.fundamentals import (
     CompareRequest, ScreenerRequest, ScreenerResponse
 )
 from backend.data.universe.sp500 import load_sp500_universe, CURATED_UNIVERSE_NAME
-from backend.services.research import normalized_symbol, saved_sec_facts
+from backend.services.research import load_evidence, sentiment_metrics, normalized_symbol, parse_timestamp, saved_sec_facts
 from backend.services.sec_facts import is_sec_configured
 
 router = APIRouter()
@@ -28,7 +30,18 @@ async def get_saved_preview(ticker: str, current_user: str = Depends(verify_pass
         raise HTTPException(status_code=422, detail=str(error)) from error
     saved = (await asyncio.to_thread(peek_many, '_compute_full_cached', [symbol])).get(symbol)
     metadata = (saved or {}).get('metadata') or {}
-    return {'symbol': symbol, 'saved': saved is not None,
+    quote_key = snapshot_key('yahoo-info-v1', symbol)
+    entry = (await asyncio.to_thread(read_states, [quote_key])).get(quote_key, {})
+    info = entry.get('data') or {}
+    price = info.get('regularMarketPrice')
+    if price is None:
+        price = info.get('currentPrice')
+    quote_time = parse_timestamp(info.get('regularMarketTime'))
+    quote = {'price': price, 'currency': info.get('currency'),
+             'as_of': quote_time.isoformat() if quote_time else None}
+    tone = sentiment_metrics(await asyncio.to_thread(load_evidence, symbol))
+    return {'symbol': symbol, 'saved': saved is not None, 'quote': quote,
+            'sentiment': {key: tone[key] for key in ('avg_sentiment', 'sample_size', 'trend')},
             'ttm': (saved or {}).get('ttm'),
             'metadata': {key: metadata.get(key) for key in ('retrieved_at', 'source', 'currency')}}
 

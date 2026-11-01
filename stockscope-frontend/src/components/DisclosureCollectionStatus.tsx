@@ -74,13 +74,13 @@ export default function DisclosureCollectionStatus({ onCollected }: { onCollecte
     onCollected?.()
   }, [client, data, onCollected])
 
-  if (query.isPending) return <div role="status" className="surface flex items-center gap-2 p-4 text-xs text-slate-400"><Database className="h-4 w-4 text-violet-300" /> Checking automatic collection…</div>
+  if (query.isPending) return <div role="status" className="surface flex items-center gap-2 p-4 text-xs text-slate-400"><Database className="h-4 w-4 text-sage-300" /> Checking automatic collection…</div>
   if (!data) return <div role="alert" className="surface flex flex-wrap items-center justify-between gap-3 p-4 text-xs text-slate-400"><p>Collection status is unavailable. Saved disclosures can still be browsed.</p><button className="button-secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>Check again</button></div>
 
   return <section aria-label="Automatic disclosure collection" className="surface overflow-hidden">
     <div className="flex flex-wrap items-start justify-between gap-4 p-4 sm:p-5">
       <div className="flex min-w-0 gap-3">
-        <div className="h-fit rounded-xl border border-violet-300/15 bg-violet-300/10 p-2.5"><Database className="h-4 w-4 text-violet-300" /></div>
+        <div className="h-fit rounded-xl border border-sage-300/15 bg-sage-300/10 p-2.5"><Database className="h-4 w-4 text-sage-300" /></div>
         <div>
           <div className="flex flex-wrap items-center gap-2.5"><h2 className="text-sm font-semibold text-slate-200">Automatic collection</h2><span role="status" className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium ${failed || outdated ? 'bg-amber-300/10 text-amber-200' : data.enabled ? 'bg-emerald-300/10 text-emerald-300' : 'bg-white/5 text-slate-400'}`}>
             {running ? <RefreshCw className="h-3 w-3 animate-spin" /> : data.enabled && data.last_success && !failed && !outdated ? <CheckCircle2 className="h-3 w-3" /> : <Clock3 className="h-3 w-3" />}{label}
@@ -101,7 +101,7 @@ export default function DisclosureCollectionStatus({ onCollected }: { onCollecte
 
 
 
-    <AnimatedAccordion className="border-t border-white/[0.06] px-4 py-3 text-xs sm:px-5" triggerClassName="text-slate-400 hover:text-violet-200" title="Collection details & sources">
+    <AnimatedAccordion className="border-t border-white/[0.06] px-4 py-3 text-xs sm:px-5" triggerClassName="text-slate-400 hover:text-sage-200" title="Collection details & sources">
       <div className="mt-3 space-y-2 leading-5 text-slate-500">
           <p className="mt-1.5 max-w-2xl text-xs leading-5 text-slate-400">{data.enabled ? `Checks a public House and Senate dataset every ${data.interval_hours || 6} hours. New disclosures appear here automatically.` : 'Scheduled collection is paused. Previously collected records and CSV imports remain available.'}</p>
           <p className="mt-1 text-[11px] leading-5 text-slate-500">Filing dates estimate availability. “First observed” is when StockScope found a transaction.</p>
@@ -111,7 +111,7 @@ export default function DisclosureCollectionStatus({ onCollected }: { onCollecte
       <div><dt className="text-[10px] text-slate-500">Next check</dt><dd className="mt-1 text-slate-300">{running ? 'In progress' : data.enabled ? data.next_run ? timestamp(data.next_run) : 'Starting shortly' : 'Paused'}</dd></div>
       <div><dt className="text-[10px] text-slate-500">Collected records, including revisions</dt><dd className="mt-1 text-slate-300">{data.row_count.toLocaleString()}</dd></div>
     </dl>
-        <p>Third-party normalized filing data can contain extraction errors. Confirm transactions in the original linked filing. Reported amount ranges do not show exact allocations or current holdings.</p>
+        <p>Check transactions against the original filing. The dataset can contain transcription errors. Reported ranges do not show exact allocations or current holdings.</p>
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-slate-400">
           {source?.years?.length ? <span>Collection years {source.years.join(', ')}</span> : null}
           {source?.coverage_start && <span>Dataset window {source.coverage_start}–{source.coverage_end || 'present'}</span>}
@@ -119,10 +119,10 @@ export default function DisclosureCollectionStatus({ onCollected }: { onCollecte
           {source?.revision && <span>Snapshot <code className="text-[10px]">{source.revision.slice(0, 12)}</code></span>}
         </div>
         {source?.excluded_counts && Object.values(source.excluded_counts).some((count) => count > 0) && <p>Some source rows are excluded when the transaction, symbol, or dates cannot be used reliably.</p>}
-        <p>Automatic records use the filing day as an estimate, not a verified publication timestamp. Tests default to the date StockScope first observed them; historical filing-date tests require an explicit choice. CSV dates remain importer supplied.</p>
+        <p>Backtests use the first observed date unless you select estimated filing dates. For CSV imports, the importer supplies the availability date.</p>
         <div className="flex flex-wrap gap-x-4 gap-y-1">
-          {sourceUrl && <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-violet-300 hover:underline">{source?.provider === 'congressional_stock_trades' ? 'Congressional Stock Trades dataset' : source?.provider || 'Dataset source'}<ArrowUpRight className="h-3 w-3" /></a>}
-          {licenseUrl && <a href={licenseUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-violet-300 hover:underline">Source license<ArrowUpRight className="h-3 w-3" /></a>}
+          {sourceUrl && <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sage-300 hover:underline">{source?.provider === 'congressional_stock_trades' ? 'Congressional Stock Trades dataset' : source?.provider || 'Dataset source'}<ArrowUpRight className="h-3 w-3" /></a>}
+          {licenseUrl && <a href={licenseUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sage-300 hover:underline">Source license<ArrowUpRight className="h-3 w-3" /></a>}
         </div>
         <p>For personal research. Review the source terms before redistributing disclosure data.</p>
       </div>

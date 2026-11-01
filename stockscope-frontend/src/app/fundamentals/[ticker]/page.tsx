@@ -2,8 +2,7 @@
 
 import { useFundamentals } from '@/hooks/useFundamentals'
 import { useParams, useSearchParams } from 'next/navigation'
-import { companyComparisonHref, companyResearchHref, researchReturn } from '@/lib/research-workflow'
-import { Scale } from 'lucide-react'
+import { companyResearchHref, researchReturn } from '@/lib/research-workflow'
 import { amount } from '@/lib/financial-format'
 import {
   ComposedChart,
@@ -26,6 +25,8 @@ import { FundamentalPoint, FundamentalsSeries } from '@/types'
 import Link from 'next/link'
 import SecFactsPanel from '@/components/SecFactsPanel'
 import AppShell from '@/components/AppShell'
+import { FinancialsLoading } from '@/components/ResearchLoading'
+import ResearchPanel from '@/components/ResearchPanel'
 import ValuationPanel from '@/components/ValuationPanel'
 
 interface ChartDataPoint {
@@ -41,11 +42,14 @@ interface ChartDataPoint {
 export default function FundamentalsPage() {
   const params = useParams<{ ticker: string }>()
   const ticker = params.ticker?.toUpperCase() ?? ''
+  const fundamentals = useFundamentals(ticker)
   const search = useSearchParams()
   const returnTo = researchReturn(search.get('returnTo'))?.href || ''
   return (
     <AppShell company={ticker}>
-      <FundamentalsOverview ticker={ticker} returnTo={returnTo} />
+      <ResearchPanel pending={fundamentals.isPending}>
+        <FundamentalsOverview ticker={ticker} returnTo={returnTo} query={fundamentals} />
+      </ResearchPanel>
       <div className="mt-8">
         <ValuationPanel symbol={ticker} />
       </div>
@@ -59,11 +63,13 @@ export default function FundamentalsPage() {
 function FundamentalsOverview({
   ticker,
   returnTo,
+  query,
 }: {
   ticker: string
   returnTo: string
+  query: ReturnType<typeof useFundamentals>
 }) {
-  const { data, isLoading, error } = useFundamentals(ticker)
+  const { data, isPending, error } = query
 
   const formatPercent = (value: number | null | undefined) => {
     if (value == null || !Number.isFinite(value)) return 'N/A'
@@ -123,17 +129,7 @@ function FundamentalsOverview({
     })
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center px-4 py-12">
-        <div className="text-center">
-          <div className="h-16 w-16 animate-spin rounded-full border-4 border-white/30 border-t-white mx-auto mb-4" />
-          <p className="text-white text-xl">Loading {ticker} fundamentals...</p>
-          <p className="text-white/60 text-sm mt-2">Analyzing financial data</p>
-        </div>
-      </div>
-    )
-  }
+  if (isPending) return <FinancialsLoading ticker={ticker} />
 
   if (error) {
     return (
@@ -141,7 +137,7 @@ function FundamentalsOverview({
         <div className="text-center">
           <div className="text-6xl mb-4">⚠️</div>
           <h2 className="text-2xl font-bold text-white mb-2">
-            Error Loading Fundamentals
+            Financials unavailable for {ticker}
           </h2>
           <p className="text-red-300 mb-6">{error.message}</p>
           <Link
@@ -161,11 +157,9 @@ function FundamentalsOverview({
         <div className="text-center">
           <div className="text-6xl mb-4">📊</div>
           <h2 className="text-2xl font-bold text-white mb-2">
-            No Data Available
+            No financials for {ticker}
           </h2>
-          <p className="text-white/70 mb-6">
-            No fundamentals data available for {ticker}
-          </p>
+
           <Link
             href={companyResearchHref(ticker, returnTo)}
             className="button-secondary"
@@ -194,17 +188,13 @@ function FundamentalsOverview({
           <div>
             <Link
               href={companyResearchHref(ticker, returnTo)}
-              className="mb-4 inline-flex items-center gap-2 text-xs text-slate-400 transition-colors hover:text-violet-200"
+              className="mb-4 inline-flex items-center gap-2 text-xs text-slate-400 transition-colors hover:text-sage-200"
             >
               <ArrowLeftIcon className="h-3.5 w-3.5" />
               Back to {ticker}
             </Link>
             <div>
-              <p className="eyebrow mb-2">Financial research</p>
               <h1 className="page-title">{ticker} fundamentals</h1>
-              <p className="mt-2 text-sm leading-6 text-slate-400">
-                Financial statements, reporting periods, and source evidence.
-              </p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -215,10 +205,6 @@ function FundamentalsOverview({
                 </span>
               </div>
             )}
-            <Link href={companyComparisonHref(ticker)} className="button-secondary">
-              <Scale className="h-4 w-4" />
-              Compare company
-            </Link>
           </div>
         </div>
 
@@ -329,7 +315,7 @@ function FundamentalsOverview({
           <div className="surface min-w-0 p-5 sm:p-6">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <ChartBarIcon className="h-6 w-6 text-purple-400" />
+                <ChartBarIcon className="h-6 w-6 text-sage-400" />
                 <p className="text-white/70 text-sm font-medium">
                   Operating Margin TTM
                 </p>
@@ -378,7 +364,7 @@ function FundamentalsOverview({
         {/* Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* FCF Margin Chart */}
-          <div className="surface min-w-0 p-5 sm:p-6">
+          <div data-reading-anchor="chart-0" className="surface min-w-0 p-5 sm:p-6">
             <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
               Free cash flow margin · Quarterly
             </h3>
@@ -417,7 +403,7 @@ function FundamentalsOverview({
           </div>
 
           {/* Operating Margin Chart */}
-          <div className="surface min-w-0 p-5 sm:p-6">
+          <div data-reading-anchor="chart-1" className="surface min-w-0 p-5 sm:p-6">
             <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
               Operating margin · Quarterly
             </h3>
@@ -456,7 +442,7 @@ function FundamentalsOverview({
           </div>
 
           {/* Revenue Chart */}
-          <div className="surface min-w-0 p-5 sm:p-6">
+          <div data-reading-anchor="chart-2" className="surface min-w-0 p-5 sm:p-6">
             <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
               Revenue · Quarterly
             </h3>
@@ -484,7 +470,7 @@ function FundamentalsOverview({
                   />
                   <Bar
                     dataKey="revenue"
-                    fill="#8B5CF6"
+                    fill="#b6c8ab"
                     name="Revenue (millions of statement units)"
                     radius={[4, 4, 0, 0]}
                   />
@@ -494,7 +480,7 @@ function FundamentalsOverview({
           </div>
 
           {/* EBITDA Chart */}
-          <div className="surface min-w-0 p-5 sm:p-6">
+          <div data-reading-anchor="chart-3" className="surface min-w-0 p-5 sm:p-6">
             <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
               EBITDA · Quarterly
             </h3>
@@ -540,14 +526,10 @@ function FundamentalsOverview({
           </h3>
           <div className="flex flex-wrap gap-4">
             <Link
-              href={
-                returnTo.startsWith('/compare')
-                  ? returnTo
-                  : `/compare?tickers=${encodeURIComponent(ticker)}`
-              }
+              href={companyResearchHref(ticker, returnTo, 'sources')}
               className="button-primary"
             >
-              Compare with other companies
+              View SEC evidence
             </Link>
             <Link href="/screener" className="button-secondary">
               Open screener

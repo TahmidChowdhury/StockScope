@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 /** Load deeper research when it approaches the viewport, then keep it mounted. */
-export default function DeferredPanel({ children, label }: { children: ReactNode; label: string }) {
+export default function DeferredPanel({ children, label }: { children: (enabled: boolean) => ReactNode; label: string }) {
   const container = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
 
@@ -40,18 +40,11 @@ export default function DeferredPanel({ children, label }: { children: ReactNode
   }, [visible])
 
   return (
-    <div ref={container}>
-      {visible ? children : (
-        <div className="surface flex min-h-64 items-center justify-center p-6">
-          <button
-            type="button"
-            onClick={() => setVisible(true)}
-            className="button-secondary"
-          >
-            Load {label}
-          </button>
-        </div>
-      )}
+    <div ref={container} className="relative">
+      {!visible && <button type="button" onClick={() => setVisible(true)} className="sr-only focus:not-sr-only button-secondary">
+        Load {label}
+      </button>}
+      {children(visible)}
     </div>
   )
 }

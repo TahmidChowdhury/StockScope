@@ -20,10 +20,10 @@ export default function DashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
-    <div className={`min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 ${className}`}>
+    <div className={`min-h-screen bg-background ${className}`}>
       {/* Header */}
       {header && (
-        <div className="sticky top-0 z-30 bg-slate-800/50 backdrop-blur-sm border-b border-purple-500/20">
+        <div className="sticky top-0 z-30 bg-slate-800/50 backdrop-blur-sm border-b border-sage-500/20">
           <div className="flex items-center justify-between px-4 py-3">
             {sidebar && (
               <button
@@ -153,14 +153,14 @@ export function DashboardSection({
   
   const variants = {
     default: 'bg-white/5 border-white/10',
-    prominent: 'bg-gradient-to-br from-purple-600/10 to-pink-600/10 border-purple-500/20',
+    prominent: 'bg-sage-400/10 border-sage-500/20',
     subtle: 'bg-white/[0.02] border-white/5'
   }
 
   if (collapsible) {
     return (
       <AnimatedAccordion
-        title={<span className="flex items-center gap-2 sm:gap-3">{icon && <span className="shrink-0 text-purple-400">{icon}</span>}<span className="truncate">{title}</span></span>}
+        title={<span className="flex items-center gap-2 sm:gap-3">{icon && <span className="shrink-0 text-sage-400">{icon}</span>}<span className="truncate">{title}</span></span>}
         className={`backdrop-blur-sm border rounded-xl sm:rounded-2xl p-4 sm:p-6 ${variants[variant]} ${className}`}
         triggerClassName="text-lg sm:text-xl font-semibold text-white"
         headingLevel={2}
@@ -177,7 +177,7 @@ export function DashboardSection({
       {/* Section Header */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">
         <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-          {icon && <div className="text-purple-400 flex-shrink-0">{icon}</div>}
+          {icon && <div className="text-sage-400 flex-shrink-0">{icon}</div>}
           <h2 className="text-lg sm:text-xl font-semibold text-white truncate">{title}</h2>
         </div>
         {headerAction && (

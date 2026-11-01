@@ -20,11 +20,18 @@ function ListControls({ list, onDelete, initialTicker = '' }: { list: PersonalLi
   const [rename, setRename] = useState('')
   const [confirm, setConfirm] = useState(false)
   const [notice, setNotice] = useState('')
+  const [addError, setAddError] = useState('')
   const symbols = [...new Set(ticker.toUpperCase().split(/[\s,]+/).filter(Boolean))]
   const path = `/api/lists/${encodeURIComponent(list.id)}`
   const add = (event: FormEvent) => {
     event.preventDefault()
-    if (!symbols.length || symbols.length > 50) return
+    const invalid = symbols.find(symbol => !/^[A-Z][A-Z0-9.-]{0,9}$/.test(symbol))
+    action.reset()
+    if (!symbols.length || symbols.length > 50 || invalid) {
+      setAddError(invalid ? `“${invalid}” is not a valid ticker. Try a symbol such as AAPL.` : 'Enter between 1 and 50 tickers.')
+      return
+    }
+    setAddError('')
     setNotice('')
     action.mutate({ path: `${path}/items/batch`, method: 'PUT', body: { symbols } }, {
       onSuccess: () => {
@@ -39,11 +46,12 @@ function ListControls({ list, onDelete, initialTicker = '' }: { list: PersonalLi
       <form onSubmit={add} className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
         <label className="text-sm">Add tickers to “{list.name}”
           <input required maxLength={550} value={ticker} disabled={action.isPending}
-            onChange={event => setTicker(event.target.value.toUpperCase())} placeholder="AAPL, MSFT, NVDA"
-            aria-describedby="ticker-hint" className="field-input mt-2 block w-full" />
+            onChange={event => { setTicker(event.target.value.toUpperCase()); setAddError(''); setNotice('') }} placeholder="AAPL, MSFT, NVDA"
+            aria-invalid={!!addError} aria-describedby={addError ? "ticker-error" : "ticker-hint"} className="field-input mt-2 block w-full" />
         </label>
         <button disabled={action.isPending || !symbols.length || symbols.length > 50} className="button-secondary">Add to list</button>
         <p id="ticker-hint" className="text-xs text-slate-400 sm:col-span-2">{symbols.length > 50 ? 'Reduce your selection to 50 tickers.' : 'Enter up to 50 tickers, separated by commas or spaces.'}</p>
+        {addError && <p id="ticker-error" role="alert" className="text-sm text-amber-200 sm:col-span-2">{addError}</p>}
       </form>
       <div className="flex flex-wrap items-start justify-between gap-3 border-t border-white/10 pt-3">
         <details className="min-w-0">
@@ -102,9 +110,9 @@ function ListsWorkspace() {
   const missing = individual && selected && !list && !isPending && !isError
 
   return <>
-    <h1 className="font-serif text-3xl">Companies &amp; lists</h1>
+    <h1 className="page-title">Companies &amp; lists</h1>
     <p className="mt-3 text-sm text-slate-400">Your lists are personal. Saved research is shared with approved members.</p>
-    {pendingTicker && !list && <p role="status" className="mt-4 text-sm text-[#b6c8ab]">Create a list to save {pendingTicker}, or choose an existing list.</p>}
+    {pendingTicker && !list && <p role="status" className="mt-4 text-sm text-sage-300">Create a list to save {pendingTicker}, or choose an existing list.</p>}
     {individual ? <div className="my-6 grid gap-4 sm:grid-cols-2 sm:items-end">
       <label className="min-w-0 text-xs text-slate-400">View
         <AnimatedSelect aria-label="Choose a list" value={selected} onValueChange={id => { setNotice(null); selectList(id, pendingTicker) }} className="field-input mt-2 w-full">
@@ -132,7 +140,7 @@ function ListsWorkspace() {
     {individual && isPending && <p role="status" className="mb-4 text-sm text-slate-400">Loading your lists…</p>}
     {individual && isError && <p role="alert" className="mb-4 text-sm text-amber-200">Your lists could not be loaded. <button className="underline" onClick={() => void refetch()}>Retry</button></p>}
     {missing && <p role="status" className="mb-4 text-sm text-slate-300">This list is unavailable. <Link href="/lists?view=shared" className="underline">View all saved research</Link></p>}
-    {notice?.id === selected && <p role="status" className="mb-4 text-sm text-[#b6c8ab]">{notice.text}</p>}
+    {notice?.id === selected && <p role="status" className="mb-4 text-sm text-sage-300">{notice.text}</p>}
     {create.error && <p role="alert" className="mb-4 text-sm text-amber-200">{create.error.message}</p>}
     {individual && list && !isError && <ListControls key={`controls-${list.id}-${pendingTicker}`} list={list} initialTicker={pendingTicker} onDelete={() => {
       setNotice({ id: '', text: `Deleted “${list.name}”.` })

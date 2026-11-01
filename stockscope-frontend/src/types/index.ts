@@ -217,6 +217,7 @@ export interface GrowthBasis {
 }
 
 export interface FundamentalsTTM {
+  reporting_currency?: string | null;
   ticker: string;
   revenue_ttm?: number | null;
   operating_income_ttm?: number | null;
@@ -238,10 +239,6 @@ export interface FundamentalsResponse {
   ttm: FundamentalsTTM;
   series: FundamentalsSeries;
   metadata?: { source?: string; retrieved_at?: string };
-}
-
-export interface CompareRequest {
-  tickers: string[];
 }
 
 export interface ScreenerRequest {

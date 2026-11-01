@@ -1,112 +1,78 @@
-import { useState, useEffect, useRef } from 'react'
-import { apiFetch, ApiError } from '@/lib/api'
+'use client'
 
-export interface AnalysisStatus {
-  symbol: string
-  status: 'pending' | 'processing' | 'completed' | 'partial' | 'failed'
-  progress: number
-  message: string
-  started_at?: string
-  estimated_completion?: string
-  current_phase?: string
-}
+import { useEffect, useState } from 'react'
+import { useIsMutating, useMutation, useMutationState, useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiFetch, ApiError, readApiJson } from '@/lib/api'
+import { collectionActive, collectionOutcome, readCollectionJob } from '@/lib/collection'
+import { scheduleDeadline } from '@/lib/price-cooldown'
 
-interface UseAnalysisProgressProps {
-  symbol?: string
-  isAnalyzing: boolean
-  onComplete?: (status: AnalysisStatus) => void
-  onError?: (error: string) => void
-}
-
-export function useAnalysisProgress({ symbol, isAnalyzing, onComplete, onError }: UseAnalysisProgressProps) {
-  const [status, setStatus] = useState<AnalysisStatus | null>(null)
-  const [isPolling, setIsPolling] = useState(false)
-  const [paused, setPaused] = useState(false)
-  const callbacks = useRef({ onComplete, onError })
-  callbacks.current = { onComplete, onError }
-
-  useEffect(() => {
-    if (!symbol || !isAnalyzing) {
-      setIsPolling(false)
-      setPaused(false)
-      setStatus(null)
-      return
-    }
-    let stopped = false
-    let finished = false
-    let inFlight = false
-    let timer: ReturnType<typeof setTimeout> | undefined
-    let failures = 0
-    let controller: AbortController | undefined
-    const available = () => !document.hidden && navigator.onLine !== false
-    setStatus(null)
-
-    const poll = async () => {
-      if (stopped || finished || inFlight || !available()) return
-      inFlight = true
-      const request = new AbortController()
-      controller = request
+export function useAnalysisProgress(symbol: string) {
+  const client = useQueryClient()
+  const key = ['collection-status', symbol]
+  const mutationKey = ['collection-start', symbol]
+  const starting = useIsMutating({ mutationKey }) > 0
+  const errors = useMutationState({ filters: { mutationKey }, select: mutation => mutation.state.error })
+  const startError = errors.at(-1)
+  const query = useQuery({
+    queryKey: key,
+    queryFn: async ({ signal }) => {
+      const previousError = client.getQueryData<ApiError>(['collection-status-cooldown', symbol])
+      if (previousError instanceof ApiError && previousError.status === 429 && (previousError.retryAt ?? 0) > Date.now()) throw previousError
+      const response = await apiFetch(`/api/stocks/${encodeURIComponent(symbol)}/status`, { signal })
+      if (response.status === 404) return null // No run tracked, never inferred success.
       try {
-        const response = await apiFetch(`/api/stocks/${encodeURIComponent(symbol)}/status`, { signal: request.signal })
-        if (!response.ok) throw new ApiError(response.status === 404 ? 'Analysis status is unavailable. The server may have restarted; try again.' : 'Could not check analysis progress.', response.status)
-        const next: AnalysisStatus = await response.json()
-        if (stopped || request.signal.aborted) return
-        failures = 0
-        setStatus(next)
-        if (next.status === 'completed' || next.status === 'partial') {
-          finished = true
-          setIsPolling(false)
-          callbacks.current.onComplete?.(next)
-          return
-        }
-        if (next.status === 'failed') {
-          finished = true
-          setIsPolling(false)
-          callbacks.current.onError?.(next.message || 'Analysis failed')
-          return
-        }
+        return readCollectionJob(await readApiJson(response, 'Collection status could not be checked.'), symbol)
       } catch (error) {
-        if (stopped || request.signal.aborted || !available()) return
-        failures += 1
-        if ((error instanceof ApiError && error.status === 401) || failures >= 5) {
-          finished = true
-          setIsPolling(false)
-          callbacks.current.onError?.(error instanceof Error ? error.message : 'Analysis status is unavailable')
-          return
+        if (error instanceof ApiError && error.status === 429 && error.retryAt !== null) {
+          client.setQueryDefaults(['collection-status-cooldown', symbol], { gcTime: Infinity })
+          client.setQueryData(['collection-status-cooldown', symbol], error)
         }
-      } finally {
-        inFlight = false
-        if (!stopped && !finished && available()) timer = setTimeout(poll, 2000)
+        throw error
       }
-    }
-    const resume = () => {
-      if (stopped || finished) return
-      if (timer) clearTimeout(timer)
-      const canPoll = available()
-      setIsPolling(canPoll)
-      setPaused(!canPoll)
-      if (canPoll) void poll()
-      else controller?.abort()
-    }
-    document.addEventListener('visibilitychange', resume)
-    window.addEventListener('online', resume)
-    window.addEventListener('offline', resume)
-    resume()
-    return () => {
-      stopped = true
-      controller?.abort()
-      if (timer) clearTimeout(timer)
-      document.removeEventListener('visibilitychange', resume)
-      window.removeEventListener('online', resume)
-      window.removeEventListener('offline', resume)
-    }
-  }, [symbol, isAnalyzing])
-
+    },
+    staleTime: 0, retry: false, refetchOnMount: 'always', refetchOnWindowFocus: query => !query.state.error, refetchOnReconnect: query => !query.state.error,
+    refetchInterval: query => query.state.error ? false : collectionActive(query.state.data) ? 1500 : false,
+    refetchIntervalInBackground: false,
+  })
+  const mutation = useMutation({
+    mutationKey,
+    onMutate: () => client.cancelQueries({ queryKey: key }),
+    mutationFn: async () => readCollectionJob(await readApiJson(await apiFetch('/api/stocks/analyze', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol, sources: ['news', 'sec_facts'] }),
+      // Starting a backend run is not tied to this tab's AbortSignal.
+    }), 'Could not start collection. Check status before trying again.'), symbol),
+    onSuccess: async job => {
+      await client.cancelQueries({ queryKey: key })
+      client.setQueryData(key, job)
+    },
+    onSettled: () => client.invalidateQueries({ queryKey: key }),
+    retry: false,
+  })
+  const outcome = collectionOutcome(query.data)
+  useEffect(() => {
+    if (!outcome || query.isError) return
+    const appliedKey = ['collection-applied', symbol]
+    if (client.getQueryData(appliedKey) === outcome) return
+    client.setQueryData(appliedKey, outcome)
+    void Promise.all([
+      client.invalidateQueries({ queryKey: ['research-summary', symbol] }),
+      client.invalidateQueries({ queryKey: ['saved-news', symbol] }),
+      client.invalidateQueries({ queryKey: ['watchlist'] }),
+    ])
+    // SEC evidence and tone panels read saved data afresh when mounted.
+  }, [client, outcome, query.isError, symbol])
+  const retryAt = Math.max(...[startError, query.error].map(error => error instanceof ApiError && error.status === 429 ? error.retryAt ?? 0 : 0))
+  const [, tick] = useState(0)
+  useEffect(() => {
+    if (retryAt > Date.now()) return scheduleDeadline(retryAt, () => tick(value => value + 1))
+  }, [retryAt])
+  const cooling = retryAt > Date.now()
   return {
-    status,
-    isPolling,
-    progress: status?.progress ?? 0,
-    message: paused ? 'Progress updates paused. Reconnect or return to the app to check the running research.' : status?.message || 'Waiting for analysis status...',
-    currentPhase: status?.current_phase || 'Initializing',
+    ...query, starting, startError, cooling, active: collectionActive(query.data),
+    start: () => {
+      if (client.isMutating({ mutationKey }) || collectionActive(query.data) || query.isPending || query.isFetching || query.isError || cooling) return
+      mutation.mutate()
+    },
   }
 }

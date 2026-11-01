@@ -101,8 +101,9 @@ export function backtestSymbols(value: string | null): string[] | null {
     ? symbols : null
 }
 
-export async function tradingRequest<T>(path: string, body?: unknown, method?: string): Promise<T> {
+export async function tradingRequest<T>(path: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> {
   const response = await apiFetch(`/api/trading${path}`, {
+    signal,
     method: method || (body === undefined ? 'GET' : 'POST'),
     ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   })

@@ -1,5 +1,8 @@
 'use client'
 
+import ResearchPanel from './ResearchPanel'
+import { LoadingRows } from './ResearchLoading'
+
 import AnimatedSelect from '@/components/ui/AnimatedSelect'
 
 import AnimatedAccordion from '@/components/ui/AnimatedAccordion'
@@ -226,11 +229,11 @@ export default function SecFactsPanel({ symbol }: { symbol: string }) {
   const currentData = data?.symbol === symbol.toUpperCase() ? data : null
   const busy = loading || refreshing
   return (
-    <section aria-labelledby="sec-facts-heading" className="rounded-xl border border-white/20 bg-white/5 p-5 text-white sm:p-6">
+    <ResearchPanel pending={loading} aria-labelledby="sec-facts-heading" className="rounded-xl border border-white/20 bg-white/5 p-5 text-white sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 id="sec-facts-heading" className="text-2xl font-semibold">SEC reported financial facts</h2>
-          <p className="mt-2 max-w-3xl text-sm text-slate-300">Read the company’s reported values alongside the provider financial metrics. These are raw filing facts, not TTM totals. A quarter label can accompany a year-to-date value: compare the exact dates and units.</p>
+          <p className="mt-2 max-w-3xl text-sm text-slate-300">These figures cover the periods in the filings. A quarter label can include year-to-date figures. Check dates and units before comparing values. Trailing twelve-month totals are shown separately.</p>
         </div>
         <button type="button" onClick={() => void refresh()} disabled={busy || !currentData?.configured} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
           {refreshing ? 'Collecting SEC evidence…' : 'Refresh SEC evidence'}
@@ -238,17 +241,18 @@ export default function SecFactsPanel({ symbol }: { symbol: string }) {
       </div>
       {error && <p role="alert" className="mt-4 rounded-lg bg-red-950/60 p-3 text-sm text-red-200">{error}</p>}
       {message && <p role="status" className="mt-4 rounded-lg bg-blue-950/60 p-3 text-sm text-blue-200">{message}</p>}
-      {loading && <p role="status" className="mt-4 text-sm text-slate-300">Loading saved SEC evidence…</p>}
+      {loading && !currentData && <div className="mt-4"><LoadingRows label="Loading saved SEC evidence…" /></div>}
+      {loading && currentData && <p role="status" className="mt-4 text-sm text-slate-300">Updating SEC evidence. Showing the previous results…</p>}
       {currentData && <>
-        {!currentData.configured && <p className="mt-4 text-sm text-amber-200">SEC collection needs a real contact email configured by the app operator. Previously saved facts remain readable.</p>}
-        {!currentData.saved && !loading && <p className="mt-4 text-sm text-slate-300">No SEC financial snapshot is saved for {symbol}. {currentData.configured ? 'Use Refresh SEC evidence to collect one.' : 'Collection will be available after configuration.'}</p>}
+        {!currentData.configured && <p className="mt-4 text-sm text-amber-200">Ask the workspace operator to add a contact email for SEC requests.</p>}
+        {!currentData.saved && !loading && <p className="mt-4 text-sm text-slate-300">No SEC financial snapshot is saved for {symbol}. {currentData.configured && 'Use Refresh SEC evidence to collect one.'}</p>}
         {currentData.saved && <>
           <div className="mt-4 space-y-1 text-sm text-slate-300">
             <p>{currentData.entity_name || symbol} · CIK {currentData.cik ?? 'Unknown'} · Saved collection: {currentData.status}</p>
             <p>Oldest source retrieval: {timestamp(currentData.metadata.retrieved_at)} · Collection attempted: {timestamp(currentData.metadata.collected_at)}</p>
             <p>Latest financial fact filing date: {currentData.metadata.facts_latest_filed ?? 'Unknown'} · Latest recent submission: {currentData.metadata.filings_latest_filed ?? 'Unknown'}</p>
             <p>Repeated periods can represent amendments or later filings. Each reported version stays separate.</p>
-            {currentData.metadata.concept_filter && <p>Stored concepts are limited by a configured allowlist ({currentData.metadata.concept_filter.length} concepts).</p>}
+            {currentData.metadata.concept_filter && <p>Coverage is limited to selected financial concepts ({currentData.metadata.concept_filter.length} concepts).</p>}
             <div className="flex flex-wrap gap-4">
               {secLink(currentData.metadata.companyfacts_url) && <a href={secLink(currentData.metadata.companyfacts_url)} target="_blank" rel="noreferrer" className="text-blue-300 underline">SEC company facts source</a>}
               {secLink(currentData.metadata.submissions_url) && <a href={secLink(currentData.metadata.submissions_url)} target="_blank" rel="noreferrer" className="text-blue-300 underline">SEC submissions source</a>}
@@ -268,7 +272,7 @@ export default function SecFactsPanel({ symbol }: { symbol: string }) {
               </AnimatedSelect>
             </label>
           </div>
-          {!loading && !readFailed && <>
+          {!readFailed && <>
             <p className="mt-4 text-sm text-slate-400">{currentData.total.toLocaleString()} matching reported versions · {currentData.total_saved.toLocaleString()} saved facts across {currentData.concepts.length} concepts</p>
             <div className="mt-3 overflow-x-auto">
               <table className="w-full min-w-[900px] text-left text-sm">
@@ -282,9 +286,9 @@ export default function SecFactsPanel({ symbol }: { symbol: string }) {
                   <td className="p-3 text-xs text-slate-400">FY {fact.fiscal_year ?? 'unknown'} · {fact.fiscal_period ?? 'Period label unknown'}<p className="mt-1">Frame: {fact.frame ?? 'Not supplied'}</p></td>
                 </tr>)}</tbody>
               </table>
-              {currentData.facts.length === 0 && <p className="py-6 text-sm text-slate-300">No saved facts match these filters.</p>}
+              {currentData.facts.length === 0 && <p className="py-6 text-sm text-slate-300">No saved facts match. Try another concept or unit.</p>}
             </div>
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+            <div data-reading-anchor="fact-pages" className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
               <p className="text-slate-400">{currentData.total > 0 ? `${Math.min(currentData.offset + 1, currentData.total)}–${Math.min(currentData.offset + currentData.facts.length, currentData.total)} of ${currentData.total}` : '0 records'}</p>
               <div className="flex gap-2">
                 <button type="button" disabled={busy || offset === 0} onClick={() => setOffset(Math.max(0, offset - pageSize))} className="rounded border border-white/20 px-3 py-2 disabled:opacity-40">Previous</button>
@@ -298,6 +302,6 @@ export default function SecFactsPanel({ symbol }: { symbol: string }) {
           </AnimatedAccordion>
         </>}
       </>}
-    </section>
+    </ResearchPanel>
   )
 }

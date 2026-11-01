@@ -51,7 +51,7 @@ export default function CompanyQuickView({ stock, children }: { stock: Pick<Stoc
   const kind = shareClass(stock.symbol)
   return <Popover.Root open={open} onOpenChange={changeOpen}>
     <Popover.Trigger asChild>
-      <button type="button" aria-label={`Quick view ${stock.symbol}`} className="group/preview min-w-0 flex-1 basis-28 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-[#b6c8ab] focus-visible:ring-offset-4 focus-visible:ring-offset-[#171a22]"
+      <button type="button" aria-label={`Quick view ${stock.symbol}`} className="group/preview min-w-0 flex-1 basis-28 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-sage-300 focus-visible:ring-offset-4 focus-visible:ring-offset-[#191e1b]"
         onPointerEnter={event => { if (event.pointerType !== 'mouse') return; cancelTimer(); timer.current = setTimeout(() => setOpen(true), 250) }}
         onPointerLeave={leave}
         onClick={event => { event.preventDefault(); held.current = true; changeOpen(true) }}
@@ -68,7 +68,7 @@ export default function CompanyQuickView({ stock, children }: { stock: Pick<Stoc
         onPointerEnter={cancelTimer} onPointerLeave={leave}
         onFocusCapture={() => { held.current = true; cancelTimer() }}>
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0"><p className="text-[10px] uppercase tracking-[0.18em] text-[#b6c8ab]">Quick view · Saved research</p><h3 id={titleId} className="mt-2 text-xl font-semibold">{stock.symbol}{kind && <span className="ml-2 text-xs font-normal text-slate-400">{kind}</span>}</h3><p className="mt-1 text-sm text-slate-400">{stock.companyName || 'Company research'}</p></div>
+          <div className="min-w-0"><p className="text-[10px] uppercase tracking-[0.18em] text-sage-300">Quick view · Saved research</p><h3 id={titleId} className="mt-2 text-xl font-semibold">{stock.symbol}{kind && <span className="ml-2 text-xs font-normal text-slate-400">{kind}</span>}</h3><p className="mt-1 text-sm text-slate-400">{stock.companyName || 'Company research'}</p></div>
           <Popover.Close className="-mr-2 -mt-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-white/5" aria-label="Close quick view"><X className="h-4 w-4" /></Popover.Close>
         </div>
         {kind && <p className="mt-3 rounded-lg bg-white/5 p-3 text-xs leading-5 text-slate-300">Alphabet has two listed share classes: GOOGL (Class A) and GOOG (Class C). Both belong to the same company; each ticker keeps its own research view.</p>}
@@ -100,7 +100,7 @@ export default function CompanyQuickView({ stock, children }: { stock: Pick<Stoc
           </> : <p className="mt-3 text-xs leading-5 text-slate-400">No saved financials yet. Open the company’s Financials view to load them.</p>}
         </div>
         <p className="text-[11px] leading-5 text-slate-500">Previewing uses saved data only. Figures may be older than the latest filings.</p>
-        <Link href={`/stock/${encodeURIComponent(stock.symbol)}`} className="mt-4 flex min-h-11 items-center justify-between rounded-lg bg-[#b6c8ab] px-4 text-xs font-medium text-[#111613]">Open full research<ArrowUpRight className="h-4 w-4" /></Link>
+        <Link href={`/stock/${encodeURIComponent(stock.symbol)}`} className="mt-4 flex min-h-11 items-center justify-between rounded-lg bg-sage-300 px-4 text-xs font-medium text-[#111613]">Open full research<ArrowUpRight className="h-4 w-4" /></Link>
       </Popover.Content>
     </Popover.Portal>
   </Popover.Root>

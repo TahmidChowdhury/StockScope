@@ -1,5 +1,7 @@
 'use client'
 
+import ResearchPanel from './ResearchPanel'
+import { ValuationLoading } from './ResearchLoading'
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowDownUp, Calculator, RefreshCw } from 'lucide-react'
@@ -15,9 +17,9 @@ import {
   type ValuationEvidence,
 } from '@/lib/valuation'
 
-function Metric({ item }: { item: EvidenceMetric }) {
+function Metric({ item, anchor }: { item: EvidenceMetric; anchor: string }) {
   return (
-    <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-4">
+    <div data-reading-anchor={anchor} className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-4">
       <p className="text-xs leading-5 text-slate-400">{item.label}</p>
       <p
         className={`mt-2 text-2xl font-semibold tabular-nums ${observed(item.value) && item.value < 0 ? 'text-amber-200' : 'text-white'}`}
@@ -115,8 +117,8 @@ function Scenarios({ data }: { data: ValuationEvidence }) {
       generation,
     )
   return (
-    <div className="mt-6 rounded-2xl border border-violet-300/15 bg-violet-400/[0.04] p-5 sm:p-6">
-      <div className="flex items-center gap-2 text-violet-200">
+    <ResearchPanel pending={!ready} data-reading-anchor="scenarios" className="mt-6 rounded-2xl border border-sage-300/15 bg-sage-400/[0.04] p-5 sm:p-6">
+      <div className="flex items-center gap-2 text-sage-200">
         <Calculator className="h-4 w-4" />
         <h3 className="text-sm font-semibold">
           Your equity cash-flow scenarios
@@ -172,7 +174,7 @@ function Scenarios({ data }: { data: ValuationEvidence }) {
               )
             }
             placeholder="Enter your assumption"
-            className="mt-2 w-full rounded-xl border border-white/10 bg-[#0d111b] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400/60"
+            className="mt-2 w-full rounded-xl border border-white/10 bg-[#111513] px-3 py-2.5 text-sm text-white outline-none focus:border-sage-400/60"
           />
         </label>
         <label className="text-xs text-slate-300">
@@ -190,7 +192,7 @@ function Scenarios({ data }: { data: ValuationEvidence }) {
               )
             }
             placeholder="Enter diluted shares"
-            className="mt-2 w-full rounded-xl border border-white/10 bg-[#0d111b] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400/60"
+            className="mt-2 w-full rounded-xl border border-white/10 bg-[#111513] px-3 py-2.5 text-sm text-white outline-none focus:border-sage-400/60"
           />
           <span className="mt-2 block text-[11px] text-slate-500">
             Starts with provider shares outstanding when available; verify
@@ -213,7 +215,8 @@ function Scenarios({ data }: { data: ValuationEvidence }) {
           return (
             <div
               key={scenario.name}
-              className="rounded-xl border border-white/10 bg-[#0d111b]/70 p-4"
+              data-reading-anchor={`scenario-${index}`}
+              className="rounded-xl border border-white/10 bg-[#111513]/70 p-4"
             >
               <p className="text-xs font-semibold text-slate-200">
                 {scenario.name}
@@ -265,11 +268,11 @@ function Scenarios({ data }: { data: ValuationEvidence }) {
         locally for this company and access role; refreshing provider evidence
         does not replace them.
       </p>
-    </div>
+    </ResearchPanel>
   )
 }
 
-export default function ValuationPanel({ symbol }: { symbol: string }) {
+export default function ValuationPanel({ symbol, enabled = true }: { symbol: string; enabled?: boolean }) {
   const query = useQuery({
     queryKey: ['valuation', symbol],
     queryFn: ({ signal }): Promise<ValuationEvidence> => withRequestTimeout(signal, 30_000, async (requestSignal) => {
@@ -279,25 +282,23 @@ export default function ValuationPanel({ symbol }: { symbol: string }) {
       )
       return readApiJson<ValuationEvidence>(response, 'Valuation evidence is unavailable. Try again later.')
     }),
-    enabled: !!symbol,
+    enabled: enabled && !!symbol,
     staleTime: 60 * 60_000,
     refetchOnWindowFocus: false,
     retry: false,
   })
   return (
-    <section
+    <ResearchPanel pending={query.isPending}
       aria-label="Business quality and valuation"
       className="surface mt-6 p-5 sm:p-7"
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="eyebrow mb-2">Fundamental evidence</p>
           <h2 className="text-xl font-semibold text-white">
             Business quality & valuation
           </h2>
           <p className="mt-2 text-xs leading-6 text-slate-400">
-            Assess operating results and the price paid for them. Each measure
-            keeps its reporting period and missing inputs visible.
+            Check the reporting period before comparing ratios.
           </p>
         </div>
         <button
@@ -312,11 +313,7 @@ export default function ValuationPanel({ symbol }: { symbol: string }) {
           {query.isFetching ? 'Loading' : 'Reload evidence'}
         </button>
       </div>
-      {query.isPending && (
-        <p role="status" className="mt-6 text-sm text-slate-400">
-          Loading provider statements and a timestamped quote…
-        </p>
-      )}
+      {query.isPending && <ValuationLoading />}
       {query.isError && (
         <p
           role="alert"
@@ -362,21 +359,21 @@ export default function ValuationPanel({ symbol }: { symbol: string }) {
               ))}
             </ul>
           )}
-          <h3 className="mb-3 mt-6 text-sm font-medium text-slate-200">
+          <h3 data-reading-anchor="quality" className="mb-3 mt-6 text-sm font-medium text-slate-200">
             Operating quality
           </h3>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            {query.data.quality.map((item) => (
-              <Metric key={item.key} item={item} />
+            {query.data.quality.map((item, index) => (
+              <Metric key={item.key} item={item} anchor={`quality-${index}`} />
             ))}
           </div>
-          <h3 className="mb-3 mt-6 flex items-center gap-2 text-sm font-medium text-slate-200">
-            <ArrowDownUp className="h-4 w-4 text-violet-300" />
+          <h3 data-reading-anchor="ratios" className="mb-3 mt-6 flex items-center gap-2 text-sm font-medium text-slate-200">
+            <ArrowDownUp className="h-4 w-4 text-sage-300" />
             Price relative to financials
           </h3>
           <div className="grid gap-3 sm:grid-cols-3">
-            {query.data.valuation.map((item) => (
-              <Metric key={item.key} item={item} />
+            {query.data.valuation.map((item, index) => (
+              <Metric key={item.key} item={item} anchor={`ratio-${index}`} />
             ))}
           </div>
           <p className="mt-4 text-[11px] leading-6 text-slate-500">
@@ -399,6 +396,6 @@ export default function ValuationPanel({ symbol }: { symbol: string }) {
           </div>
         </>
       )}
-    </section>
+    </ResearchPanel>
   )
 }

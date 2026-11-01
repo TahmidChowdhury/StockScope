@@ -22,23 +22,11 @@ export interface ScreenerDraft {
   selected: string[]
   requestId: string | null
 }
-export interface ComparisonSnapshot {
-  tickers: string[]
-  results: FundamentalsTTM[]
-  capturedAt: string
-}
-export interface CompareDraft {
-  tickers: string[]
-  snapshots: ComparisonSnapshot[]
-  requestId: string | null
-}
-
 export const defaultScreenCriteria: ScreenCriteria = {
   filters: Object.fromEntries(screenFilterKeys.map((key) => [key, ''])),
   universe: 'curated', custom: '', sort: 'revenue_growth_yoy', direction: 'desc', limit: '50',
 }
 export const initialScreenerDraft: ScreenerDraft = { criteria: defaultScreenCriteria, snapshot: null, selected: [], requestId: null }
-export const initialCompareDraft: CompareDraft = { tickers: [], snapshots: [], requestId: null }
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const short = (value: unknown, max: number): value is string => typeof value === 'string' && value.length <= max
@@ -64,6 +52,7 @@ const periodKeys = ['revenue_ttm', 'fcf_ttm', 'ebitda_ttm', 'operating_income_tt
 export function draftFinancialRows(rows: FundamentalsTTM[]): FundamentalsTTM[] {
   return rows.map((row) => {
     const result: FundamentalsTTM = { ticker: row.ticker, insufficient_data: row.insufficient_data }
+    if (row.reporting_currency !== undefined) result.reporting_currency = row.reporting_currency
     for (const key of amountKeys) if (row[key] === null || typeof row[key] === 'number') result[key] = row[key]
     const growth = Object.fromEntries(growthKeys.filter((key) => row.growth_metadata?.[key]).map((key) => {
       const item = row.growth_metadata![key]
@@ -81,7 +70,8 @@ export function draftFinancialRows(rows: FundamentalsTTM[]): FundamentalsTTM[] {
 
 function isFinancialRows(value: unknown, max: number): value is FundamentalsTTM[] {
   return Array.isArray(value) && value.length <= max && value.every((row) => {
-    if (!record(row) || !keysOnly(row, ['ticker', 'insufficient_data', ...amountKeys, 'growth_metadata', 'period_metadata']) || !symbol(row.ticker) || typeof row.insufficient_data !== 'boolean') return false
+    if (!record(row) || !keysOnly(row, ['ticker', 'insufficient_data', 'reporting_currency', ...amountKeys, 'growth_metadata', 'period_metadata']) || !symbol(row.ticker) || typeof row.insufficient_data !== 'boolean') return false
+    if (row.reporting_currency !== undefined && row.reporting_currency !== null && !short(row.reporting_currency, 20)) return false
     if (!amountKeys.every((key) => row[key] === undefined || row[key] === null || (typeof row[key] === 'number' && Number.isFinite(row[key])))) return false
     if (row.growth_metadata !== undefined && (!record(row.growth_metadata) || !keysOnly(row.growth_metadata, growthKeys) || !Object.values(row.growth_metadata).every((item) => record(item) && keysOnly(item, ['basis', 'status', 'current_period_end', 'prior_period_end']) && ['ttm', 'fiscal_year', 'unavailable'].includes(String(item.basis)) && ['available', 'non_positive_prior', 'insufficient_history'].includes(String(item.status)) && (item.current_period_end === undefined || date(item.current_period_end)) && (item.prior_period_end === undefined || date(item.prior_period_end))))) return false
     return row.period_metadata === undefined || (record(row.period_metadata) && keysOnly(row.period_metadata, periodKeys) && Object.values(row.period_metadata).every((item) => record(item) && keysOnly(item, ['basis', 'period_end', 'quarter_ends']) && short(item.basis, 20) && date(item.period_end) && Array.isArray(item.quarter_ends) && item.quarter_ends.length <= 8 && item.quarter_ends.every(date)))
@@ -98,10 +88,6 @@ export function isScreenerDraft(value: unknown): value is ScreenerDraft {
   return keysOnly(data, ['results', 'universe_name', ...counts]) && isFinancialRows(data.results, 500) && short(data.universe_name, 120) && counts.every((key) => Number.isInteger(data[key]) && Number(data[key]) >= 0 && Number(data[key]) <= 500) && value.selected.every((ticker) => (data.results as FundamentalsTTM[]).some((row) => row.ticker === ticker))
 }
 
-export function isCompareDraft(value: unknown): value is CompareDraft {
-  return record(value) && keysOnly(value, ['tickers', 'snapshots', 'requestId']) && symbols(value.tickers) && requestId(value.requestId) && Array.isArray(value.snapshots) && value.snapshots.length <= 5 && value.snapshots.every((snapshot) => record(snapshot) && keysOnly(snapshot, ['tickers', 'results', 'capturedAt']) && symbols(snapshot.tickers) && snapshot.tickers.length >= 2 && timestamp(snapshot.capturedAt) && isFinancialRows(snapshot.results, 20) && snapshot.results.every((row) => (snapshot.tickers as string[]).includes(row.ticker)))
-}
-
 export function screenCriteriaKey(criteria: ScreenCriteria): string {
   return JSON.stringify({ filters: Object.fromEntries(screenFilterKeys.map((key) => [key, criteria.filters[key]])), universe: criteria.universe, custom: criteria.universe === 'custom' ? criteria.custom : '', sort: criteria.sort, direction: criteria.direction, limit: criteria.limit })
 }
@@ -116,7 +102,7 @@ export function screenCriteriaParams(criteria: ScreenCriteria): URLSearchParams 
 }
 
 /** Query-only edits must reach the native URL before an immediate reload. */
-export function replaceResearchUrl(history: Pick<History, 'replaceState'>, path: '/screener' | '/compare', params: URLSearchParams): void {
+export function replaceResearchUrl(history: Pick<History, 'replaceState'>, path: '/screener', params: URLSearchParams): void {
   // Next's App Router copies its internal state and synchronizes search params
   // for native history calls whose data is null.
   history.replaceState(null, '', `${path}${params.size ? `?${params}` : ''}`)
@@ -145,8 +131,4 @@ export function screenCriteriaFromUrl(search: URLSearchParams): ScreenCriteria |
 
 export function completeScreen(draft: ScreenerDraft, id: string, snapshot: ScreenSnapshot): ScreenerDraft {
   return draft.requestId === id ? { ...draft, snapshot, selected: [], requestId: null } : draft
-}
-
-export function completeComparison(draft: CompareDraft, id: string, snapshot: ComparisonSnapshot): CompareDraft {
-  return draft.requestId === id ? { ...draft, requestId: null, snapshots: [snapshot, ...draft.snapshots.filter((row) => row.tickers.join(',') !== snapshot.tickers.join(','))].slice(0, 5) } : draft
 }

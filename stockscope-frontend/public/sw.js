@@ -2,7 +2,7 @@
 // Next.js assets always use the network, so deployments cannot serve stale data.
 const OFFLINE_CACHE_PREFIX = 'stockscope-offline-'
 // Bump this version whenever offline.html changes so installed apps refresh it.
-const OFFLINE_CACHE = `${OFFLINE_CACHE_PREFIX}v1`
+const OFFLINE_CACHE = `${OFFLINE_CACHE_PREFIX}v3`
 const OFFLINE_URL = '/offline.html'
 
 self.addEventListener('install', (event) => {

@@ -25,7 +25,7 @@ export default function AccountPage() {
     finally { setBusy(false) }
   }
   if (!session?.user) return <LoginForm onLoginSuccess={() => window.location.assign('/')} />
-  return <AppShell><h1 className="font-serif text-3xl">Your account</h1><p className="mt-3 text-sm text-slate-400">{session.user.name} · {session.user.email}</p>
+  return <AppShell><h1 className="page-title">Your account</h1><p className="mt-3 text-sm text-slate-400">{session.user.name} · {session.user.email}</p>
     <section className="surface mt-8 max-w-md space-y-2 p-6">
       <h2 className="font-medium">Your Yahoo requests</h2>
       {usage.data ? <p className="text-sm tabular-nums">{usage.data.used} of {usage.data.limit} used today</p> :

@@ -56,7 +56,7 @@ export function createDraftStore<T>(
           ...snapshot,
           status: 'unavailable',
           message:
-            'Browser storage is unavailable. Changes will stay in memory until you leave or refresh.',
+            'This browser can’t save drafts. Copy your changes before leaving or refreshing.',
         })
       return
     }
@@ -130,7 +130,7 @@ export function createDraftStore<T>(
           ...snapshot,
           status: 'memory-only',
           message:
-            'These changes could not be saved because the draft format is invalid.',
+            'These changes could not be saved. Check your entries and try again.',
         })
         return false
       }

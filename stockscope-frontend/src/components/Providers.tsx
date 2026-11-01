@@ -86,7 +86,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {!ready ? <div className="min-h-screen bg-slate-900" /> : restoreError ? (
+      {!ready ? <main role="status" className="grid min-h-dvh place-items-center text-sm text-slate-400">Opening your workspace…</main> : restoreError ? (
         <main className="flex min-h-dvh flex-col items-center justify-center gap-4 px-6 text-center">
           <h1 className="text-xl">Couldn’t reconnect to StockScope</h1>
           <p className="text-sm text-slate-400">Check your connection and try again to restore your session.</p>
@@ -97,7 +97,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <MobileScrollProvider>{children}</MobileScrollProvider>
         </div>
       ) : <LoginForm onLoginSuccess={() => setInvitation(false)} />}
-      {process.env.NODE_ENV === 'development' && <ReactQueryDevtools initialIsOpen={false} />}
+      {process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_SHOW_DEVTOOLS === 'true' && <ReactQueryDevtools initialIsOpen={false} buttonPosition="top-right" />}
     </QueryClientProvider>
   )
 }

@@ -8,7 +8,7 @@ import { Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, ArrowUpRight, Clock3, FileText, FlaskConical, Landmark, Search, Users } from 'lucide-react'
+import { ArrowRight, FileText, FlaskConical, Landmark, Search } from 'lucide-react'
 import AppShell from '@/components/AppShell'
 import DisclosureCollectionStatus from '@/components/DisclosureCollectionStatus'
 import { companyResearchHref } from '@/lib/research-workflow'
@@ -17,7 +17,7 @@ import { DisclosureResearch, tradingRequest } from '@/lib/trading'
 const pageSize = 20
 
 export default function DisclosuresPage() {
-  return <Suspense fallback={<div className="min-h-dvh bg-[#101218]" />}><DisclosureWorkspace /></Suspense>
+  return <Suspense fallback={<div className="min-h-dvh bg-[#111513]" />}><DisclosureWorkspace /></Suspense>
 }
 
 function DisclosureWorkspace() {
@@ -41,7 +41,7 @@ function DisclosureWorkspace() {
     queryFn: async () => {
       const response = await tradingRequest<DisclosureResearch>(`/congress?${queryString}&limit=${pageSize}`)
       if (!response.summary || !response.filtered_summary || !Array.isArray(response.member_profiles) || !Array.isArray(response.symbols)) {
-        throw new Error('This view needs the updated disclosure API. Try again after the backend update finishes.')
+        throw new Error('This version of the disclosure list is unavailable. Try again later.')
       }
       return response
     },
@@ -49,7 +49,6 @@ function DisclosureWorkspace() {
   const data = query.data
   const summary = data?.filtered_summary
   const profile = data?.member_profiles.find((person) => person.member === member)
-  const people = [...(data?.member_profiles || [])].sort((a, b) => (b.latest_available_date || '').localeCompare(a.latest_available_date || '') || a.member.localeCompare(b.member)).slice(0, 6)
   const hasFilters = ['q', 'member', 'symbol', 'side'].some((key) => params.has(key))
   function navigate(changes: Record<string, string>) {
     const next = new URLSearchParams(queryString)
@@ -65,50 +64,35 @@ function DisclosureWorkspace() {
     router.push(`/trading?${next}`)
   }
   return <AppShell><div className="space-y-6">
-    <header className="flex flex-wrap items-start justify-between gap-5">
-      <div>
-        <p className="eyebrow">Follow the evidence</p>
-        <h1 className="page-title mt-2">Disclosed activity</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">Explore Congress transactions, research the companies, and test a following rule with explicit disclosure timing.</p>
-      </div>
-      <Link href="/trading?tab=congress" className="button-secondary"><FileText className="h-4 w-4" /> Manage imports</Link>
+    <header>
+      <h1 className="page-title">Congressional disclosures</h1>
+      <p className="mt-2 text-sm text-slate-400">Reported transactions by members of Congress and their households.</p>
     </header>
-
-    <DisclosureCollectionStatus />
-
-    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.07] sm:gap-3 sm:overflow-visible sm:border-0 sm:bg-transparent xl:grid-cols-4">
-      {[
-        { label: 'Matching disclosures', value: summary?.total, Icon: FileText },
-        { label: 'Members in view', value: summary?.member_count, Icon: Users },
-        { label: 'Companies & assets', value: summary?.symbol_count, Icon: Landmark },
-        { label: 'Average reported lag', value: summary?.average_lag_days == null ? undefined : `${summary.average_lag_days.toFixed(1)} days`, Icon: Clock3 },
-      ].map(({ label, value, Icon }) => <div key={label} className="bg-[#171a22] p-3 sm:rounded-xl sm:border sm:border-white/[0.07] sm:p-5">
-        <div className="flex items-center justify-between gap-2 text-xs text-slate-400"><span>{label}</span><Icon className="h-4 w-4 text-violet-300/70" /></div>
-        <p className="mt-2 text-lg font-semibold tracking-tight sm:text-2xl">{typeof value === 'number' ? value.toLocaleString() : value ?? '—'}</p>
-      </div>)}
-    </div>
-
+    <details className="border-y border-white/[0.08] text-sm">
+      <summary className="cursor-pointer py-3 font-medium text-sage-300">Coverage and collection</summary>
+      <div className="space-y-3 pb-4">
+        {summary && <p className="text-xs leading-5 text-slate-400">
+          {summary.member_count.toLocaleString()} members · {summary.symbol_count.toLocaleString()} companies and assets
+          {summary.average_lag_days != null && ` · Average reporting lag ${summary.average_lag_days.toFixed(1)} days`}
+        </p>}
+        <DisclosureCollectionStatus />
+        <Link href="/trading?tab=congress" className="inline-flex min-h-11 items-center gap-2 text-xs text-sage-300 hover:underline"><FileText className="h-4 w-4" /> Manage imports</Link>
+      </div>
+    </details>
     {member && profile ? <section className="surface overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-5 bg-gradient-to-r from-violet-500/10 to-transparent p-5 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-5 p-5 sm:p-6">
         <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-violet-300/15 bg-violet-300/10 text-lg text-violet-200">{member.split(/\s+/).map((word) => word[0]).slice(0, 2).join('')}</div>
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-sage-300/15 bg-sage-300/10 text-lg text-sage-200">{member.split(/\s+/).map((word) => word[0]).slice(0, 2).join('')}</div>
           <div><p className="eyebrow">Member activity</p><h2 className="mt-1 text-lg font-semibold">{member}</h2><p className="mt-1 text-xs text-slate-400">{profile.total} transactions · {profile.buys} buys · {profile.sells} sells · All available records</p></div>
         </div>
         <button className="button-primary" onClick={() => testMember(member)}><FlaskConical className="h-4 w-4" /> Test following this member</button>
       </div>
       <p className="border-t border-white/5 px-5 py-3 text-xs leading-5 text-slate-400">This activity can include a spouse or dependent. Reported ranges do not establish exact allocations, current holdings, or the member’s investment return.</p>
-    </section> : !hasFilters && people.length > 0 ? <section aria-labelledby="people-title">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 id="people-title" className="text-sm font-semibold">Explore members</h2><p className="text-xs text-slate-500">Recent filing / imported public dates</p></div>
-      <div className="flex snap-x gap-3 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 xl:grid-cols-3">{people.map((person) => <button key={person.member} onClick={() => navigate({ member: person.member })} className="surface group min-w-[240px] snap-start p-4 text-left transition-colors sm:min-w-0 hover:border-violet-400/30">
-        <div className="flex items-center justify-between gap-3"><span className="font-medium text-slate-200">{person.member}</span><ArrowUpRight className="h-4 w-4 shrink-0 text-slate-500 group-hover:text-violet-300" /></div>
-        <p className="mt-2 text-xs text-slate-400">{person.total} {person.total === 1 ? 'disclosure' : 'disclosures'} · {person.symbol_count} {person.symbol_count === 1 ? 'symbol' : 'symbols'}</p>
-        <p className="mt-3 text-[11px] text-slate-500">Latest recorded availability {person.latest_available_date}</p>
-      </button>)}</div>
     </section> : null}
 
     <section className="surface overflow-hidden" aria-labelledby="activity-title">
       <div className="border-b border-white/[0.07] p-4 sm:p-6">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><h2 id="activity-title" className="font-semibold">Transaction feed</h2><p className="text-xs text-slate-500">Newest reported availability first</p></div>
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><h2 id="activity-title" className="font-semibold">Transaction feed</h2><p className="text-xs text-slate-400">{summary && `${summary.total.toLocaleString()} records · `}Newest reported availability first</p></div>
         <form key={params.get('q') || ''} onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); navigate({ q: String(form.get('q') || '').trim() }) }} className="flex items-end gap-2">
           <label className="min-w-0 flex-1 text-xs text-slate-400">Search disclosures
             <input name="q" defaultValue={params.get('q') || ''} maxLength={120} placeholder="Member, owner, ticker…" className="field-input" />
@@ -134,14 +118,14 @@ function DisclosureWorkspace() {
         </AnimatedAccordion>
         {hasFilters && <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
           {['q', 'member', 'symbol', 'side'].map(key => params.get(key) && <button key={key} onClick={() => navigate({ [key]: '' })} aria-label={`Remove ${key} filter: ${params.get(key)}`} className="min-h-11 max-w-full rounded-lg border border-white/10 px-3 text-left text-slate-300">{params.get(key)} <span aria-hidden="true" className="ml-2 text-slate-500">×</span></button>)}
-          <button className="min-h-11 px-2 text-violet-300 hover:underline" onClick={() => router.push('/disclosures', { scroll: false })}>Clear all</button>
+          <button className="min-h-11 px-2 text-sage-300 hover:underline" onClick={() => router.push('/disclosures', { scroll: false })}>Clear all</button>
         </div>}
       </div>
 
       {query.isPending ? <p role="status" className="p-6 text-sm text-slate-400">Loading disclosed activity…</p> : query.isError ? <div role="alert" className="p-6 text-sm text-amber-200"><p>Disclosures could not be loaded. {query.error.message}</p><button onClick={() => void query.refetch()} className="button-secondary mt-4">Try again</button></div> : !data?.records.length ? <div className="mx-auto max-w-xl px-6 py-12 text-center">
-        <Landmark className="mx-auto mb-4 h-8 w-8 text-violet-300/70" />
-        <h3 className="text-lg font-medium">{data?.summary.total ? 'No activity matches this view' : 'Your disclosure collection starts here'}</h3>
-        <p className="mt-3 text-sm leading-6 text-slate-400">{data?.summary.total ? 'Try another member, symbol, or search. Your filters are saved in this page’s URL.' : data?.collection?.enabled ? 'Automatic collection brings in source-linked transactions on its next successful check. An admin can refresh now above or add a CSV import. Records include filing dates, household owners, and reported ranges.' : 'An admin can import source-linked Congress transactions. They will appear here with filing dates, household owners, and reported ranges. Automatic collection status is shown above.'}</p>
+        <Landmark className="mx-auto mb-4 h-8 w-8 text-sage-300/70" />
+        <h3 className="text-lg font-medium">{data?.summary.total ? 'No activity matches this view' : 'No disclosures collected yet'}</h3>
+        <p className="mt-3 text-sm leading-6 text-slate-400">{data?.summary.total ? 'Try another member or ticker, or clear the filters.' : data?.collection?.enabled ? 'The next scheduled check will look for transactions. An administrator can also refresh the collection or import a CSV.' : 'An administrator can import congressional transactions with links to the filings.'}</p>
         <Link className="button-primary mt-6" href={data?.summary.total ? '/disclosures' : '/trading?tab=congress'}>{data?.summary.total ? 'View all disclosures' : 'Open disclosure imports'}<ArrowRight className="h-4 w-4" /></Link>
       </div> : <>
         <div className="divide-y divide-white/[0.06]">{data.records.map((record) => <DisclosureRecord key={record.disclosure_id} record={record} companyHref={companyResearchHref(record.symbol, returnTo)} onMember={(name) => navigate({ member: name })} />)}</div>
@@ -149,10 +133,5 @@ function DisclosureWorkspace() {
       </>}
     </section>
 
-    <section className="grid gap-5 rounded-xl border border-white/[0.06] p-5 text-xs leading-6 text-slate-400 md:grid-cols-3">
-      <div><p className="mb-1 font-medium text-slate-200">01 · Inspect the evidence</p><p>Check the original filing, household owner, asset type, and reported range. Automatic data is normalized by a third party; CSV dates are importer supplied.</p></div>
-      <div><p className="mb-1 font-medium text-slate-200">02 · Research the company</p><p>Open a ticker to examine fundamentals, valuation, news tone, and original sources before forming a thesis.</p></div>
-      <div><p className="mb-1 font-medium text-slate-200">03 · Test the timing</p><p>Tests default to first observed dates for automatic records. Filing-date estimates are an explicit historical option. Orders wait for the next observed session after your chosen delay; unsupported assets are excluded.</p></div>
-    </section>
   </div></AppShell>
 }

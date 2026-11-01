@@ -7,29 +7,24 @@ import { skipToken, useQuery } from '@tanstack/react-query'
 import {
   ArrowLeft,
   ArrowUpRight,
-  ChartNoAxesCombined,
-  FileText,
-  Newspaper,
-  Scale,
 } from 'lucide-react'
-import { SentimentLoading } from './SentimentLoading'
 import PriceChart from './PriceChart'
 import KeyMetrics from './KeyMetrics'
 import DeferredPanel from './DeferredPanel'
+import CompanyDisclosures from './CompanyDisclosures'
+import { LoadingRows, SentimentLoading } from './ResearchLoading'
 import CompanyLogo from './CompanyLogo'
 import type { StockMetadata } from '@/types'
-import { companyComparisonHref, companyFundamentalsHref, researchReturn } from '@/lib/research-workflow'
+import { companyFundamentalsHref, researchReturn } from '@/lib/research-workflow'
 
 function SectionLoading() {
-  return <div role="status" className="surface min-h-64 p-6 text-sm text-slate-400">Loading research section…</div>
+  return <div className="surface p-6"><LoadingRows label="Loading research section…" /></div>
 }
 
 const NewsComponent = dynamic(() => import('./NewsComponent'), { loading: SectionLoading })
 const StockDashboard = dynamic(() => import('./StockDashboard'), { loading: SectionLoading })
 const SecFactsPanel = dynamic(() => import('./SecFactsPanel'), { loading: SectionLoading })
 const SentimentLabPanel = dynamic(() => import('./SentimentLabPanel'), { loading: SentimentLoading })
-const ValuationPanel = dynamic(() => import('./ValuationPanel'), { loading: SectionLoading })
-const CompanyDisclosures = dynamic(() => import('./CompanyDisclosures'), { loading: SectionLoading })
 
 interface StockAnalysisHubProps {
   symbol: string
@@ -41,7 +36,7 @@ interface StockAnalysisHubProps {
 const tabs = [
   { id: 'overview', label: 'Overview' },
   { id: 'news', label: 'News' },
-  { id: 'tone', label: 'Tone lab' },
+  { id: 'tone', label: 'Sentiment' },
   { id: 'sources', label: 'SEC evidence' },
   { id: 'analysis', label: 'Research summary' },
 ] as const
@@ -79,38 +74,31 @@ export default function StockAnalysisHub({
   }
   return (
     <>
-      <button
+      {returnDestination && <button
         onClick={onBack}
         className="mb-6 inline-flex items-center gap-2 text-xs text-slate-400 hover:text-white"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
-        {returnDestination?.label || 'Back to overview'}
-      </button>
+        {returnDestination.label}
+      </button>}
       <div className="mb-7 flex flex-wrap items-center justify-between gap-5">
         <div className="flex min-w-0 items-center gap-4">
           <CompanyLogo symbol={symbol} size="large" />
           <div className="min-w-0">
-            <p className="eyebrow mb-1">Company research</p>
             <h1 className="page-title break-words">
               {companyName}
             </h1>
-            <p className="mt-1 text-xs font-medium text-slate-400">
+            {companyName !== symbol && <p className="mt-1 text-xs font-medium text-slate-400">
               {symbol}
-              <span className="mx-2 text-slate-600">/</span>Financials, context,
-              and original sources
-            </p>
+            </p>}
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Link href={companyComparisonHref(symbol)} className="button-secondary">
-            <Scale className="h-4 w-4" />
-            Compare company
-          </Link>
           <Link
             href={companyFundamentalsHref(symbol, returnDestination?.href || '')}
-            className="button-primary"
+            className="button-secondary"
           >
-            Explore financials
+            Financials &amp; valuation
             <ArrowUpRight className="h-4 w-4" />
           </Link>
         </div>
@@ -120,8 +108,7 @@ export default function StockAnalysisHub({
           role="status"
           className="surface mb-5 border-amber-400/20 p-4 text-sm text-amber-200"
         >
-          Research collection completed with partial results. Some sources were
-          unavailable. Review the research summary for collection details.
+          Some sources could not be refreshed. Open the research summary to see which sources responded.
         </p>
       )}
       <nav
@@ -137,7 +124,7 @@ export default function StockAnalysisHub({
               e.preventDefault()
               selectTab(tab.id)
             }}
-            className={`whitespace-nowrap border-b-2 pb-3.5 text-sm transition-colors ${active === tab.id ? 'border-violet-400 font-medium text-violet-200' : 'border-transparent text-slate-500 hover:text-slate-200'}`}
+            className={`whitespace-nowrap border-b-2 pb-3.5 text-sm transition-colors ${active === tab.id ? 'border-sage-300 font-medium text-[#dce6d7]' : 'border-transparent text-slate-500 hover:text-slate-200'}`}
           >
             {tab.label}
           </Link>
@@ -147,61 +134,15 @@ export default function StockAnalysisHub({
         {active === 'overview' && (
           <>
             <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-              <div className="min-w-0 space-y-5">
+              <div className="min-w-0">
                 <PriceChart symbol={symbol} className="company-panel" />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {[
-                    {
-                      tab: 'news',
-                      Icon: Newspaper,
-                      title: 'The story around the numbers',
-                      text: 'Read dated articles and company releases.',
-                    },
-                    {
-                      tab: 'sources',
-                      Icon: FileText,
-                      title: 'Go straight to the source',
-                      text: 'Inspect SEC facts and original filings.',
-                    },
-                  ].map(({ tab, Icon, title, text }) => (
-                    <button
-                      key={tab}
-                      onClick={() => selectTab(tab)}
-                      className="surface group p-5 text-left transition-colors hover:border-violet-400/30"
-                    >
-                      <div className="mb-3 flex items-center justify-between">
-                        <Icon className="h-4 w-4 text-violet-300" />
-                        <ArrowUpRight className="h-4 w-4 text-slate-500" />
-                      </div>
-                      <h2 className="text-sm font-medium text-slate-200">
-                        {title}
-                      </h2>
-                      <p className="mt-2 text-xs leading-5 text-slate-500">
-                        {text}
-                      </p>
-                    </button>
-                  ))}
-                </div>
               </div>
               <KeyMetrics symbol={symbol} />
             </div>
             <div className="mt-5">
-              <DeferredPanel label="valuation evidence">
-                <ValuationPanel symbol={symbol} />
-              </DeferredPanel>
-            </div>
-            <div className="mt-5">
               <DeferredPanel label="company disclosures">
-                <CompanyDisclosures symbol={symbol} />
+                {enabled => <CompanyDisclosures symbol={symbol} enabled={enabled} />}
               </DeferredPanel>
-            </div>
-            <div className="surface mt-5 flex items-start gap-3 px-5 py-4">
-              <ChartNoAxesCombined className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-              <p className="text-xs leading-6 text-slate-400">
-                Price history shows market context. Financial statements and
-                original filings provide the business context. Provider
-                observations can be delayed; check each panel’s source date.
-              </p>
             </div>
           </>
         )}

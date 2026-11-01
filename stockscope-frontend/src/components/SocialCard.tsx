@@ -84,7 +84,7 @@ export default function SocialCard({
           >
             <div className="flex items-start gap-3">
               {/* Author avatar placeholder */}
-              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+              <div className="w-8 h-8 bg-sage-600 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                 {message.author.charAt(0).toUpperCase()}
               </div>
               
@@ -135,7 +135,7 @@ export default function SocialCard({
           <div className={`bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 hover:bg-white/8 transition-all duration-200 ${className}`}>
             <div className="flex items-start gap-3">
               {/* Author avatar placeholder */}
-              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+              <div className="w-8 h-8 bg-sage-600 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                 {message.author.charAt(0).toUpperCase()}
               </div>
               
@@ -193,7 +193,7 @@ export default function SocialCard({
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           {/* Author avatar */}
-          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold">
+          <div className="w-10 h-10 bg-sage-600 rounded-full flex items-center justify-center text-white font-bold">
             {message.author.charAt(0).toUpperCase()}
           </div>
           
@@ -254,7 +254,7 @@ export default function SocialCard({
             href={message.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 text-purple-300 hover:text-purple-200 text-sm font-medium transition-colors z-20 relative"
+            className="flex items-center gap-2 text-sage-300 hover:text-sage-200 text-sm font-medium transition-colors z-20 relative"
           >
             View Post
             <ExternalLink className="h-4 w-4" />

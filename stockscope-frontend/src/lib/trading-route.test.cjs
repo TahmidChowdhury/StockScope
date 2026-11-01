@@ -29,7 +29,7 @@ test('malformed or wrong-kind IDs never produce fetchable saved routes', () => {
   for (const path of ['/trading/backtests/not-a-run', `/trading/backtests/${portfolio}`, '/trading/portfolios/%2e%2e%2fsecret', '/trading/backtests/%zz']) {
     const route = tradingRoute(path, 'backtest')
     assert.equal(route.saved, null)
-    assert.match(route.error, /invalid \(404\)/)
+    assert.match(route.error, /invalid.*saved portfolio or backtest/)
   }
 })
 

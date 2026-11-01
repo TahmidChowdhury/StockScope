@@ -89,9 +89,35 @@ def test_lists_are_private_and_removal_never_deletes_research(workspace):
     assert client.get('/api/lists', headers=auth(friend)).json() == []
     assert client.put(path + '/items', headers=auth(friend), json={'symbol': 'MSFT'}).status_code == 404
     assert client.delete(path, headers=auth(friend)).status_code == 404
-    assert client.delete(path + '/items/AAPL', headers=auth(owner)).status_code == 200
+    second = client.post('/api/lists', headers=auth(owner), json={'name': 'Second', 'initial_symbol': 'aapl'})
+    assert second.status_code == 201
+    assert second.json()['items'] == [{'symbol': 'AAPL', 'pinned': False}]
+    second_path = '/api/lists/' + second.json()['id']
+    assert client.get('/api/lists', headers=auth(friend)).json() == []
+    assert client.delete(second_path + '/items/AAPL', headers=auth(friend)).status_code == 404
+    first_with_pin = {**created, 'items': [{'symbol': 'AAPL', 'pinned': True}]}
+    assert client.delete(second_path + '/items/AAPL', headers=auth(owner)).status_code == 200
+    assert client.get('/api/lists', headers=auth(owner)).json() == [first_with_pin, {**second.json(), 'items': []}]
+    assert client.put(second_path + '/items/batch', headers=auth(owner), json={'symbols': ['AAPL']}).status_code == 200
+    assert client.delete(second_path, headers=auth(owner)).status_code == 200
+    assert client.get('/api/lists', headers=auth(owner)).json() == [first_with_pin]
     assert repo.list_symbols() == ['AAPL']
     assert repo.load_snapshots('AAPL')[0][1][0]['title'] == 'Saved article'
+
+
+def test_create_with_initial_symbol_validates_before_saving_and_obeys_limits(workspace):
+    client, _, owner, auth = workspace
+    headers = auth(owner)
+    assert client.post('/api/lists', headers=headers, json={'name': 'Core', 'initial_symbol': 'BAD!'}).status_code == 422
+    assert client.get('/api/lists', headers=headers).json() == []
+    assert client.post('/api/lists', headers=headers, json={'name': 'Core'}).status_code == 201
+    duplicate = client.post('/api/lists', headers=headers, json={'name': 'Core', 'initial_symbol': 'AAPL'})
+    assert duplicate.status_code == 409
+    for index in range(19):
+        assert client.post('/api/lists', headers=headers, json={'name': f'List {index}'}).status_code == 201
+    assert client.post('/api/lists', headers=headers, json={'name': 'One more', 'initial_symbol': 'AAPL'}).status_code == 409
+    lists = client.get('/api/lists', headers=headers).json()
+    assert len(lists) == 20 and all(row['items'] == [] for row in lists)
 
 
 def test_revocation_invalidates_existing_tokens_and_cannot_demote_self(workspace):

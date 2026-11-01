@@ -7,6 +7,7 @@ import AnimatedAccordion from '@/components/ui/AnimatedAccordion'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Download, FlaskConical, Play, RefreshCw } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
+import { SentimentLoading } from './SentimentLoading'
 
 import { useWorkspaceDraft } from '@/hooks/useWorkspaceDraft'
 import { valuationDate } from '@/lib/valuation'
@@ -268,6 +269,8 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
     }
   }
 
+  if (!report && !error) return <SentimentLoading />
+
   return (
     <section className="space-y-6 rounded-2xl border border-white/10 bg-[#16161e] p-4 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -288,7 +291,7 @@ function CompanyToneWorkspace({ symbol }: { symbol: string }) {
           disabled={busy || !ready}
           className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-white/70 hover:bg-white/5 disabled:opacity-40"
         >
-          <RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />{' '}
+          <RefreshCw className={`h-4 w-4 ${busy ? 'motion-safe:animate-spin' : ''}`} />{' '}
           Reload sample
         </button>
       </div>

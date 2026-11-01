@@ -71,7 +71,8 @@ export default function AppShell({
               <span className="text-slate-100">{pageLabel}</span>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-2.5 text-xs text-slate-400">
+          {company && <SaveCompany symbol={company} />}
+          <div className={`${company ? 'hidden sm:flex' : 'flex'} shrink-0 items-center gap-2.5 text-xs text-slate-400`}>
             <span className="hidden sm:inline">StockScope / Research desk</span>
             <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 capitalize text-slate-300">
               {role ?? 'Member'}
@@ -86,7 +87,6 @@ export default function AppShell({
         >
           <div>
             {!getAuthSession()?.user && role === 'admin' && <p className="mb-6 rounded-lg border border-[#b6c8ab]/20 p-4 text-sm text-[#b6c8ab]"><Link href="/account">Set up your individual owner account to enable private lists and invite friends →</Link></p>}
-            {company && <div className="mb-5"><SaveCompany symbol={company} /></div>}
             {children}
             <footer className="mt-8 text-right">
               <a

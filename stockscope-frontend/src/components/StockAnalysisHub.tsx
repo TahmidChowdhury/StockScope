@@ -12,6 +12,7 @@ import {
   Newspaper,
   Scale,
 } from 'lucide-react'
+import { SentimentLoading } from './SentimentLoading'
 import PriceChart from './PriceChart'
 import KeyMetrics from './KeyMetrics'
 import DeferredPanel from './DeferredPanel'
@@ -26,7 +27,7 @@ function SectionLoading() {
 const NewsComponent = dynamic(() => import('./NewsComponent'), { loading: SectionLoading })
 const StockDashboard = dynamic(() => import('./StockDashboard'), { loading: SectionLoading })
 const SecFactsPanel = dynamic(() => import('./SecFactsPanel'), { loading: SectionLoading })
-const SentimentLabPanel = dynamic(() => import('./SentimentLabPanel'), { loading: SectionLoading })
+const SentimentLabPanel = dynamic(() => import('./SentimentLabPanel'), { loading: SentimentLoading })
 const ValuationPanel = dynamic(() => import('./ValuationPanel'), { loading: SectionLoading })
 const CompanyDisclosures = dynamic(() => import('./CompanyDisclosures'), { loading: SectionLoading })
 

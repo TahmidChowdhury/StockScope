@@ -1,43 +1,136 @@
 'use client'
-import { useEffect, useState, type FormEvent } from 'react'
+
+import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
+import { Suspense, useState, type FormEvent } from 'react'
 import AppShell from '@/components/AppShell'
 import CompanyCollection from '@/components/CompanyCollection'
 import AnimatedSelect from '@/components/ui/AnimatedSelect'
-import AnimatedAccordion from '@/components/ui/AnimatedAccordion'
-import { useLists, useListAction } from '@/hooks/useLists'
+import { useLists, useListAction, type PersonalList } from '@/hooks/useLists'
 import { getAuthSession } from '@/lib/api'
-import Link from 'next/link'
+
+function selectList(id: string) {
+  window.history.pushState(null, '', id ? `/lists?list=${encodeURIComponent(id)}` : '/lists')
+}
+
+function ListControls({ list, onDelete }: { list: PersonalList; onDelete: () => void }) {
+  const action = useListAction()
+  const [ticker, setTicker] = useState('')
+  const [rename, setRename] = useState('')
+  const [confirm, setConfirm] = useState(false)
+  const [notice, setNotice] = useState('')
+  const symbols = [...new Set(ticker.toUpperCase().split(/[\s,]+/).filter(Boolean))]
+  const path = `/api/lists/${encodeURIComponent(list.id)}`
+  const add = (event: FormEvent) => {
+    event.preventDefault()
+    if (!symbols.length || symbols.length > 50) return
+    setNotice('')
+    action.mutate({ path: `${path}/items/batch`, method: 'PUT', body: { symbols } }, {
+      onSuccess: () => {
+        setTicker('')
+        setNotice(symbols.length === 1 ? `${symbols[0]} is in “${list.name}”.` : `All ${symbols.length} tickers are in “${list.name}”.`)
+      },
+    })
+  }
+
+  return (
+    <section aria-label={`Manage ${list.name}`} className="surface mb-6 space-y-4 p-5">
+      <form onSubmit={add} className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <label className="text-sm">Add tickers to “{list.name}”
+          <input required maxLength={550} value={ticker} disabled={action.isPending}
+            onChange={event => setTicker(event.target.value.toUpperCase())} placeholder="AAPL, MSFT, NVDA"
+            aria-describedby="ticker-hint" className="field-input mt-2 block w-full" />
+        </label>
+        <button disabled={action.isPending || !symbols.length || symbols.length > 50} className="button-secondary">Add to list</button>
+        <p id="ticker-hint" className="text-xs text-slate-400 sm:col-span-2">{symbols.length > 50 ? 'Reduce your selection to 50 tickers.' : 'Enter up to 50 tickers, separated by commas or spaces.'}</p>
+      </form>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-t border-white/10 pt-3">
+        <details className="min-w-0">
+          <summary className="min-h-11 cursor-pointer py-3 text-sm text-slate-300">Rename list</summary>
+          <form className="flex flex-wrap items-end gap-2" onSubmit={event => {
+            event.preventDefault()
+            setNotice('')
+            action.mutate({ path, method: 'PUT', body: { name: rename.trim() } }, { onSuccess: result => {
+              setRename('')
+              setNotice(`List renamed to “${result.name}”.`)
+            } })
+          }}>
+            <label className="text-xs text-slate-400">New name<input required maxLength={80} placeholder={list.name} value={rename}
+              disabled={action.isPending} onChange={event => setRename(event.target.value)} className="field-input mt-1 block w-full" /></label>
+            <button disabled={action.isPending || !rename.trim() || rename.trim() === list.name} className="button-secondary">Rename</button>
+          </form>
+        </details>
+        <button type="button" aria-expanded={confirm} disabled={action.isPending}
+          onClick={() => setConfirm(!confirm)} className="min-h-11 text-sm text-red-300">Delete list</button>
+      </div>
+      {confirm && <div className="rounded-lg border border-red-300/25 p-4">
+        <p className="text-sm">Delete “{list.name}”? This removes the list and its memberships. Shared research stays available.</p>
+        <div className="mt-2 flex flex-wrap gap-4 text-sm">
+          <button className="min-h-11 text-red-300" disabled={action.isPending} onClick={() => {
+            setNotice('')
+            void action.mutateAsync({ path, method: 'DELETE' }).then(onDelete, () => {})
+          }}>Delete this list</button>
+          <button className="min-h-11" disabled={action.isPending} onClick={() => setConfirm(false)}>Cancel</button>
+        </div>
+      </div>}
+      {notice && <p role="status" className="text-sm text-[#b6c8ab]">{notice}</p>}
+      {action.error && <p role="alert" className="text-sm text-amber-200">{action.error.message}</p>}
+    </section>
+  )
+}
+
+function ListsWorkspace() {
+  const selected = useSearchParams().get('list') || ''
+  const session = getAuthSession()
+  const individual = !!session?.user
+  const { data: lists = [], isError, isPending, refetch } = useLists()
+  const create = useListAction()
+  const [name, setName] = useState('')
+  const [notice, setNotice] = useState<{ id: string; text: string } | null>(null)
+  const list = lists.find(value => value.id === selected)
+  const missing = individual && selected && !list && !isPending && !isError
+
+  return <>
+    <h1 className="font-serif text-3xl">Companies &amp; lists</h1>
+    <p className="mt-3 text-sm text-slate-400">Your lists are personal. Saved research is shared with approved members.</p>
+    {individual ? <div className="my-6 grid gap-4 sm:grid-cols-2 sm:items-end">
+      <label className="min-w-0 text-xs text-slate-400">View
+        <AnimatedSelect aria-label="Choose a list" value={selected} onValueChange={id => { setNotice(null); selectList(id) }} className="field-input mt-2 w-full">
+          <option value="">All saved research</option>
+          {selected && !list && <option value={selected} disabled>{isPending ? 'Loading selected list…' : 'Selected list unavailable'}</option>}
+          {lists.map(value => <option key={value.id} value={value.id}>{value.name} ({value.items.length})</option>)}
+        </AnimatedSelect>
+      </label>
+      <form onSubmit={event => {
+        event.preventDefault()
+        setNotice(null)
+        create.mutate({ path: '/api/lists', method: 'POST', body: { name: name.trim() } }, { onSuccess: result => {
+          setName('')
+          setNotice({ id: result.id, text: `Created “${result.name}”.` })
+          selectList(result.id)
+        } })
+      }} className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
+        <label className="text-xs text-slate-400">New list<input required maxLength={80} disabled={create.isPending}
+          placeholder="e.g. Earnings watch" value={name} onChange={event => setName(event.target.value)} className="field-input mt-2 block w-full" /></label>
+        <button disabled={create.isPending || !name.trim()} className="button-secondary">{create.isPending ? 'Creating…' : 'Create list'}</button>
+      </form>
+    </div> : <p className="my-6 text-sm text-slate-300">
+      <Link href="/account" className="underline">{session?.role === 'admin' ? 'Set up your owner account' : 'Sign in with an individual account'}</Link> to use personal lists.
+    </p>}
+    {individual && isPending && <p role="status" className="mb-4 text-sm text-slate-400">Loading your lists…</p>}
+    {individual && isError && <p role="alert" className="mb-4 text-sm text-amber-200">Your lists could not be loaded. <button className="underline" onClick={() => void refetch()}>Retry</button></p>}
+    {missing && <p role="status" className="mb-4 text-sm text-slate-300">This list is unavailable. <Link href="/lists" className="underline">View all saved research</Link></p>}
+    {notice?.id === selected && <p role="status" className="mb-4 text-sm text-[#b6c8ab]">{notice.text}</p>}
+    {create.error && <p role="alert" className="mb-4 text-sm text-amber-200">{create.error.message}</p>}
+    {individual && list && !isError && <ListControls key={`controls-${list.id}`} list={list} onDelete={() => {
+      setNotice({ id: '', text: `Deleted “${list.name}”.` })
+      selectList('')
+    }} />}
+    {(!selected || (individual && list && !isError)) && <CompanyCollection key={`companies-${selected}`} listId={selected} />}
+    {!individual && selected && <Link href="/lists" className="text-sm underline">View all saved research</Link>}
+  </>
+}
 
 export default function ListsPage() {
-  const { data: lists = [], isError, isPending } = useLists()
-  const action = useListAction()
-  const [selected, setSelected] = useState('')
-  const [name, setName] = useState('')
-  const [ticker, setTicker] = useState('')
-  const [confirm, setConfirm] = useState(false)
-  const [rename, setRename] = useState('')
-  const list = lists.find(value => value.id === selected)
-  const individual = !!getAuthSession()?.user
-  useEffect(() => { setSelected(new URLSearchParams(window.location.search).get('list') || '') }, [])
-  const selectList = (id: string) => {
-    setSelected(id); setConfirm(false); setRename('')
-    window.history.replaceState(null, '', id ? `/lists?list=${encodeURIComponent(id)}` : '/lists')
-  }
-  const create = async (event: FormEvent) => {
-    event.preventDefault()
-    try { const result = await action.mutateAsync({ path: '/api/lists', method: 'POST', body: { name } }); selectList(result.id); setName('') } catch {}
-  }
-  const add = async (event: FormEvent) => {
-    event.preventDefault()
-    if (!list) return
-    try { await action.mutateAsync({ path: `/api/lists/${list.id}/items/batch`, method: 'PUT', body: { symbols: ticker.toUpperCase().split(/[\s,]+/).filter(Boolean) } }); setTicker('') } catch {}
-  }
-  return <AppShell><h1 className="font-serif text-3xl">Companies & lists</h1><p className="mt-3 text-sm leading-6 text-slate-400">Your lists are personal. Saved company research is shared with approved members.</p>
-    {!individual ? <p className="my-6 text-sm text-amber-200"><Link href="/account" className="underline">Set up your owner account</Link> to start using personal lists.</p> : <div className="my-7 grid gap-4 sm:grid-cols-2 sm:items-end"><label className="min-w-0 text-xs text-slate-400">View<AnimatedSelect aria-label="Choose a list" value={selected} onValueChange={selectList} className="field-input mt-2 w-full"><option value="">All saved research</option>{lists.map(value => <option key={value.id} value={value.id}>{value.name} ({value.items.length})</option>)}</AnimatedSelect></label><form onSubmit={create} className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2"><label className="text-xs text-slate-400">New list<input required maxLength={80} placeholder="e.g. Earnings watch" value={name} onChange={e => setName(e.target.value)} className="field-input mt-2 block" /></label><button disabled={action.isPending || !name.trim()} className="button-secondary">Create list</button></form></div>}
-    {individual && isPending && <p className="my-4 text-sm text-slate-400">Loading your lists…</p>}
-    {isError && <p role="alert" className="my-4 text-sm text-amber-200">Your lists could not be loaded. Please reload to try again.</p>}
-    {list && <div className="mb-6 rounded-xl border border-white/10 p-5"><form onSubmit={add} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto]"><label className="text-xs text-slate-400">Add tickers<input required maxLength={550} value={ticker} onChange={e => setTicker(e.target.value.toUpperCase())} placeholder="AAPL, MSFT, NVDA" className="field-input mt-2 block w-full" /></label><button disabled={action.isPending} className="button-secondary">Add to list</button><p className="text-xs leading-5 text-slate-500 sm:col-span-2">Paste up to 50 tickers, separated by commas or spaces.</p></form><AnimatedAccordion title="Manage list" className="mt-4 border-t border-white/10 pt-2" triggerClassName="text-xs text-slate-400"><div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 pb-3"><input aria-label="Rename list" value={rename} placeholder={list.name} maxLength={80} onChange={e => setRename(e.target.value)} className="field-input text-xs" /><button disabled={!rename.trim() || action.isPending} className="min-h-11 px-2 text-xs text-slate-400" onClick={() => action.mutate({ path: `/api/lists/${list.id}`, method: 'PUT', body: { name: rename } })}>Rename</button><button onClick={() => setConfirm(!confirm)} className="min-h-11 text-left text-xs text-slate-500">Delete list</button></div>{confirm && <div className="mt-4 flex flex-wrap items-center gap-4 text-sm"><p>Delete “{list.name}”? Shared research stays saved.</p><button className="text-red-300" disabled={action.isPending} onClick={async () => { try { await action.mutateAsync({ path: `/api/lists/${list.id}`, method: 'DELETE' }); selectList('') } catch {} }}>Delete this list</button><button onClick={() => setConfirm(false)}>Cancel</button></div>}</AnimatedAccordion></div>}
-    {action.error && <p role="alert" className="mb-4 text-sm text-amber-200">{action.error.message}</p>}
-    <CompanyCollection key={list?.id || 'library'} listId={list?.id} />
-  </AppShell>
+  return <AppShell><Suspense fallback={<p role="status">Loading lists…</p>}><ListsWorkspace /></Suspense></AppShell>
 }

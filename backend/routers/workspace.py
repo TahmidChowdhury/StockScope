@@ -1,5 +1,5 @@
 """Private identities and owner-scoped lists; all access is enforced server-side."""
-from typing import Literal
+from typing import Annotated, Literal, Optional
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -42,8 +42,15 @@ class ListName(BaseModel):
     name: str = Field(min_length=1, max_length=80, pattern=r'.*\S.*')
 
 
+ListSymbol = Annotated[str, Field(min_length=1, max_length=10, pattern=r'^[a-zA-Z][a-zA-Z0-9.\-]{0,9}$')]
+
+
+class NewList(ListName):
+    initial_symbol: Optional[ListSymbol] = None
+
+
 class ItemInput(BaseModel):
-    symbol: str = Field(min_length=1, max_length=10, pattern=r'^[a-zA-Z][a-zA-Z0-9.\-]{0,9}$')
+    symbol: ListSymbol
     pinned: bool = False
 
 
@@ -206,7 +213,7 @@ def lists(user=Depends(current_account)):
 
 
 @router.post('/lists', status_code=201)
-def create_list(body: ListName, user=Depends(current_account)):
+def create_list(body: NewList, user=Depends(current_account)):
     with accounts.account_repository().session_factory.begin() as session:
         session.scalar(select(WorkspaceUser).where(WorkspaceUser.id == user.id).with_for_update())
         if session.scalar(select(func.count()).select_from(PersonalList).where(PersonalList.owner_id == user.id)) >= 20:
@@ -217,7 +224,12 @@ def create_list(body: ListName, user=Depends(current_account)):
         row = PersonalList(owner_id=user.id, name=name)
         session.add(row)
         session.flush()
-        return {"id": row.id, "name": row.name, "items": []}
+        items = []
+        if body.initial_symbol is not None:
+            symbol = symbol_key(body.initial_symbol)
+            session.add(PersonalListItem(list_id=row.id, symbol=symbol, pinned=False))
+            items.append({"symbol": symbol, "pinned": False})
+        return {"id": row.id, "name": row.name, "items": items}
 
 
 @router.put('/lists/{list_id}')

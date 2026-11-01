@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { useState } from 'react'
-import { Pin, X, ArrowUpRight } from 'lucide-react'
+import { Pin, ArrowUpRight } from 'lucide-react'
 import { useWatchlist } from '@/hooks/useWatchlist'
 import { useLists, useListAction } from '@/hooks/useLists'
 import SaveCompany from './SaveCompany'
@@ -14,8 +14,9 @@ export default function CompanyCollection({ compact = false, listId = '' }: { co
   const action = useListAction()
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
+  const [notice, setNotice] = useState('')
   const list = lists.find(value => value.id === listId)
-  const pinned = new Set(lists.flatMap(value => value.items.filter(item => item.pinned).map(item => item.symbol)))
+  const pinned = new Set((list ? [list] : lists).flatMap(value => value.items.filter(item => item.pinned).map(item => item.symbol)))
   const deskStocks = compact ? [...stocks, ...[...pinned].filter(symbol => !stocks.some(stock => stock.symbol === symbol)).map(symbol => ({ symbol, companyName: symbol, last_updated: null }))] : stocks
   const source = list ? list.items.map(item => stocks.find(stock => stock.symbol === item.symbol) || { symbol: item.symbol, companyName: item.symbol, last_updated: null }) : deskStocks
   const filtered = source.filter(stock => `${stock.symbol} ${stock.companyName}`.toLowerCase().includes(search.toLowerCase()))
@@ -35,10 +36,30 @@ export default function CompanyCollection({ compact = false, listId = '' }: { co
         <CompanyLogo symbol={stock.symbol} size="small" />
         <CompanyQuickView stock={stock}><span className="flex items-center gap-2 font-medium group-hover/preview:text-[#b6c8ab]">{stock.symbol}{pinned.has(stock.symbol) && <Pin aria-label="Pinned" className="h-3 w-3 text-[#b6c8ab]" />}</span><span className="mt-1 block truncate text-xs text-slate-500">{stock.companyName || 'Company research'}{shareClass(stock.symbol) ? ` · ${shareClass(stock.symbol)}` : ''}</span></CompanyQuickView>
         <p className="hidden text-xs text-slate-500 md:block">{stock.last_updated ? `Evidence · ${new Date(stock.last_updated).toLocaleDateString('en-US', { timeZone: 'UTC' })}` : 'Evidence date unavailable'}</p>
-        {list && item ? <div className="col-span-2 col-start-2 row-start-2 flex items-center gap-1"><button disabled={action.isPending} onClick={() => action.mutate({ path: `/api/lists/${list.id}/items`, method: 'PUT', body: { symbol: stock.symbol, pinned: !item.pinned } })} aria-label={`${item.pinned ? 'Unpin' : 'Pin'} ${stock.symbol}`} className="flex h-11 w-11 items-center justify-center rounded-md hover:bg-white/5"><Pin className={`h-4 w-4 ${item.pinned ? 'text-[#b6c8ab]' : 'text-slate-500'}`} /></button><button disabled={action.isPending} onClick={() => action.mutate({ path: `/api/lists/${list.id}/items/${stock.symbol}`, method: 'DELETE' })} aria-label={`Remove ${stock.symbol} from this list`} className="flex h-11 w-11 items-center justify-center rounded-md text-slate-500 hover:bg-white/5"><X className="h-4 w-4" /></button></div> : !compact && <div className="col-span-2 col-start-2 row-start-2 min-w-0"><SaveCompany symbol={stock.symbol} /></div>}
+        {list && item ? (
+          <div className="col-span-2 col-start-2 row-start-2 flex items-center gap-2">
+            <button disabled={action.isPending} onClick={() => {
+              setNotice('')
+              action.mutate({ path: `/api/lists/${list.id}/items`, method: 'PUT', body: { symbol: stock.symbol, pinned: !item.pinned } }, {
+                onSuccess: () => setNotice(`${item.pinned ? 'Unpinned' : 'Pinned'} ${stock.symbol} in “${list.name}”.`),
+              })
+            }} aria-label={`${item.pinned ? 'Unpin' : 'Pin'} ${stock.symbol}`} className="flex h-11 w-11 items-center justify-center rounded-md hover:bg-white/5">
+              <Pin className={`h-4 w-4 ${item.pinned ? 'text-[#b6c8ab]' : 'text-slate-500'}`} />
+            </button>
+            <button disabled={action.isPending} onClick={() => {
+              setNotice('')
+              action.mutate({ path: `/api/lists/${list.id}/items/${encodeURIComponent(stock.symbol)}`, method: 'DELETE' }, {
+                onSuccess: () => setNotice(`Removed ${stock.symbol} from “${list.name}”.`),
+              })
+            }} aria-label={`Remove ${stock.symbol} from ${list.name}`} className="min-h-11 rounded-md px-2 text-xs text-slate-300 hover:bg-white/5">
+              Remove
+            </button>
+          </div>
+        ) : !compact && <div className="col-span-2 col-start-2 row-start-2 min-w-0"><SaveCompany symbol={stock.symbol} /></div>}
         <Link href={`/stock/${encodeURIComponent(stock.symbol)}`} aria-label={`View ${stock.symbol} details`} className="col-start-3 row-start-1 flex h-11 min-w-11 items-center justify-center gap-2 text-xs text-[#b6c8ab]">{(list && item) ? <span className="hidden sm:inline">View details</span> : <span className="sr-only sm:not-sr-only">View details</span>}<ArrowUpRight className="h-3 w-3" /></Link>
       </li>
     })}</ul> : <div className="p-8 text-sm leading-6 text-slate-400">{search ? 'No companies match your search.' : list ? 'Add a ticker above to start this list. Saving a ticker does not trigger a data refresh.' : 'No saved companies yet. Open a company to begin your research.'}</div>}
+    {notice && <p role="status" className="p-4 text-sm text-[#b6c8ab]">{notice}</p>}
     {action.error && <p role="alert" className="p-4 text-sm text-amber-200">{action.error.message}</p>}
     {!compact && filtered.length > pageSize && <div className="flex items-center justify-between border-t border-white/10 p-4 text-xs"><button className="button-secondary" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous</button><span className="text-slate-400">{currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, filtered.length)} of {filtered.length}</span><button className="button-secondary" disabled={(currentPage + 1) * pageSize >= filtered.length} onClick={() => setPage(currentPage + 1)}>Next</button></div>}
   </section>

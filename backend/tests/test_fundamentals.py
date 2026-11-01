@@ -127,3 +127,18 @@ def test_fundamentals_service_wrapper_response(mock_ticker):
     assert "series" in payload
     assert "metadata" in payload
     assert payload["metadata"]["insufficient_data"] is False
+
+@patch('backend.core.market_provider.get_info')
+@patch('backend.core.market_provider.Ticker')
+def test_revenue_retains_reporting_currency_not_quote_currency(mock_ticker, mock_info):
+    from types import SimpleNamespace
+    _mock_ticker_with_financials(mock_ticker)
+    mock_info.return_value = SimpleNamespace(data={'financialCurrency': 'JPY', 'currency': 'USD'})
+    payload = FundamentalsService().get_fundamentals_data('UNIT')
+    assert payload['ttm']['reporting_currency'] == 'JPY'
+    assert payload['metadata']['financial_currency'] == 'JPY'
+    assert payload['ttm']['revenue_ttm'] == 3700000
+    mock_info.side_effect = RuntimeError('Profile unavailable')
+    unknown = FundamentalsService().get_fundamentals_data('UNIT')
+    assert unknown['ttm'].get('reporting_currency') is None
+    assert unknown['ttm']['revenue_ttm'] == payload['ttm']['revenue_ttm']

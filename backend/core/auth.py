@@ -178,3 +178,8 @@ def current_account(authorization: Optional[str] = Header(None, alias="Authoriza
     if isinstance(user, str):
         raise HTTPException(403, "Set up your individual owner account first.")
     return user
+
+
+def can_collect_research(role: str) -> bool:
+    """Shared authorization rule for source collection and capability guidance."""
+    return role in {"admin", "member"}

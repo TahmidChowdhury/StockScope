@@ -107,7 +107,7 @@ async def get_ttm_fundamentals(ticker: str, current_user: str = Depends(verify_p
     except BudgetExceeded as exc:
         raise HTTPException(429, str(exc), headers={"Retry-After": str(exc.retry_after)}) from exc
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching TTM data: {str(e)}")
+        raise HTTPException(status_code=500, detail="StockScope could not load trailing twelve-month financials. Try again later.") from e
 
 
 @router.get("/{ticker}/series")
@@ -120,7 +120,7 @@ async def get_series_fundamentals(ticker: str, current_user: str = Depends(verif
     except BudgetExceeded as exc:
         raise HTTPException(429, str(exc), headers={"Retry-After": str(exc.retry_after)}) from exc
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching series data: {str(e)}")
+        raise HTTPException(status_code=500, detail="StockScope could not load historical financials. Try again later.") from e
 
 
 @router.get("/{ticker}", response_model=FundamentalsResponse)
@@ -133,7 +133,7 @@ async def get_fundamentals(ticker: str, current_user: str = Depends(verify_passw
     except BudgetExceeded as exc:
         raise HTTPException(429, str(exc), headers={"Retry-After": str(exc.retry_after)}) from exc
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching fundamentals: {str(e)}")
+        raise HTTPException(status_code=500, detail="StockScope could not load company financials. Try again later.") from e
 
 
 @router.post("/compare")
@@ -174,7 +174,7 @@ async def compare_fundamentals(request: CompareRequest, current_user: str = Depe
     except PersonalYahooLimit as exc:
         raise HTTPException(429, str(exc), headers={"Retry-After": str(exc.retry_after)}) from exc
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error comparing fundamentals: {str(e)}")
+        raise HTTPException(status_code=500, detail="StockScope could not compare these companies. Try again later.") from e
 
 
 # Semaphore to cap concurrent yfinance calls (avoids hammering the API)
@@ -320,5 +320,5 @@ async def screen_fundamentals(request: ScreenerRequest, current_user: str = Depe
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error running screener: {str(e)}"
-        )
+            detail="StockScope could not complete this screen. Try again later."
+        ) from e

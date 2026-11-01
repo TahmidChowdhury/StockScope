@@ -200,3 +200,11 @@ def test_screener_unknown_growth_never_passes_filter_and_sorts_last():
     assert [row["ticker"] for row in filtered.results] == ["A"]
     sorted_rows = screen(ScreenerRequest(universe=list(rows), sort_dir="asc"), rows)
     assert [row["ticker"] for row in sorted_rows.results] == ["A", "B"]
+
+
+def test_screen_preserves_each_reporting_currency_in_saved_results():
+    rows = {symbol: {'ticker': symbol, 'insufficient_data': False, 'revenue_ttm': 100,
+                     'reporting_currency': unit}
+            for symbol, unit in [('A', 'EUR'), ('B', 'JPY'), ('C', None)]}
+    result = screen(ScreenerRequest(universe=list(rows)), rows)
+    assert {row['ticker']: row.get('reporting_currency') for row in result.results} == {'A': 'EUR', 'B': 'JPY', 'C': None}

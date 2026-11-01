@@ -476,3 +476,25 @@ def test_saved_news_excludes_legacy_social_posts_but_keeps_company_releases(api)
     ])
     assert {row["title"] for row in saved_news("NVDA")} == {"Editorial report", "Company statement"}
     assert sentiment_metrics(load_evidence("NVDA"))["sample_size"] == 0
+
+
+def test_start_and_discovery_share_job_identity_in_file_mode(api, monkeypatch):
+    monkeypatch.setattr(api, '_collect_news', lambda symbol: None)
+    async def exercise():
+        tasks = BackgroundTasks()
+        started = await api.analyze_stock(api.StockRequest(symbol='AAPL', sources=['news']), tasks, 'member')
+        assert started['run_id'] and started['started_at']
+        assert started['providers'] == {}
+        rediscovered = await api.get_analysis_status('AAPL', 'member')
+        duplicate = await api.analyze_stock(api.StockRequest(symbol='AAPL', sources=['news']), tasks, 'member')
+        assert started['run_id'] == rediscovered.run_id == duplicate.run_id
+        assert len(tasks.tasks) == 1
+        await tasks()
+        finished = await api.get_analysis_status('AAPL', 'viewer')
+        assert finished.run_id == started['run_id']
+        assert finished.status == 'failed'
+        assert finished.completed_at and finished.providers['news']['count'] == 0
+        with pytest.raises(HTTPException) as error:
+            await api.get_analysis_status('MSFT', 'member')
+        assert error.value.status_code == 404
+    asyncio.run(exercise())

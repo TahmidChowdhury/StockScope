@@ -35,7 +35,7 @@ for(const width of [1440,390,320]) {
   assert.ok(fits,`${width} ${label} overflow`);
  };
  for(const method of ['Explore','Enter','suggestion','keyboard']) {
- await visit('/');const input=page.getByRole('combobox');await input.fill('Apple');
+ await visit('/');const input=page.getByRole('combobox',{name:'Search for a company or ticker',exact:true});await input.fill('Apple');
  if(method==='Explore')await page.getByRole('button',{name:'Explore',exact:true}).click();
  else if(method==='Enter') { await page.getByRole('option',{name:/AAPL/}).waitFor();await input.press('Enter'); }
  else if(method==='keyboard') { await page.getByRole('option',{name:/AAPL/}).waitFor();await input.press('ArrowDown');await input.press('Enter'); }
@@ -46,9 +46,9 @@ for(const width of [1440,390,320]) {
  if(method==='Explore')await page.screenshot({path:`${out}/accuracy-chart-${width}.png`});
  console.log(width,method,'Apple -> AAPL');
  }
- await visit('/');await page.getByRole('combobox').fill('Alpha');await page.getByRole('button',{name:'Explore',exact:true}).click();await page.getByRole('alert').filter({hasText:'Several companies match'}).waitFor();assert.equal(new URL(page.url()).pathname,'/');
- await visit('/');await page.getByRole('combobox').fill('Alpha');await page.getByRole('option').first().waitFor();await page.getByRole('combobox').press('Enter');await page.getByRole('alert').filter({hasText:'Several companies match'}).waitFor();assert.equal(new URL(page.url()).pathname,'/');
- await page.getByRole('combobox').press('Escape');await page.getByRole('checkbox',{name:'Enter ticker directly',exact:true}).check();await page.getByRole('combobox').fill('VOD.L');await page.getByRole('button',{name:'Explore',exact:true}).click();await page.waitForURL('**/stock/VOD.L');
+ await visit('/');await page.getByRole('combobox',{name:'Search for a company or ticker',exact:true}).fill('Alpha');await page.getByRole('button',{name:'Explore',exact:true}).click();await page.getByRole('alert').filter({hasText:'Several companies match'}).waitFor();assert.equal(new URL(page.url()).pathname,'/');
+ await visit('/');await page.getByRole('combobox',{name:'Search for a company or ticker',exact:true}).fill('Alpha');await page.getByRole('option').first().waitFor();await page.getByRole('combobox',{name:'Search for a company or ticker',exact:true}).press('Enter');await page.getByRole('alert').filter({hasText:'Several companies match'}).waitFor();assert.equal(new URL(page.url()).pathname,'/');
+ await page.getByRole('combobox',{name:'Search for a company or ticker',exact:true}).press('Escape');await page.getByRole('checkbox',{name:'Enter ticker directly',exact:true}).check();await page.getByRole('combobox',{name:'Search for a company or ticker',exact:true}).fill('VOD.L');await page.getByRole('button',{name:'Explore',exact:true}).click();await page.waitForURL('**/stock/VOD.L');
  await page.getByRole('heading',{name:'Vodafone Group Plc',exact:true}).waitFor();
  await page.getByRole('heading',{name:'VOD.L Stock Price',exact:true}).waitFor();
  assert.ok(await page.getByRole('link',{name:'Logos provided by Elbstream',exact:true}).evaluate(el=>parseFloat(getComputedStyle(el).fontSize)>=16));

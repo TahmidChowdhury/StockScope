@@ -15,7 +15,7 @@ const marketTime = new Intl.DateTimeFormat('en-US', {
 const marketDate = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric',
 })
-const strip = 'mb-5 flex h-7 items-center border-y border-white/10 text-xs tabular-nums'
+const strip = 'mb-6 flex min-h-11 items-center border-y border-white/10 text-xs tabular-nums'
 
 export default function MarketTape() {
   const [paused, setPaused] = useState(false)

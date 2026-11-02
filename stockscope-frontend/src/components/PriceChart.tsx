@@ -35,9 +35,9 @@ function CustomTooltip({ active, payload, currency }: { currency?: string | null
   const data = active ? payload?.[0]?.payload : undefined
   if (!data) return null
   return (
-    <div className="max-w-56 whitespace-normal break-words bg-slate-900/95 backdrop-blur-sm p-3 rounded-lg shadow-lg border border-white/20">
-      <p className="font-semibold text-white">{formatDate(data.date)}</p>
-      <p className="text-green-400">Close: {formatPrice(data.close, currency)}</p>
+    <div className="max-w-56 whitespace-normal break-words bg-[#202722] p-3 rounded-lg border border-white/10 text-xs leading-5">
+      <p className="font-medium text-white">{formatDate(data.date)}</p>
+      <p className="text-sage-300">Close: {formatPrice(data.close, currency)}</p>
       <p className="text-gray-300">Volume: {data.volume?.toLocaleString() ?? 'Unavailable'}</p>
     </div>
   )
@@ -81,7 +81,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
   const summary = priceHistorySummary(bars)
   const change = priceData?.priceChange
   const changePercent = priceData?.priceChangePercent
-  const chartColor = change == null || change === 0 ? '#94A3B8' : change > 0 ? '#10B981' : '#EF4444'
+  const chartColor = change == null || change === 0 ? '#94A3B8' : change > 0 ? '#b6c8ab' : '#f0a6ae'
   const quoteDate = priceData?.quote_as_of ? new Date(priceData.quote_as_of) : null
   const quoteDateLabel = quoteDate && !Number.isNaN(quoteDate.getTime()) ? quoteDate.toLocaleString() : 'Unknown'
   const selectedLabel = PERIOD_OPTIONS.find((option) => option.value === selectedPeriod)?.label
@@ -89,18 +89,18 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
   const waiting = query.isPending || query.isPlaceholderData
 
   return (
-    <div className={`bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-3 sm:p-6 ${className}`}>
+    <div className={`surface p-4 sm:p-6 ${className}`}>
       <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-4 mb-4 sm:mb-6">
         <div className="min-w-0">
-          <h3 className="text-base sm:text-lg font-semibold text-white mb-1 truncate">{symbol} Stock Price</h3>
+          <h3 className="text-sm font-medium text-slate-300 mb-2">{symbol} Stock Price</h3>
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-            <span className="text-xl sm:text-2xl font-bold text-white">
+            <span className="text-2xl sm:text-3xl font-medium tabular-nums text-white">
               {!priceData && query.isPending ? 'Loading quote…' : priceData?.currentPrice == null ? 'Quote unavailable' : formatPrice(priceData.currentPrice, priceData.quote_currency)}
             </span>
             {change != null && changePercent != null ? (
-              <div className={`flex items-center gap-1 ${change === 0 ? 'text-white/60' : change > 0 ? 'text-green-400' : 'text-red-400'}`}>
+              <div className={`flex items-center gap-1 ${change === 0 ? 'text-white/60' : change > 0 ? 'text-sage-300' : 'text-rose-300'}`}>
                 {change > 0 ? <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4" /> : change < 0 ? <TrendingDown className="h-3 w-3 sm:h-4 sm:w-4" /> : null}
-                <span className="text-sm sm:text-base font-semibold">
+                <span className="text-sm font-medium tabular-nums">
                   {change > 0 ? '+' : ''}{formatPrice(change, priceData?.quote_currency)} ({changePercent > 0 ? '+' : ''}{changePercent.toFixed(2)}%)
                 </span>
               </div>
@@ -117,7 +117,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
                 type="button"
                 disabled={cooling && !client.getQueryData(['price-history', symbol, option.value])} onClick={() => setSelectedPeriod(option.value)}
                 aria-pressed={selectedPeriod === option.value}
-                className={`min-h-11 flex-1 px-2 sm:px-3 rounded text-xs font-medium transition-colors whitespace-nowrap min-w-[36px] ${selectedPeriod === option.value ? 'bg-sage-600 text-white shadow-sm' : 'text-white/70 hover:text-white hover:bg-white/10'}`}
+                className={`min-h-11 sm:min-h-9 flex-1 px-2 sm:px-3 rounded text-xs font-medium transition-colors whitespace-nowrap min-w-[36px] ${selectedPeriod === option.value ? 'bg-white/10 text-sage-200' : 'text-white/70 hover:text-white hover:bg-white/10'}`}
               >
                 {option.label}
               </button>
@@ -153,9 +153,9 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
         ) : bars.length ? (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={bars} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-              <XAxis dataKey="date" tickFormatter={formatDate} stroke="rgba(255,255,255,0.7)" fontSize={windowWidth < 640 ? 10 : 12} tick={{ fill: 'rgba(255,255,255,0.7)' }} minTickGap={24} />
-              <YAxis domain={['dataMin', 'dataMax']} tickFormatter={(value) => Number(value).toFixed(2)} stroke="rgba(255,255,255,0.7)" fontSize={windowWidth < 640 ? 10 : 12} tick={{ fill: 'rgba(255,255,255,0.7)' }} width={windowWidth < 640 ? 50 : 60} />
+              <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.07)" />
+              <XAxis dataKey="date" tickFormatter={formatDate} axisLine={false} tickLine={false} fontSize={11} tick={{ fill: '#9fa9a2', fontFamily: 'monospace' }} minTickGap={24} />
+              <YAxis domain={['dataMin', 'dataMax']} tickFormatter={(value) => Number(value).toFixed(2)} axisLine={false} tickLine={false} fontSize={11} tick={{ fill: '#9fa9a2', fontFamily: 'monospace' }} width={windowWidth < 640 ? 50 : 60} />
               <Tooltip content={<CustomTooltip currency={priceData?.currency} />} />
               <Line type="monotone" dataKey="close" stroke={chartColor} strokeWidth={2} dot={false} activeDot={{ r: windowWidth < 640 ? 3 : 4, fill: chartColor }} isAnimationActive={false} />
             </LineChart>
@@ -169,14 +169,14 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 pt-4 border-t border-white/10">
         {[
-          ['Period High', formatPrice(summary.high, priceData?.currency)],
-          ['Period Low', formatPrice(summary.low, priceData?.currency)],
-          ['Avg Volume', summary.averageVolume == null ? 'Unavailable' : summary.averageVolume.toLocaleString(undefined, { maximumFractionDigits: 0 })],
-          ['Data Points', priceData ? bars.length.toLocaleString() : '—'],
+          ['Period high', formatPrice(summary.high, priceData?.currency)],
+          ['Period low', formatPrice(summary.low, priceData?.currency)],
+          ['Avg volume', summary.averageVolume == null ? 'Unavailable' : summary.averageVolume.toLocaleString(undefined, { maximumFractionDigits: 0 })],
+          ['Data points', priceData ? bars.length.toLocaleString() : '—'],
         ].map(([label, value]) => (
-          <div key={label} className="min-w-0 text-center bg-white/5 rounded-lg p-2 sm:p-3">
+          <div key={label} className="min-w-0 py-2">
             <p className="text-xs text-white/60 mb-1">{label}</p>
-            <p className="break-words text-sm sm:text-base font-semibold text-white">{value}</p>
+            <p className="break-words text-sm font-medium tabular-nums text-slate-200">{value}</p>
           </div>
         ))}
       </div>

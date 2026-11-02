@@ -74,7 +74,7 @@ export default function AppShell({
                 href="https://elbstream.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-base text-slate-400 underline-offset-4 hover:text-slate-300 hover:underline"
+                className="inline-flex min-h-11 items-center text-xs text-slate-400 underline-offset-4 hover:text-slate-300 hover:underline"
               >
                 Logos provided by Elbstream
               </a>

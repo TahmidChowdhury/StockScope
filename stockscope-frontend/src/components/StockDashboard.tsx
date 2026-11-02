@@ -81,7 +81,7 @@ function ResearchSummary({ symbol, onBack, embedded = false }: StockDashboardPro
   const sentiment = stockData?.sentiment_metrics?.avg_sentiment
   const filings = stockData?.filings ?? []
   return <section className={`${embedded ? '' : 'min-h-screen bg-slate-950 p-4 sm:p-8'} text-white`} aria-label={`${symbol} research`}>
-    <div className="mx-auto max-w-6xl space-y-5">
+    <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           {!embedded && <button onClick={onBack} className="mb-3 text-sm text-sage-300">← Back to watchlist</button>}

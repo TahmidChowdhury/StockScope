@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 export function Skeleton({ className = '' }: { className?: string }) {
-  return <span aria-hidden="true" className={`block rounded bg-white/[0.055] motion-safe:animate-pulse ${className}`} />
+  return <span aria-hidden="true" className={`block rounded bg-white/[0.08] motion-safe:animate-pulse ${className}`} />
 }
 
 export function LoadingRows({ label }: { label: string }) {
@@ -91,4 +91,21 @@ export function SentimentLoading() {
       </div>
     </div>
   </section>
+}
+
+/** Reserve the final plot dimensions without suggesting invented price movement. */
+export function PricePlotLoading() {
+  return <div aria-hidden="true" className="flex h-full gap-3 py-2">
+    <div className="flex w-10 shrink-0 flex-col justify-between pb-7">
+      {[0, 1, 2, 3].map(row => <Skeleton key={row} className="h-2.5 w-full" />)}
+    </div>
+    <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex flex-1 flex-col justify-between border-b border-white/10 pb-0">
+        {[0, 1, 2, 3].map(row => <div key={row} className="h-px w-full bg-white/[0.07]" />)}
+      </div>
+      <div className="mt-4 flex justify-between gap-4">
+        {[0, 1, 2].map(column => <Skeleton key={column} className="h-2.5 w-12 sm:w-20" />)}
+      </div>
+    </div>
+  </div>
 }

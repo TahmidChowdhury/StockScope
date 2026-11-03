@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { Combobox } from '@headlessui/react'
 import { ArrowRight, LoaderCircle, Search } from 'lucide-react'
 import { resolveSearch } from '@/lib/search-resolution'
+import { withRequestTimeout } from '@/lib/request-timeout'
 import { apiFetch } from '@/lib/api'
 import type { StockSearchProps, StockSuggestion } from '@/types'
 
@@ -49,7 +50,7 @@ export default function StockSearch({
           if (!data.length) setSearchNotice('No matching companies. Try another name or open a ticker directly.')
         }
       } catch {
-        if (!controller.signal.aborted) setSearchNotice('Company suggestions are unavailable. You can still open a ticker directly.')
+        if (!controller.signal.aborted) setSearchNotice('Company suggestions are unavailable. Please retry.')
       } finally {
         if (!controller.signal.aborted) setSearching(false)
       }
@@ -73,7 +74,6 @@ export default function StockSearch({
   }
   const submit = async () => {
     if (busy || !query.trim()) return
-    if (directTicker) { open(query); return }
     const controller = new AbortController()
     submitController.current = controller
     setResolving(true)
@@ -82,16 +82,19 @@ export default function StockSearch({
       let matches: StockSuggestion[] = []
       let available = false
       try {
-        const response = await apiFetch(`/api/stocks/suggestions?q=${encodeURIComponent(query.trim())}&limit=50`, { signal: controller.signal })
-        if (!response.ok) throw new Error('Search unavailable')
-        const data = await response.json()
+        const searchQuery = directTicker ? query.trim().toUpperCase().replace(/^(BRK|BF)\.([AB])$/, '$1-$2') : query.trim()
+        const data = await withRequestTimeout(controller.signal, 10_000, async signal => {
+          const response = await apiFetch(`/api/stocks/suggestions?q=${encodeURIComponent(searchQuery)}&limit=50`, { signal })
+          if (!response.ok) throw new Error('Search unavailable')
+          return response.json()
+        })
         if (!Array.isArray(data)) throw new Error('Search unavailable')
         matches = data
         available = true
-      } catch { /* Direct uppercase ticker entry remains available offline. */ }
+      } catch { /* An unavailable lookup must not open an unverified ticker. */ }
       if (controller.signal.aborted) return
       setSuggestions(matches)
-      onAnalyze(resolveSearch(query, matches, available))
+      onAnalyze(resolveSearch(query, matches, available, directTicker))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Choose a company suggestion.')
       inputRef.current?.focus()

@@ -15,8 +15,8 @@ test('name submission resolves to selected suggestion symbol; exact tickers take
   assert.equal(resolveSearch('Apple', apple), 'AAPL')
   assert.equal(resolveSearch('apple', apple), 'AAPL')
   assert.equal(resolveSearch('aapl', [...apple, {symbol:'AAP',name:'Advance Auto'}]), 'AAPL')
-  assert.equal(resolveSearch('BRK.B', [], true, true), 'BRK-B')
-  assert.equal(resolveSearch('VOD.L', [], false, true), 'VOD.L')
+  assert.equal(resolveSearch('BRK.B', [{symbol:'BRK-B',name:'Berkshire Hathaway'}], true, true), 'BRK-B')
+  assert.throws(() => resolveSearch('VOD.L', [], false, true), /lookup is unavailable/)
   assert.throws(() => resolveSearch('Apple', [], false), /unavailable/)
 })
 test('ambiguous company submissions require selection', () => {
@@ -43,5 +43,15 @@ test('uncatalogued names never silently become tickers, even when uppercase', ()
   }
   assert.equal(resolveSearch('Shopify', [{symbol:'SHOP',name:'Shopify Inc.'}]), 'SHOP')
   assert.throws(() => resolveSearch('Vodafone', [{symbol:'VOD',name:'Vodafone'}, {symbol:'VOD.L',name:'Vodafone'}]), /Select a suggestion/)
-  assert.equal(resolveSearch('vod.l', [], false, true), 'VOD.L')
+  assert.equal(resolveSearch('vod.l', [{symbol:'VOD.L',name:'Vodafone'}], true, true), 'VOD.L')
+})
+
+
+test('direct ticker entry requires an exact verified match and never silently corrects a typo', () => {
+  const apple = [{symbol:'AAPL',name:'Apple Inc.'}]
+  assert.throws(() => resolveSearch('appl', apple, true, true), /Ticker APPL was not found/)
+  assert.throws(() => resolveSearch('appl', [], true, true), /Apple is AAPL/)
+  assert.throws(() => resolveSearch('aapl', apple, false, true), /lookup is unavailable/)
+  assert.equal(resolveSearch('aapl', apple, true, true), 'AAPL')
+  assert.throws(() => resolveSearch('bad ticker!', [], true, true), /Enter a valid ticker/)
 })

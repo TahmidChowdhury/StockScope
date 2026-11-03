@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { TrendingUp, TrendingDown } from 'lucide-react'
@@ -8,6 +8,7 @@ import { apiFetch, ApiError, readApiJson } from '@/lib/api'
 import { priceHistoryInterval, formatHistoryDate, priceHistorySummary, type PriceData, type PriceHistoryResponse } from '@/lib/price-history'
 import { priceAmount as formatPrice, unitLabel } from '@/lib/financial-format'
 import { usePriceCooldown, priceCooldownDeadline, rememberPriceCooldown } from '@/hooks/usePriceCooldown'
+import { PricePlotLoading, Skeleton } from './ResearchLoading'
 import { useWindowWidth } from '@/hooks/useWindowWidth'
 
 interface PriceChartProps {
@@ -84,17 +85,25 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
   const selectedLabel = PERIOD_OPTIONS.find((option) => option.value === selectedPeriod)?.label
   const displayedLabel = PERIOD_OPTIONS.find((option) => option.value === priceData?.period)?.label ?? priceData?.period
   const waiting = query.isPending || query.isPlaceholderData
+  const initialLoading = !priceData && query.isPending
+  const [slowLoad, setSlowLoad] = useState(false)
+  useEffect(() => {
+    setSlowLoad(false)
+    if (!initialLoading) return
+    const timer = setTimeout(() => setSlowLoad(true), 8000)
+    return () => clearTimeout(timer)
+  }, [initialLoading, symbol, selectedPeriod])
 
   return (
-    <div className={`surface p-4 sm:p-6 ${className}`}>
+    <section aria-label={`${symbol} price chart`} aria-busy={query.isFetching} className={`surface p-4 sm:p-6 ${className}`}>
       <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-4 mb-4 sm:mb-6">
         <div className="min-w-0">
           <h3 className="text-sm font-medium text-slate-300 mb-2">{symbol} Stock Price</h3>
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <span className="text-2xl sm:text-3xl font-medium tabular-nums text-white">
-              {!priceData && query.isPending ? 'Loading quote…' : priceData?.currentPrice == null ? 'Quote unavailable' : formatPrice(priceData.currentPrice, priceData.quote_currency)}
+              {initialLoading ? <Skeleton className="h-9 w-48 max-w-full" /> : priceData?.currentPrice == null ? 'Quote unavailable' : formatPrice(priceData.currentPrice, priceData.quote_currency)}
             </span>
-            {change != null && changePercent != null ? (
+            {initialLoading ? <Skeleton className="h-5 w-36" /> : change != null && changePercent != null ? (
               <div className={`flex items-center gap-1 ${change === 0 ? 'text-white/60' : change > 0 ? 'text-sage-300' : 'text-rose-300'}`}>
                 {change > 0 ? <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4" /> : change < 0 ? <TrendingDown className="h-3 w-3 sm:h-4 sm:w-4" /> : null}
                 <span className="text-sm font-medium tabular-nums">
@@ -103,8 +112,8 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
               </div>
             ) : <span className="text-sm text-white/60">Daily change unavailable</span>}
           </div>
-          <p className="mt-2 text-xs text-white/60">{priceData?.price_source || 'Price provider'} · Quote time: {quoteDateLabel}</p>
-          <p className="mt-1 text-xs text-white/60">Latest chart close: {formatPrice(priceData?.lastHistoricalClose, priceData?.currency)} · {priceData?.lastHistoricalCloseDate ? formatHistoryDate(priceData.lastHistoricalCloseDate, priceData.interval) : 'Date unknown'}</p>
+          <p className="mt-2 text-xs text-white/60">{initialLoading ? <Skeleton className="my-1 h-3 w-56 max-w-full" /> : <>{priceData?.price_source || 'Price provider'} · Quote time: {quoteDateLabel}</>}</p>
+          <p className="mt-1 text-xs text-white/60">{initialLoading ? <Skeleton className="my-1 h-3 w-64 max-w-full" /> : <>Latest chart close: {formatPrice(priceData?.lastHistoricalClose, priceData?.currency)} · {priceData?.lastHistoricalCloseDate ? formatHistoryDate(priceData.lastHistoricalCloseDate, priceData.interval) : 'Date unknown'}</>}</p>
         </div>
         <div className="min-w-0 max-w-full">
           <div role="group" aria-label="Price history period" className="flex items-center bg-white/5 rounded-lg p-1 gap-1 overflow-x-auto">
@@ -131,7 +140,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
           : query.isPlaceholderData
             ? `Loading ${selectedLabel}… Showing ${displayedLabel} until it is ready.`
             : query.isFetching
-              ? priceData ? 'Refreshing price history…' : 'Loading price history…'
+              ? priceData ? 'Refreshing price history…' : slowLoad ? 'Prices are taking longer than usual. You can explore other sections while they load.' : 'Loading price history…'
               : null}
       </div>
       {priceData?.stale && <p role="status" className="mb-3 text-xs leading-5 text-amber-200">Showing saved prices. The provider could not be refreshed; observation dates are unchanged.</p>}
@@ -143,10 +152,10 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
         </div>
       )}
 
-      <p className="mb-2 text-xs text-slate-400">Chart unit: {unitLabel(priceData?.currency)} · No currency conversion{priceData ? priceData.interval === '1h' ? ' · Hourly bars · Times in your timezone' : ' · Daily bars' : ''}</p>
+      <p className="mb-2 text-xs text-slate-400">{initialLoading ? <Skeleton className="my-1 h-3 w-52 max-w-full" /> : <>Chart unit: {unitLabel(priceData?.currency)} · No currency conversion{priceData ? priceData.interval === '1h' ? ' · Hourly bars · Times in your timezone' : ' · Daily bars' : ''}</>}</p>
       <div aria-busy={waiting} className="h-48 sm:h-64 lg:h-80 mb-4 touch-pan-y">
-        {!priceData && query.isPending ? (
-          <div className="h-full animate-pulse rounded-lg bg-white/5" />
+        {initialLoading ? (
+          <PricePlotLoading />
         ) : bars.length ? (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={bars} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
@@ -173,10 +182,10 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
         ].map(([label, value]) => (
           <div key={label} className="min-w-0 py-2">
             <p className="text-xs text-white/60 mb-1">{label}</p>
-            <p className="break-words text-sm font-medium tabular-nums text-slate-200">{value}</p>
+            <p className="break-words text-sm font-medium tabular-nums text-slate-200">{initialLoading ? <Skeleton className="h-5 w-20 max-w-full" /> : value}</p>
           </div>
         ))}
       </div>
-    </div>
+    </section>
   )
 }

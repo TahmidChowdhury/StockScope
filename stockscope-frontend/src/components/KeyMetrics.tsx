@@ -146,7 +146,7 @@ export default function KeyMetrics({
         <>
           <div className="mb-5 border-b border-white/[0.07] pb-5">
             <p className="text-xs text-slate-400">
-              Provider quote · {unitLabel(data?.currency)}
+              {isPending ? <Skeleton className="my-1 h-3 w-40 max-w-full" /> : <>Provider quote · {unitLabel(data?.currency)}</>}
             </p>
             <p className="mt-2 text-2xl font-medium tabular-nums text-white">
               {isPending ? <Skeleton className="h-9 w-24" /> : number(data?.currentPrice, 'money')}

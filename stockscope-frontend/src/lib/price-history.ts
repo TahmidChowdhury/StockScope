@@ -45,3 +45,19 @@ export function priceHistorySummary(data: PriceData[]) {
   }
   return { high, low, averageVolume: volumeCount ? volumeTotal / volumeCount : null }
 }
+
+export function priceHistoryInterval(period: string): '1h' | '1d' {
+  return period === '5d' || period === '1mo' ? '1h' : '1d'
+}
+
+export function formatHistoryDate(value: string, interval: string = '1d'): string {
+  if (interval === '1h') {
+    return new Date(value).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+    })
+  }
+  // Daily observations represent trading dates, independent of viewer timezone.
+  return new Date(`${value}T00:00:00Z`).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', timeZone: 'UTC',
+  })
+}

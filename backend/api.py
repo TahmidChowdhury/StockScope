@@ -900,13 +900,16 @@ def get_price_history(
     interval: str = "1d",
     current_user: str = Depends(verify_password_with_role)
 ):
-    """Get historical daily price data for charting; reject unbounded query variants."""
+    """Get bounded daily or hourly observations for charting."""
     try:
         symbol = normalized_symbol(symbol)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    if period not in {"5d", "1mo", "3mo", "6mo", "1y", "2y", "5y"} or interval != "1d":
-        raise HTTPException(422, "Choose a supported chart range with daily observations.")
+    if not (
+        (interval == "1d" and period in {"5d", "1mo", "3mo", "6mo", "1y", "2y", "5y"})
+        or (interval == "1h" and period in {"5d", "1mo"})
+    ):
+        raise HTTPException(422, "Choose hourly observations for 5D/1M or daily observations for a supported range.")
     
     try:
         import backend.core.market_provider as yf
@@ -926,7 +929,7 @@ def get_price_history(
                 continue
             volume = finite_number(row.get('Volume'))
             price_data.append({
-                "date": date.strftime("%Y-%m-%d"),
+                "date": date.isoformat() if interval == "1h" else date.strftime("%Y-%m-%d"),
                 "timestamp": int(date.timestamp() * 1000),  # JavaScript timestamp
                 **{name: round(value, 2) for name, value in prices.items()},
                 "volume": int(volume) if volume is not None and volume >= 0 else None

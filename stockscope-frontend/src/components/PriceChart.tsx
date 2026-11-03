@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { TrendingUp, TrendingDown } from 'lucide-react'
 import { apiFetch, ApiError, readApiJson } from '@/lib/api'
-import { priceHistorySummary, type PriceData, type PriceHistoryResponse } from '@/lib/price-history'
+import { priceHistoryInterval, formatHistoryDate, priceHistorySummary, type PriceData, type PriceHistoryResponse } from '@/lib/price-history'
 import { priceAmount as formatPrice, unitLabel } from '@/lib/financial-format'
 import { usePriceCooldown, priceCooldownDeadline, rememberPriceCooldown } from '@/hooks/usePriceCooldown'
 import { useWindowWidth } from '@/hooks/useWindowWidth'
@@ -25,18 +25,12 @@ const PERIOD_OPTIONS = [
   { value: '5y', label: '5Y' },
 ]
 
-const formatDate = (dateStr: string) => {
-  // Daily bars are trading dates, not midnight instants in the viewer's timezone.
-  const date = new Date(`${dateStr}T00:00:00Z`)
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-}
-
-function CustomTooltip({ active, payload, currency }: { currency?: string | null; active?: boolean; payload?: ReadonlyArray<{ payload?: PriceData }> }) {
+function CustomTooltip({ active, payload, currency, interval }: { interval?: string; currency?: string | null; active?: boolean; payload?: ReadonlyArray<{ payload?: PriceData }> }) {
   const data = active ? payload?.[0]?.payload : undefined
   if (!data) return null
   return (
     <div className="max-w-56 whitespace-normal break-words bg-[#202722] p-3 rounded-lg border border-white/10 text-xs leading-5">
-      <p className="font-medium text-white">{formatDate(data.date)}</p>
+      <p className="font-medium text-white">{formatHistoryDate(data.date, interval)}</p>
       <p className="text-sage-300">Close: {formatPrice(data.close, currency)}</p>
       <p className="text-gray-300">Volume: {data.volume?.toLocaleString() ?? 'Unavailable'}</p>
     </div>
@@ -45,16 +39,18 @@ function CustomTooltip({ active, payload, currency }: { currency?: string | null
 
 export default function PriceChart({ symbol, className = '' }: PriceChartProps) {
   const [selectedPeriod, setSelectedPeriod] = useState('1y')
+  const interval = priceHistoryInterval(selectedPeriod)
+  const queryKey = ['price-history', symbol, selectedPeriod, interval]
   const windowWidth = useWindowWidth()
   const client = useQueryClient()
   const { deadline, cooling } = usePriceCooldown()
   const query = useQuery({
-    queryKey: ['price-history', symbol, selectedPeriod],
+    queryKey,
     queryFn: async ({ signal }): Promise<PriceHistoryResponse> => {
       const blockedUntil = priceCooldownDeadline(client)
       if (blockedUntil > Date.now()) throw new ApiError('Price requests are cooling down.', 429, blockedUntil)
       const response = await apiFetch(
-        `/api/stocks/${encodeURIComponent(symbol)}/price-history?period=${selectedPeriod}&interval=1d`,
+        `/api/stocks/${encodeURIComponent(symbol)}/price-history?period=${selectedPeriod}&interval=${interval}`,
         { signal },
       )
       try {
@@ -65,9 +61,10 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
       }
     },
     // Expiry unlocks manual retry; it does not automatically spend another request.
-    enabled: Boolean(symbol) && !cooling && client.getQueryState(['price-history', symbol, selectedPeriod])?.status !== 'error',
+    enabled: Boolean(symbol) && !cooling && client.getQueryState(queryKey)?.status !== 'error',
     refetchOnReconnect: false,
-    staleTime: 60 * 60_000,
+    staleTime: interval === '1h' ? 15 * 60_000 : 60 * 60_000,
+    refetchInterval: (query) => interval === '1h' && !cooling && query.state.status !== 'error' ? 15 * 60_000 : false,
     retry: false,
     refetchOnWindowFocus: false,
     // Keep the chart's size and quote stable during range changes. Never carry
@@ -107,7 +104,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
             ) : <span className="text-sm text-white/60">Daily change unavailable</span>}
           </div>
           <p className="mt-2 text-xs text-white/60">{priceData?.price_source || 'Price provider'} · Quote time: {quoteDateLabel}</p>
-          <p className="mt-1 text-xs text-white/60">Latest chart close: {formatPrice(priceData?.lastHistoricalClose, priceData?.currency)} · {priceData?.lastHistoricalCloseDate ?? 'Date unknown'}</p>
+          <p className="mt-1 text-xs text-white/60">Latest chart close: {formatPrice(priceData?.lastHistoricalClose, priceData?.currency)} · {priceData?.lastHistoricalCloseDate ? formatHistoryDate(priceData.lastHistoricalCloseDate, priceData.interval) : 'Date unknown'}</p>
         </div>
         <div className="min-w-0 max-w-full">
           <div role="group" aria-label="Price history period" className="flex items-center bg-white/5 rounded-lg p-1 gap-1 overflow-x-auto">
@@ -115,7 +112,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
               <button
                 key={option.value}
                 type="button"
-                disabled={cooling && !client.getQueryData(['price-history', symbol, option.value])} onClick={() => setSelectedPeriod(option.value)}
+                disabled={cooling && !client.getQueryData(['price-history', symbol, option.value, priceHistoryInterval(option.value)])} onClick={() => setSelectedPeriod(option.value)}
                 aria-pressed={selectedPeriod === option.value}
                 className={`min-h-11 sm:min-h-9 flex-1 px-2 sm:px-3 rounded text-xs font-medium transition-colors whitespace-nowrap min-w-[36px] ${selectedPeriod === option.value ? 'bg-white/10 text-sage-200' : 'text-white/70 hover:text-white hover:bg-white/10'}`}
               >
@@ -146,7 +143,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
         </div>
       )}
 
-      <p className="mb-2 text-xs text-slate-400">Chart unit: {unitLabel(priceData?.currency)} · No currency conversion</p>
+      <p className="mb-2 text-xs text-slate-400">Chart unit: {unitLabel(priceData?.currency)} · No currency conversion{priceData ? priceData.interval === '1h' ? ' · Hourly bars · Times in your timezone' : ' · Daily bars' : ''}</p>
       <div aria-busy={waiting} className="h-48 sm:h-64 lg:h-80 mb-4 touch-pan-y">
         {!priceData && query.isPending ? (
           <div className="h-full animate-pulse rounded-lg bg-white/5" />
@@ -154,9 +151,9 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={bars} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
               <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.07)" />
-              <XAxis dataKey="date" tickFormatter={formatDate} axisLine={false} tickLine={false} fontSize={11} tick={{ fill: '#9fa9a2', fontFamily: 'monospace' }} minTickGap={24} />
+              <XAxis dataKey="date" tickFormatter={(value) => formatHistoryDate(value, priceData?.interval)} axisLine={false} tickLine={false} fontSize={11} tick={{ fill: '#9fa9a2', fontFamily: 'monospace' }} minTickGap={24} />
               <YAxis domain={['dataMin', 'dataMax']} tickFormatter={(value) => Number(value).toFixed(2)} axisLine={false} tickLine={false} fontSize={11} tick={{ fill: '#9fa9a2', fontFamily: 'monospace' }} width={windowWidth < 640 ? 50 : 60} />
-              <Tooltip content={<CustomTooltip currency={priceData?.currency} />} />
+              <Tooltip content={<CustomTooltip currency={priceData?.currency} interval={priceData?.interval} />} />
               <Line type="monotone" dataKey="close" stroke={chartColor} strokeWidth={2} dot={false} activeDot={{ r: windowWidth < 640 ? 3 : 4, fill: chartColor }} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
@@ -171,7 +168,7 @@ export default function PriceChart({ symbol, className = '' }: PriceChartProps) 
         {[
           ['Period high', formatPrice(summary.high, priceData?.currency)],
           ['Period low', formatPrice(summary.low, priceData?.currency)],
-          ['Avg volume', summary.averageVolume == null ? 'Unavailable' : summary.averageVolume.toLocaleString(undefined, { maximumFractionDigits: 0 })],
+          [priceData?.interval === '1h' ? 'Avg hourly volume' : 'Avg daily volume', summary.averageVolume == null ? 'Unavailable' : summary.averageVolume.toLocaleString(undefined, { maximumFractionDigits: 0 })],
           ['Data points', priceData ? bars.length.toLocaleString() : '—'],
         ].map(([label, value]) => (
           <div key={label} className="min-w-0 py-2">

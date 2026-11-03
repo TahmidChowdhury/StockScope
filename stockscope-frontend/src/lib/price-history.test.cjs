@@ -30,3 +30,17 @@ test('summary keeps observed zero volume and excludes unavailable or invalid obs
   assert.equal(result.low, 90)
   assert.equal(result.averageVolume, 50)
 })
+
+test('short ranges use hourly observations and long ranges remain daily', () => {
+  for (const period of ['5d', '1mo']) assert.equal(exportsObject.priceHistoryInterval(period), '1h')
+  for (const period of ['3mo', '6mo', '1y', '2y', '5y']) assert.equal(exportsObject.priceHistoryInterval(period), '1d')
+})
+
+test('hourly labels distinguish observations on the same day while daily dates stay stable', () => {
+  const format = exportsObject.formatHistoryDate
+  const first = format('2026-11-02T09:30:00-05:00', '1h')
+  const second = format('2026-11-02T10:30:00-05:00', '1h')
+  assert.notEqual(first, second)
+  assert.match(first, /:30/)
+  assert.equal(format('2026-11-02', '1d'), 'Nov 2')
+})

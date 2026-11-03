@@ -78,7 +78,8 @@ def get_history(symbol, *, allow_stale=True, include_metadata=False, **kwargs):
                 metadata = {'currency': raw.get('currency')} if isinstance(raw, dict) else {}
         return {'frame': frame.to_json(orient='table', date_format='iso'), 'metadata': metadata}
 
-    saved = fetch_snapshot('yahoo-history-v1', [symbol, identity, include_metadata], load, allow_stale=allow_stale)
+    saved = fetch_snapshot('yahoo-history-v1', [symbol, identity, include_metadata], load,
+                           ttl=900 if kwargs.get('interval') == '1h' else 3600, allow_stale=allow_stale)
     frame = pd.read_json(StringIO(saved.data['frame']), orient='table')
     frame.attrs.update(retrieved_at=saved.retrieved_at, stale=saved.stale, metadata=saved.data['metadata'])
     return frame

@@ -320,3 +320,40 @@ def test_catalog_single_name_match_does_not_hide_ambiguous_provider_listings(api
     assert asyncio.run(api.get_stock_suggestions(q='Alphabet', limit=50, current_user='admin')) == rows
     monkeypatch.setattr(yf, 'search_companies', lambda _: pytest.fail('Exact ticker needs no name lookup'))
     assert asyncio.run(api.get_stock_suggestions(q='GOOGL', limit=50, current_user='admin')) == rows[:1]
+
+
+@pytest.mark.parametrize('period', ['5d', '1mo'])
+def test_hourly_chart_preserves_distinct_instants_and_refreshes_cache(api, monkeypatch, period):
+    from backend.core import provider_cache
+    calls = []
+    frame = pd.DataFrame({'Open': [40., 41.], 'High': [43., 44.], 'Low': [39., 40.],
+                          'Close': [42., 43.], 'Volume': [0., 10.]},
+                         index=pd.date_range('2026-11-02 09:30', periods=2, freq='h', tz='America/New_York'))
+    ticker = fake_ticker(monkeypatch, {}, frame)
+    def history(**kwargs):
+        calls.append(kwargs)
+        return frame
+    ticker.history = history
+    now = provider_cache.time.time()
+    monkeypatch.setattr(provider_cache.time, 'time', lambda: now)
+    first = api.get_price_history('IBM', period=period, interval='1h', current_user='admin')
+    assert first['interval'] == '1h'
+    assert len({bar['date'] for bar in first['data']}) == 2
+    for bar, instant in zip(first['data'], frame.index):
+        assert datetime.fromisoformat(bar['date']).timestamp() * 1000 == bar['timestamp'] == instant.timestamp() * 1000
+    assert first['lastHistoricalCloseDate'] == first['data'][-1]['date']
+    now += 899
+    api.get_price_history('IBM', period=period, interval='1h', current_user='admin')
+    assert len(calls) == 1
+    now += 2
+    api.get_price_history('IBM', period=period, interval='1h', current_user='admin')
+    assert len(calls) == 2
+    assert all(call['interval'] == '1h' for call in calls)
+
+
+@pytest.mark.parametrize('period', ['3mo', '1y', '5y'])
+def test_hourly_chart_rejects_long_ranges(api, monkeypatch, period):
+    monkeypatch.setattr(yf, 'Ticker', lambda _: pytest.fail('Unsupported range contacted provider'))
+    with pytest.raises(api.HTTPException) as error:
+        api.get_price_history('IBM', period=period, interval='1h', current_user='admin')
+    assert error.value.status_code == 422

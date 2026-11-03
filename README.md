@@ -12,6 +12,7 @@ StockScope is a personal stock-research workspace for a long-term investing core
 - **Refresh:** company research refreshes explicitly, with completion, partial-result, and failure status. Disclosure collection runs on its own schedule. Merely opening saved research does not imply it was refreshed.
 - **Shared watchlist:** saved analyzed symbols are shared across authenticated roles. This is not a holdings ledger or a measure of actual portfolio returns. Dashboard evidence counts include news and filing records, not just distinct articles.
 - **Workspace navigation:** dashboard, company research, financials, disclosures, screening, and paper experiments share a responsive shell and watchlist. Saved backtests and paper portfolios have direct URLs. Disclosures opens directly from mobile navigation; the menu includes the screener. Older Compare links open the screener with their tickers prefilled.
+- **Dashboard view:** the selected personal list or shared research is remembered in this browser per account and API workspace. An unavailable list falls back to shared research.
 - **Browser drafts:** screening inputs/results/selections, trading forms, per-portfolio order drafts, company valuation assumptions, and tone annotations/completed reports restore after refresh or return visits. Drafts use local browser storage separated by API connection and individual account (or legacy access role before owner setup), without cross-device sync. Drafts contain no login credentials. Saved snapshots retain their collection dates and do not trigger fresh screening, model inference, or trading actions. Clear controls affect only their local workspace; blocked or full browser storage displays an unsaved warning.
 - **Authentication:** friends sign in with their individual invited account. The owner can manage access and send single-use password reset links. The installed app selects “Keep me signed in on this device for 30 days” by default. Browser tabs offer the same checkbox. See the private workspace setup below.
 
@@ -507,7 +508,7 @@ session and for twenty minutes after the close to capture delayed closing quotes
 The final snapshot persists through weekends, holidays and restarts. Tapping a
 symbol shows its original regular-session quote time in Eastern time. Missing
 or older provider rows keep their last dated observations. The worker uses the
-shared Yahoo request budget; viewing the strip spends no personal allowance.
+shared Yahoo request accounting and cooldowns; viewing the strip makes no personal provider requests.
 Set `MARKET_TAPE_ENABLED=false` to serve saved changes without the worker.
 
 Provider-backed research panels do not automatically retry or refresh on window focus. Home,
@@ -518,11 +519,14 @@ their direct Yahoo calls are outside the active app's budget wrapper and should 
 be run alongside the app as unmetered collectors.
 
 All active requests through the SEC/news/disclosure collectors and yfinance transport
-record usage by UTC day. Each signed-in account (including the owner) can reserve 50 outbound Yahoo HTTP
-attempts per New York calendar day. Cached reads are free. At midnight Eastern, including
-daylight-saving changes, a new allowance is available. The daily workspace totals still use
-UTC. The requesting account pays for SDK authentication, data requests and retries. Unattended
-work contributes only to the workspace totals. See Your account for individual usage.
+record usage by UTC day. Yahoo has no app-level daily cap, either per account or
+workspace-wide. Per-account outbound HTTP counts reset at midnight Eastern,
+including daylight-saving changes; workspace totals use UTC. The initiating
+account is attributed SDK authentication, data requests and retries. Cached reads
+make no provider requests. Unattended work contributes only to workspace totals.
+See Your account for individual usage. This does not imply unlimited upstream
+access: provider cooldowns, request pacing, durable caches and deduplication remain
+active. Set `PROVIDER_YAHOO_DAILY_LIMIT=0` to disable Yahoo requests entirely.
 The other daily limits default to SEC 200, Google/Finviz/other feeds 30 each, disclosures 10, research jobs 12. Manual
 research collection has a six-hour per-symbol cooldown, including failed jobs. Budgets
 can be lowered via `.env`; raising the hard ceilings requires an intentional code

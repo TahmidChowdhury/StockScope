@@ -46,7 +46,6 @@ def _roll_day(usage, day):
 
 
 _lock = RLock()
-YAHOO_USER_LIMIT = 50
 _EASTERN = ZoneInfo('America/New_York')
 # Set by the authenticated request task. Unattended work has no user to charge.
 yahoo_principal = ContextVar('yahoo_principal', default=None)
@@ -116,24 +115,20 @@ def _personal_used(usage, principal, day):
 def personal_yahoo_usage(principal):
     usage = read_states(['provider:yahoo']).get('provider:yahoo', {})
     day, reset = _personal_window(time.time())
-    return {'used': _personal_used(usage, principal, day), 'limit': YAHOO_USER_LIMIT,
+    return {'used': _personal_used(usage, principal, day), 'limit': None,
             'resets_at': reset.isoformat(), 'timezone': _EASTERN.key}
 
 
-def _check_personal(usage, timestamp, *, charge=False):
+def _record_personal(usage, timestamp):
+    """Attribute actual requests without imposing an app-level personal cap."""
     principal = yahoo_principal.get()
     if principal is None:
         return
-    day, reset = _personal_window(timestamp)
+    day, _ = _personal_window(timestamp)
     used = _personal_used(usage, principal, day)
-    if used >= YAHOO_USER_LIMIT:
-        raise PersonalYahooLimit(
-            f'You have used all {YAHOO_USER_LIMIT} Yahoo requests for today. Your allowance resets at midnight Eastern.',
-            reset.timestamp() - timestamp)
-    if charge:
-        if usage.get('personal_day') != day:
-            usage.update(personal_day=day, personal_counts={})
-        usage['personal_counts'][principal] = used + 1
+    if usage.get('personal_day') != day:
+        usage.update(personal_day=day, personal_counts={})
+    usage['personal_counts'][principal] = used + 1
 
 
 def provider_for(url):
@@ -221,8 +216,6 @@ def require_available(provider):
     if usage.get('blocked_until', 0) > now.timestamp():
         raise BudgetExceeded(f'{provider.title()} is cooling down after a provider response. Saved research remains available.',
                              usage['blocked_until'] - now.timestamp())
-    if provider == 'yahoo':
-        _check_personal(usage, now.timestamp())
     used = usage.get('count', 0) if usage.get('day') == now.date().isoformat() else 0
     limit = daily_limit(provider)
     if limit is not None and used >= limit:
@@ -263,7 +256,7 @@ def _reserve(provider, *, cooldown=1.1, category="other"):
             raise BudgetExceeded(f'{provider} request queue is busy. Try again later.')
         if provider == 'yahoo':
             # Both counts commit under the same database row/file lock.
-            _check_personal(usage, now, charge=True)
+            _record_personal(usage, now)
         usage.update(count=usage.get('count', 0) + 1, next_request=scheduled + cooldown)
         for field, label in (('operations', _operation.get()), ('categories', category if category in _CATEGORIES else 'other')):
             counts = usage.setdefault(field, {})

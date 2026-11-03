@@ -56,7 +56,7 @@ export default function AccessPage() {
       {!!access.data?.invites.length && <section className="surface mt-6 p-5"><h2 className="font-medium">Pending invitations</h2>{access.data.invites.map(value => <div key={value.id} className="mt-4 flex flex-wrap justify-between gap-3 text-xs"><p className="break-all text-slate-400">{value.email} · expires {new Date(value.expires_at).toLocaleDateString()}</p><button disabled={action.isPending} className="text-amber-200" onClick={() => action.mutate({ path: `/api/access/invites/${value.id}`, method: 'DELETE' })}>Revoke invitation</button></div>)}</section>}
       <section className="surface mt-6 p-5">
         <h2 className="font-medium">Shared resource usage</h2>
-        <p className="mt-2 text-xs leading-6 text-slate-500">These workspace totals cover the UTC day. Each member has 50 Yahoo requests per day, including authentication and retries. Personal allowances reset at midnight Eastern time. When a provider asks us to slow down, the workspace pauses requests and keeps saved research available.</p>
+        <p className="mt-2 text-xs leading-6 text-slate-500">These workspace totals cover the UTC day. Yahoo has no app daily cap. Per-account counts include authentication and retries and reset at midnight Eastern time. When a provider asks us to slow down, the workspace pauses requests and keeps saved research available.</p>
         {usage.isError && <p className="mt-4 text-xs text-amber-200">Usage is temporarily unavailable.</p>}
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           {usage.data?.providers.map(value => (

@@ -76,16 +76,16 @@ def test_reset_at_new_york_midnight_across_dst(local_state, monkeypatch, start, 
     monkeypatch.setattr(resources.time, 'time', lambda: now)
     actor = resources.yahoo_principal.set('friend')
     try:
-        for _ in range(50):
+        for _ in range(60):
             resources.reserve('yahoo', cooldown=0)
-        with pytest.raises(resources.PersonalYahooLimit) as denied:
-            resources.reserve('yahoo', cooldown=0)
-        assert denied.value.retry_after == hours * 3600
-        # The UTC day has already changed, but the local allowance has not.
+        usage = resources.personal_yahoo_usage('friend')
+        assert usage['used'] == 60 and usage['limit'] is None
+        assert datetime.fromisoformat(usage['resets_at']).timestamp() - now == hours * 3600
+        # UTC midnight does not reset the per-account Eastern count.
         now = midnight - 1
-        with pytest.raises(resources.PersonalYahooLimit) as denied:
-            resources.reserve('yahoo', cooldown=0)
-        assert denied.value.retry_after == 1
+        resources.require_available('yahoo')
+        resources.reserve('yahoo', cooldown=0)
+        assert resources.personal_yahoo_usage('friend')['used'] == 61
         now = midnight
         assert resources.personal_yahoo_usage('friend')['used'] == 0
         resources.reserve('yahoo', cooldown=0)
@@ -94,7 +94,7 @@ def test_reset_at_new_york_midnight_across_dst(local_state, monkeypatch, start, 
         resources.yahoo_principal.reset(actor)
 
 
-def test_concurrent_requests_compete_for_last_personal_slot(local_state):
+def test_concurrent_requests_cross_old_personal_cap_without_losing_counts(local_state):
     from concurrent.futures import ThreadPoolExecutor
     import time
     day, _ = resources._personal_window(time.time())
@@ -110,5 +110,24 @@ def test_concurrent_requests_compete_for_last_personal_slot(local_state):
         finally:
             resources.yahoo_principal.reset(actor)
     with ThreadPoolExecutor(max_workers=6) as pool:
-        assert sum(pool.map(attempt, range(12))) == 1
-    assert resources.personal_yahoo_usage('same-user')['used'] == 50
+        assert sum(pool.map(attempt, range(12))) == 12
+    assert resources.personal_yahoo_usage('same-user')['used'] == 61
+
+
+@pytest.mark.parametrize('status', [403, 429, 503])
+def test_uncapped_account_still_obeys_provider_cooldown(local_state, status):
+    import time
+    day, _ = resources._personal_window(time.time())
+    with resources.state('provider:yahoo') as usage:
+        usage.update(personal_day=day, personal_counts={'friend': 500})
+    actor = resources.yahoo_principal.set('friend')
+    try:
+        resources.require_available('yahoo')
+        resources.record_response('yahoo', status, {'Retry-After': '7200'})
+        with pytest.raises(resources.BudgetExceeded):
+            resources.require_available('yahoo')
+        with pytest.raises(resources.BudgetExceeded):
+            resources.reserve('yahoo', cooldown=0)
+        assert resources.personal_yahoo_usage('friend')['used'] == 500
+    finally:
+        resources.yahoo_principal.reset(actor)

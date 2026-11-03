@@ -139,7 +139,7 @@ export default function StockSearch({
                 }}
                 enterKeyHint="search"
                 placeholder={
-                  compact ? 'Company name or ticker…' : 'Search a company or ticker…'
+                  compact ? 'Company name or ticker' : 'Search a company or ticker'
                 }
                 displayValue={() => query}
                 value={query}
@@ -148,13 +148,13 @@ export default function StockSearch({
                   setQuery(e.target.value)
                   setError('')
                 }}
-                className={`min-h-14 w-full rounded-xl border border-white/10 bg-[#111513] pl-11 pr-16 text-base text-slate-100 placeholder:text-slate-500 focus:border-sage-400/60 focus:outline-none focus:ring-2 focus:ring-sage-400/10 sm:min-h-0 sm:pr-28 sm:text-sm ${compact ? 'py-3' : 'py-4'}`}
+                className={`min-h-14 w-full rounded-xl border border-white/10 bg-[#111513] pl-11 pr-16 text-base text-slate-100 placeholder:text-slate-500 focus:border-sage-400/60 focus:outline-none focus:ring-2 focus:ring-sage-400/10 sm:min-h-12 sm:pr-28 sm:text-sm ${compact ? 'py-3' : 'py-4'}`}
               />
               <button
                 type="submit"
                 aria-label={busy ? 'Opening company research' : 'Explore'}
                 disabled={!query.trim() || busy}
-                className="absolute right-1.5 top-1/2 inline-flex h-11 min-w-11 -translate-y-1/2 items-center justify-center gap-2 rounded-lg bg-sage-300 px-3 py-2 text-xs font-medium text-[#111613] hover:bg-sage-200 disabled:opacity-40 sm:right-2 lg:h-7"
+                className="absolute right-2 top-1/2 inline-flex h-11 min-w-11 -translate-y-1/2 items-center justify-center gap-2 rounded-lg bg-sage-300 px-3 py-2 text-xs font-medium text-[#111613] hover:bg-sage-200 disabled:opacity-40 sm:right-2 sm:h-8"
               >
                 {busy ? (
                   <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -200,7 +200,7 @@ export default function StockSearch({
           Enter ticker directly
         </label>
       </form>
-      <p role="status" className="mt-2 text-xs text-slate-400">{!error && searchNotice}</p>
+      <p role="status" className={searchNotice && !error ? "mt-2 text-xs text-slate-400" : "sr-only"}>{!error && searchNotice}</p>
       {error && (
         <p
           id={errorId}

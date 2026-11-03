@@ -14,6 +14,8 @@ import {
   LogOut,
   Menu,
   ScanLine,
+  ShieldCheck,
+  UserRound,
   X,
 } from 'lucide-react'
 import { signOut, getAuthSession } from '@/lib/api'
@@ -103,14 +105,14 @@ export default function SideNav({
           <span>{label}</span>
         </Link>
       ))}
-      {getAuthSession()?.role === 'admin' && <Link href="/access" onClick={event => navigate(event, '/access')} className="scope-nav-link" aria-current={activePage === 'access' ? 'page' : undefined}>Access & resources</Link>}
+      {getAuthSession()?.role === 'admin' && <Link href="/access" onClick={event => navigate(event, '/access')} className="scope-nav-link" aria-current={activePage === 'access' ? 'page' : undefined}><ShieldCheck aria-hidden="true" className="shrink-0" /><span>Access & resources</span></Link>}
     </nav>
   )
   const watchlist = (watchlistLoading || watchlistError || stocks.length > 0) && (
     <div className="scope-watchlist">
       <div className="scope-section-label flex items-center justify-between">
         <span>Pinned companies</span>
-        <span className="font-mono">{watchlistLoading || watchlistError ? '—' : String(stocks.length).padStart(2, '0')}</span>
+        <span className="font-mono">{watchlistLoading || watchlistError ? '—' : stocks.length}</span>
       </div>
       {watchlistError && (
         <div
@@ -147,7 +149,7 @@ export default function SideNav({
                 else navigate(e, `/stock/${encodeURIComponent(stock.symbol)}`)
               }}
               aria-current={currentStock === stock.symbol ? 'page' : undefined}
-              className={`flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-white/5 ${currentStock === stock.symbol ? 'bg-white/5 text-white' : 'text-slate-400'}`}
+              className={`scope-company-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-white/5 ${currentStock === stock.symbol ? 'bg-white/5 text-white' : 'text-slate-400'}`}
             >
               <CompanyLogo symbol={stock.symbol} size="small" />
               <span className="font-medium">{stock.symbol}</span>
@@ -170,7 +172,7 @@ export default function SideNav({
   const footer = (
     <div className="scope-nav-footer">
       <div className="flex items-center justify-between gap-2">
-        <Link href="/account" aria-current={activePage === 'account' ? 'page' : undefined} className="inline-flex min-h-11 items-center text-sm text-slate-300" onClick={event => navigate(event, '/account')}>Your account</Link>
+        <Link href="/account" aria-current={activePage === 'account' ? 'page' : undefined} className="inline-flex min-h-11 items-center gap-3 rounded-md text-sm text-slate-300 hover:text-white" onClick={event => navigate(event, '/account')}><UserRound aria-hidden="true" /><span>Your account</span></Link>
         <AnimatedAction onClick={onLogout} aria-label="Sign out" className="flex h-11 w-11 items-center justify-center rounded-md text-slate-400 hover:bg-white/5 hover:text-white"><LogOut className="h-4 w-4" /></AnimatedAction>
       </div>
     </div>

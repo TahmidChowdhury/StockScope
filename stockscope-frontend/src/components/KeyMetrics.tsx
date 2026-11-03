@@ -111,12 +111,12 @@ export default function KeyMetrics({
   return (
     <ResearchPanel pending={isPending}
       aria-labelledby="metrics-heading"
-      className={`surface p-5 ${className}`}
+      className={`research-metrics surface p-5 sm:p-6 ${className}`}
     >
       <div className="mb-3 flex items-center justify-between">
         <h2
           id="metrics-heading"
-          className="text-sm font-semibold text-slate-100"
+          className="text-sm font-medium text-slate-100"
         >
           At a glance
         </h2>
@@ -145,10 +145,10 @@ export default function KeyMetrics({
       {(data || isPending) && (
         <>
           <div className="mb-5 border-b border-white/[0.07] pb-5">
-            <p className="text-[10px] font-semibold tracking-widest text-slate-400">
+            <p className="text-xs text-slate-400">
               Provider quote · {unitLabel(data?.currency)}
             </p>
-            <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums text-white">
+            <p className="mt-2 text-2xl font-medium tabular-nums text-white">
               {isPending ? <Skeleton className="h-9 w-24" /> : number(data?.currentPrice, 'money')}
             </p>
             <p className="mt-2 text-xs leading-5 text-slate-400">
@@ -157,8 +157,8 @@ export default function KeyMetrics({
           </div>
           {sections.map((section) => (
             <div key={section.title} className="mb-5">
-              <h3 className="eyebrow mb-3">{section.title}</h3>
-              <dl className="space-y-2">
+              <h3 className="eyebrow mb-2">{section.title}</h3>
+              <dl className="space-y-1">
                 {section.rows.map(([label, value]) => (
                   <div
                     key={label}

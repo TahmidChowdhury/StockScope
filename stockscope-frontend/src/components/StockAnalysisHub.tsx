@@ -81,14 +81,14 @@ export default function StockAnalysisHub({
         <ArrowLeft className="h-3.5 w-3.5" />
         {returnDestination.label}
       </button>}
-      <div className="mb-7 flex flex-wrap items-center justify-between gap-5">
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-4">
           <CompanyLogo symbol={symbol} size="large" />
           <div className="min-w-0">
             <h1 className="page-title break-words">
               {companyName}
             </h1>
-            {companyName !== symbol && <p className="mt-1 text-xs font-medium text-slate-400">
+            {companyName !== symbol && <p className="mt-2 text-xs font-mono text-slate-400">
               {symbol}
             </p>}
           </div>
@@ -113,7 +113,7 @@ export default function StockAnalysisHub({
       )}
       <nav
         aria-label="Company research sections"
-        className="mb-7 flex gap-6 overflow-x-auto border-b border-white/10"
+        className="company-tabs mb-6 flex gap-6 overflow-x-auto border-b border-white/10"
       >
         {tabs.map((tab) => (
           <Link
@@ -124,22 +124,22 @@ export default function StockAnalysisHub({
               e.preventDefault()
               selectTab(tab.id)
             }}
-            className={`whitespace-nowrap border-b-2 pb-3.5 text-sm transition-colors ${active === tab.id ? 'border-sage-300 font-medium text-[#dce6d7]' : 'border-transparent text-slate-500 hover:text-slate-200'}`}
+            className={`whitespace-nowrap border-b-2 text-sm transition-colors ${active === tab.id ? 'border-sage-300 font-medium text-[#dce6d7]' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
           >
             {tab.label}
           </Link>
         ))}
       </nav>
-      <div key={`${symbol}-${active}`} className="animate-fadeIn">
+      <div key={`${symbol}-${active}`} className="company-research-content">
         {active === 'overview' && (
           <>
-            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
               <div className="min-w-0">
                 <PriceChart symbol={symbol} className="company-panel" />
               </div>
               <KeyMetrics symbol={symbol} />
             </div>
-            <div className="mt-5">
+            <div className="mt-6">
               <DeferredPanel label="company disclosures">
                 {enabled => <CompanyDisclosures symbol={symbol} enabled={enabled} />}
               </DeferredPanel>
